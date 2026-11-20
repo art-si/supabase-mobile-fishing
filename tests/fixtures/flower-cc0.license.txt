@@ -1,0 +1,5 @@
+Test fixture: flower-cc0.mp4
+Source: https://interactive-examples.mdn.mozilla.net/media/cc0-videos/flower.mp4
+Used only for MP4 parsing, upload contracts, and local browser playback checks.
+Original MDN video example: https://developer.mozilla.org/en-US/docs/Web/HTML/Reference/Elements/video
+The source is distributed in MDN's cc0-videos collection. It is not user content or a fishing demo.

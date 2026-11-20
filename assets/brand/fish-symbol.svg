@@ -1,0 +1,21 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 160 96" fill="currentColor" style="color:#0f6b5b">
+  <title>钓友集 · 鱼与交流</title>
+  <defs>
+    <path id="fish-outline" d="M39 32C53 15 75 7 95 7C126 7 151 22 151 46C151 73 126 87 95 87C85 87 77 86 70 84C68 83.5 66.7 84 65 85L56 91C53 93 51 92 51 89L51.4 80C51.5 78 50.4 76.2 48.4 74.5C43.8 70.6 40.3 66.4 37 62C34 58 31 58 27 61L15 70C10 74 7 72 8 66C11 51 11 43 8 28C7 22 10 20 15 24L28 33C32 36 36 37 39 32Z" />
+    <clipPath id="tail-region"><rect width="44" height="96" /></clipPath>
+    <clipPath id="body-region"><rect x="41" width="119" height="96" /></clipPath>
+    <mask id="fish-details" maskUnits="userSpaceOnUse" x="0" y="0" width="160" height="96">
+      <rect width="160" height="96" fill="white" />
+      <circle cx="119" cy="34" r="6" fill="black" />
+      <circle cx="64" cy="51" r="4" fill="black" />
+      <circle cx="82" cy="51" r="4" fill="black" />
+      <circle cx="100" cy="51" r="4" fill="black" />
+    </mask>
+  </defs>
+  <g id="fish-tail" clip-path="url(#tail-region)">
+    <use href="#fish-outline" />
+  </g>
+  <g id="fish-body" clip-path="url(#body-region)" mask="url(#fish-details)">
+    <use href="#fish-outline" />
+  </g>
+</svg>

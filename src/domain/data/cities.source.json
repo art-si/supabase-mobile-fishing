@@ -1,0 +1,10 @@
+{
+  "source": "@vant/area-data",
+  "version": "2.2.0",
+  "dataset": "2025 administrative names",
+  "license": "MIT",
+  "reference": "https://github.com/vant-ui/vant/tree/main/packages/vant-area-data",
+  "generated": "2026-11-20",
+  "count": 393,
+  "note": "Offline administrative names. No coordinates. Legacy values remain until edited."
+}

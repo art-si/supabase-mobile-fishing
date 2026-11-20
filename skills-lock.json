@@ -1,0 +1,19 @@
+{
+  "version": 2,
+  "skills": {
+    "apple-design": {
+      "source": "dickwu/apple-design-skill",
+      "sourceType": "github",
+      "ref": "91e15664896f6f27e75dcf1414d1226cb95fa167",
+      "skillPath": "SKILL.md",
+      "installMode": "copy"
+    },
+    "ui-ux-pro-max": {
+      "source": "nextlevelbuilder/ui-ux-pro-max-skill",
+      "sourceType": "github",
+      "ref": "902bf616a0cc590d3f89f233f0c4e00072e549f0",
+      "skillPath": ".claude/skills/ui-ux-pro-max/SKILL.md",
+      "installMode": "copy"
+    }
+  }
+}

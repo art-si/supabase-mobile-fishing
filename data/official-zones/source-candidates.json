@@ -1,0 +1,87 @@
+{
+  "checked_on": "2026-11-20",
+  "publication_rule": "核实适用规定、具体对象和水面边界后，才加入公开围栏。未核验候选不出现在真实地图。",
+  "candidates": [
+    {
+      "id": "wuhan-south-taizi-park",
+      "title": "武汉南太子湖公园水域",
+      "region_adcode": "420100",
+      "category": "city_park",
+      "rule": "permission_required",
+      "policy_url": "https://cgw.wuhan.gov.cn/ZWGK_13499/zc/fggz/dfxfg/202609/t20260930_2856297.shtml",
+      "catalogue_url": "https://ylj.wuhan.gov.cn/zwgk/zwxxgkzl_12298/tjxx/lhgb_12361/202403/P020241226613681273865.pdf",
+      "status": "geometry_pending",
+      "published": false,
+      "review_note": "条例要求公园管理机构批准垂钓；不能推定整个南太子湖一律禁钓。2026-11-20水面/公园几何查询返回429，未取得可核对交集。",
+      "catalogue_status": "旧目录链接当前不可用，未作为公开边界依据"
+    },
+    {
+      "id": "wuhan-north-taizi-park",
+      "title": "武汉北太子湖公园水域",
+      "region_adcode": "420100",
+      "category": "city_park",
+      "rule": "permission_required",
+      "policy_url": "https://cgw.wuhan.gov.cn/ZWGK_13499/zc/fggz/dfxfg/202609/t20260930_2856297.shtml",
+      "catalogue_url": "https://ylj.wuhan.gov.cn/zwgk/zwxxgkzl_12298/tjxx/lhgb_12361/202403/P020241226613681273865.pdf",
+      "status": "geometry_pending",
+      "published": false,
+      "review_note": "先核对公园管理范围和水面交集；不把公园POI中心、湖泊中心或行政区域当作禁钓围栏。",
+      "catalogue_status": "旧目录链接当前不可用，未作为公开边界依据"
+    },
+    {
+      "id": "dingnan-jiuqu-changtang-reach",
+      "title": "定南县九曲河天成桥至长滩电站河段",
+      "region_adcode": "360728",
+      "category": "power_station_river_reach",
+      "rule": "prohibited",
+      "policy_url": "https://www.dingnan.gov.cn/dnxxxgk/dn73/202305/0d7b4c2ef51b4b9e9a860743d0495e95.shtml",
+      "status": "geometry_pending",
+      "published": false,
+      "review_note": "有效公告明确具体河段全年禁钓；仍需核对天成桥、电站与河道水面边界，不按任意电站半径推断。"
+    },
+    {
+      "id": "wuhan-wuhu-reserve",
+      "title": "武湖黄颡鱼水产种质资源保护区",
+      "region_adcode": "420100",
+      "category": "aquatic_germplasm_reserve",
+      "rule": "prohibited",
+      "policy_url": "https://nyncj.wuhan.gov.cn/zwgk_25/fdzdgknr/jytabl/202507/t20250722_2623152.html",
+      "status": "geometry_pending",
+      "published": false,
+      "review_note": "市农业农村局2025年7月18日答复确认四个水产种质资源保护区禁止垂钓；尚缺保护区范围与水面的可核对交集，不把整个同名湖泊或行政区直接发布为围栏。"
+    },
+    {
+      "id": "wuhan-luhu-reserve",
+      "title": "鲁湖鳜鲌水产种质资源保护区",
+      "region_adcode": "420100",
+      "category": "aquatic_germplasm_reserve",
+      "rule": "prohibited",
+      "policy_url": "https://nyncj.wuhan.gov.cn/zwgk_25/fdzdgknr/jytabl/202507/t20250722_2623152.html",
+      "status": "geometry_pending",
+      "published": false,
+      "review_note": "市农业农村局2025年7月18日答复确认四个水产种质资源保护区禁止垂钓；尚缺保护区范围与水面的可核对交集，不把整个同名湖泊或行政区直接发布为围栏。"
+    },
+    {
+      "id": "wuhan-liangzi-reserve",
+      "title": "梁子湖武昌鱼水产种质资源保护区",
+      "region_adcode": "420100",
+      "category": "aquatic_germplasm_reserve",
+      "rule": "prohibited",
+      "policy_url": "https://nyncj.wuhan.gov.cn/zwgk_25/fdzdgknr/jytabl/202507/t20250722_2623152.html",
+      "status": "geometry_pending",
+      "published": false,
+      "review_note": "市农业农村局2025年7月18日答复确认四个水产种质资源保护区禁止垂钓；尚缺保护区范围与水面的可核对交集，不把整个同名湖泊或行政区直接发布为围栏。"
+    },
+    {
+      "id": "wuhan-niushan-reserve",
+      "title": "牛山湖团头鲂细鳞鲴水产种质资源保护区",
+      "region_adcode": "420100",
+      "category": "aquatic_germplasm_reserve",
+      "rule": "prohibited",
+      "policy_url": "https://nyncj.wuhan.gov.cn/zwgk_25/fdzdgknr/jytabl/202507/t20250722_2623152.html",
+      "status": "geometry_pending",
+      "published": false,
+      "review_note": "市农业农村局2025年7月18日答复确认四个水产种质资源保护区禁止垂钓；尚缺保护区范围与水面的可核对交集，不把整个同名湖泊或行政区直接发布为围栏。"
+    }
+  ]
+}

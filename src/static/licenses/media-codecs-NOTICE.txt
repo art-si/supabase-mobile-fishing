@@ -1,0 +1,15 @@
+Local media preparation uses the following unmodified open-source dependencies.
+
+libheif-js 1.23.5 (LGPL-3.0)
+Copyright and license: libheif-js-LICENSE.txt and libheif-LICENSE.txt
+Source and build instructions: https://github.com/catdad-experiments/libheif-js
+Underlying library source: https://github.com/strukturag/libheif
+Package version: https://www.npmjs.com/package/libheif-js/v/1.23.5
+
+Mediabunny 1.66.2 (MPL-2.0)
+Copyright and license: mediabunny-LICENSE.txt
+Source and build instructions: https://github.com/Vanilagy/mediabunny
+Package version: https://www.npmjs.com/package/mediabunny/v/1.66.2
+
+The application loads these dependencies locally, only when conversion is needed.
+The application source and pnpm lockfile identify the adapters and exact versions.

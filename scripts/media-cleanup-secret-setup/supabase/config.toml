@@ -1,0 +1,5 @@
+project_id = "fishing-media-cleanup-secret-setup"
+
+# Reference a child-process environment variable. Never store the key in this file.
+[edge_runtime.secrets]
+MEDIA_CLEANUP_HMAC_KEY = "env(DYJ_SETUP_MEDIA_CLEANUP_KEY)"

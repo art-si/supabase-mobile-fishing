@@ -1,0 +1,16 @@
+{
+  "name": "钓友集",
+  "description": "记录每次出钓，遇见同路钓友",
+  "versionName": "0.1.0",
+  "versionCode": "100",
+  "transformPx": false,
+  "h5": { "title": "钓友集", "router": { "mode": "hash" } },
+  "mp-weixin": {
+    "appid": "wx9f631f76bb1543e0",
+    "darkmode": true,
+    "usingComponents": true,
+    "mergeVirtualHostAttributes": true,
+    "optimization": { "subPackages": true },
+    "setting": { "urlCheck": true, "es6": true, "postcss": true, "minified": true }
+  }
+}

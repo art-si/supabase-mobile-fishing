@@ -1,0 +1,9 @@
+node_modules
+dist
+src/_mobile-core
+src/static
+pnpm-lock.yaml
+android
+ios
+assets
+artifacts

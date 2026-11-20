@@ -1,0 +1,87 @@
+import { randomUUID } from 'node:crypto'
+
+export async function commentMediaChecks({db,as,rpc,read,write,check,rejects,base}) {
+  const owner=randomUUID(), author=randomUUID(), viewer=randomUUID(), reviewer=randomUUID()
+  for(const id of [owner,author,viewer,reviewer])await db.query('insert into auth.users(id) values($1)',[id])
+  await db.query('insert into fishing_private.moderators(user_id) values($1)',[reviewer])
+  const review=(action,payload)=>as(reviewer,()=>rpc('moderation',action,payload))
+  const newPost=async(audience='public')=>{const id=randomUUID();await write(owner,'save_post',{...base,id,audience});await db.query("update public.posts set status='published' where id=$1",[id]);return id}
+  const photo=async(who=author,kind='image')=>{
+    const id=randomUUID(),path=`${who}/${id}.${kind==='video'?'mp4':'jpg'}`
+    await db.query('insert into public.media_assets(id,owner_id,path,width,height,kind,size,duration) values($1,$2,$3,320,180,$4,100,$5)',[id,who,path,kind,kind==='video'?5:null])
+    await db.query("insert into storage.objects(bucket_id,name) values('fishing-media',$1)",[path]);return{id,path}
+  }
+  const visible=async(who,asset)=>(await as(who,()=>db.query('select name from storage.objects where name=$1',[asset.path]))).rows.length>0
+  try {
+    const post=await newPost(),image=await photo(),video=await photo(author,'video'),id=randomUUID()
+    const input={id,post_id:post,body:'',media:[{id:video.id},{id:image.id}]}
+    await write(author,'comment',input);await write(author,'comment',input)
+    let comments=await read(null,'comments',{id:post}), comment=comments.items.find(c=>c.id===id)
+    check(comments.total===1 && comment.body==='' && comment.media.map(m=>m.id).join(',')===`${video.id},${image.id}`,'mixed media-only comment inserts once and preserves the selected order')
+    check(comment.media[0].kind==='video' && comment.media[0].duration===5 && comment.media[0].width===320 && comment.media[0].size===100,'comment projection contains real playback metadata for shared gallery')
+    check(await visible(null,image) && await visible(viewer,video),'public comment assets use ordinary authorized Storage signing')
+    check((await db.query('select id from fishing_private.notifications where comment_id=$1',[id])).rows.length===1,'media comment retry never duplicates the notification')
+    await rejects(()=>write(author,'comment',{...input,media:[{id:image.id},{id:video.id}]}),/COMMENT_REQUEST_REUSED/,'comment retry cannot change ordered attachments')
+    await rejects(()=>write(author,'comment',{...input,media:[]}),/INVALID_INPUT|COMMENT_REQUEST_REUSED/,'comment retry cannot remove its evidence')
+    await rejects(()=>write(viewer,'comment',input),/FORBIDDEN/,'another author cannot claim a media comment id')
+    const reply=randomUUID();await write(owner,'comment',{id:reply,post_id:post,reply_to_id:id,body:'这张照片和视频我看到了。'})
+    const quoted=(await read(viewer,'comments',{id:post})).items.find(c=>c.id===reply).reply_to
+    check(quoted.body==='[图片/视频]' && !('media' in quoted),'reply to attachment-only comment uses a small summary without copying private media references')
+    for(const media of [null,{},[{id:image.id},{id:image.id}],Array.from({length:7},()=>({id:randomUUID()})),[{}]])
+      await rejects(()=>write(author,'comment',{id:randomUUID(),post_id:post,body:'文字',media}),/INVALID_INPUT/,'comment attachment shape, duplicates and six-item limit are enforced')
+    const alien=await photo(viewer)
+    await rejects(()=>write(author,'comment',{id:randomUUID(),post_id:post,body:'',media:[{id:alien.id}]}),/FORBIDDEN/,'comment cannot steal an upload owned by another member')
+    await rejects(()=>write(author,'comment',{id:randomUUID(),post_id:post,body:'',media:[{id:image.id}]}),/FORBIDDEN/,'comment cannot reuse an asset already attached to another comment')
+    await rejects(()=>write(author,'save_post',{...base,id:randomUUID(),media:[{id:image.id}]}),/FORBIDDEN|check constraint/,'post publishing cannot steal a comment image')
+    await rejects(()=>write(author,'update_profile',{avatar_id:image.id}),/AVATAR_UNAVAILABLE/,'profile avatar cannot steal comment evidence')
+    await rejects(()=>write(author,'save_water_report',{id:randomUUID(),category:'electric',province:'湖北省',city:'黄石市',district:'阳新县',location_label:'隔离测试',longitude:null,latitude:null,description:'测试不得引用评论附件',observed_at:'2026-11-19T00:00:00Z',consent_version:'2026-11-19-water-v1',media:[{id:image.id}]}),/FORBIDDEN/,'private report cannot take a comment attachment')
+    const item=await review('item',{id,type:'comment'})
+    check(item.media.length===2 && item.media[0].id===video.id,'comment review resolves original current attachments inside existing governance')
+    await review('decide',{id,type:'comment',revision:item.revision,decision:'hidden',reason:'隔离媒体治理检查',request_id:randomUUID()})
+    check(!(await read(viewer,'comments',{id:post})).items.some(c=>c.id===id),'hidden media comment leaves ordinary readers and counts')
+    check(!await visible(viewer,image) && !await visible(null,video),'hiding comment denies new media signatures to other viewers and visitors')
+    check(await visible(author,image) && await visible(reviewer,video),'hidden comment remains available to its author and authorized moderator')
+    const replyHidden=(await read(owner,'comments',{id:post})).items.find(c=>c.id===reply)
+    check(replyHidden.reply_to===null,'hidden original removes its quoted attachment summary')
+    const hidden=await review('item',{id,type:'comment'})
+    await review('decide',{id,type:'comment',revision:hidden.revision,decision:'published',reason:'隔离测试恢复',request_id:randomUUID()})
+    check(await visible(viewer,image),'restoring comment restores ordinary media access')
+    await write(viewer,'block',{id:author,enabled:true})
+    check(!await visible(viewer,image),'blocking comment author revokes new attachment signatures')
+    await write(viewer,'block',{id:author,enabled:false})
+    await db.query("update public.posts set audience='friends' where id=$1",[post])
+    await db.query('insert into public.friendships(user_a,user_b) values(least($1::uuid,$2::uuid),greatest($1::uuid,$2::uuid))',[owner,viewer])
+    check(await visible(viewer,image) && !await visible(author,image) && !await visible(null,image),'friends-only parent checks friendship to the post owner, not ownership of the uploaded attachment')
+    await db.query('delete from public.friendships where user_a=least($1::uuid,$2::uuid) and user_b=greatest($1::uuid,$2::uuid)',[owner,viewer])
+    check(!await visible(viewer,image),'removing friendship immediately revokes new comment-media signatures')
+    await db.query("update public.posts set audience='private' where id=$1",[post])
+    check(!await visible(author,image) && !await visible(reviewer,video) && !await visible(viewer,image),'private parent blocks comment asset owner and moderator when they lack parent access')
+    check(await visible(owner,image),'private parent owner retains legitimate comment media access')
+    await db.query("update public.posts set audience='public' where id=$1",[post])
+    await write(author,'delete_comment',{id,post_id:post});await write(author,'delete_comment',{id,post_id:post})
+    check(!await visible(author,image) && !await visible(reviewer,video),'comment deletion revokes new signing even for its author and reviewer')
+    check((await db.query('select id from public.media_assets where comment_id=$1',[id])).rows.length===0,'comment soft deletion removes attachment indexes')
+    check((await db.query('select id from fishing_private.media_deletions where id=any($1::uuid[])',[[image.id,video.id]])).rows.length===2,'comment deletion queues image and video object cleanup')
+    await rejects(()=>write(author,'comment',input),/NOT_FOUND/,'late media comment retry never resurrects a deleted comment')
+    const second=await photo(), child=randomUUID();await write(author,'comment',{id:child,post_id:post,body:'含图片的评论',media:[{id:second.id}]})
+    await db.query("update public.posts set status='deleted' where id=$1",[post])
+    check((await db.query('select id from public.media_assets where id=$1',[second.id])).rows.length===0,'parent post soft deletion also erases attached comment media indexes')
+    check((await db.query('select id from fishing_private.media_deletions where id=$1',[second.id])).rows.length===1,'parent deletion queues comment object cleanup')
+    const privatePost=await newPost('private'),own=await photo(owner),privateComment=randomUUID()
+    const full=[own];for(let n=1;n<6;n++)full.push(await photo(owner,n%2?'video':'image'))
+    await write(owner,'comment',{id:privateComment,post_id:privatePost,body:'仅自己查看的图片 🎣😊',media:full.map(m=>({id:m.id}))})
+    const six=(await read(owner,'comments',{id:privatePost})).items.find(c=>c.id===privateComment)
+    check(six.media.length===6 && six.body==='仅自己查看的图片 🎣😊','six mixed attachments and Unicode emoji are preserved without another storage format')
+    check(await visible(owner,own) && !await visible(reviewer,own) && !await visible(null,own),'private comment uploads never become public or ordinarily moderated')
+    await rejects(()=>as(author,()=>db.query('select fishing_private.comment_media($1)',[privateComment])),/permission denied/,'internal media projection is not a client-callable bypass')
+    const fullIds=full.map(m=>m.id)
+    await db.query("update public.media_assets set created_at=now()-interval '365 days' where id=any($1::uuid[])",[fullIds])
+    const claimed=(await db.query('select * from public.fishing_media_cleanup_claim(20)')).rows
+    check(!claimed.some(job=>fullIds.includes(job.job_id)) && (await db.query('select id from public.media_assets where id=any($1::uuid[])',[fullIds])).rows.length===6,'old attached comment media never enters the deletion-only cleanup queue')
+    await db.query('delete from auth.users where id=$1',[owner])
+    check((await db.query('select id from public.comments where id=$1',[privateComment])).rows.length===0 && (await db.query('select id from public.media_assets where id=any($1::uuid[])',[fullIds])).rows.length===0,'account deletion cascades through comments and all six mixed attachment indexes')
+    check((await db.query("select id from fishing_private.media_deletions where id=any($1::uuid[]) and state='pending'",[fullIds])).rows.length===6,'account deletion retains durable cleanup tasks for comment images and videos')
+  } finally {
+    await db.query('delete from auth.users where id=any($1::uuid[])',[[owner,author,viewer,reviewer]])
+  }
+}

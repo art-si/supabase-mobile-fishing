@@ -1,0 +1,64 @@
+{
+  "easycom": {
+    "autoscan": true,
+    "custom": { "^wd-(.*)": "@wot-ui/ui/components/wd-$1/wd-$1.vue" }
+  },
+  "pages": [
+    { "path": "pages/home/index" },
+    { "path": "pages/login/index" },
+    { "path": "pages/account/security" },
+    { "path": "pages/account/password" },
+    { "path": "pages/account/phone" },
+    { "path": "pages/settings/index" },
+    { "path": "pages/settings/legal" }
+  ],
+  "subPackages": [
+    {
+      "root": "pages/post",
+      "pages": [{ "path": "detail" }, { "path": "compose" }]
+    },
+    {
+      "root": "pages/spot",
+      "pages": [{ "path": "detail" }, { "path": "create" }]
+    },
+    {
+      "root": "pages/map",
+      "pages": [
+        { "path": "index" },
+        { "path": "search" },
+        { "path": "marks" },
+        { "path": "bridge" }
+      ]
+    },
+    { "root": "pages/chat", "pages": [{ "path": "index" }] },
+    { "root": "pages/notifications", "pages": [{ "path": "index" }] },
+    {
+      "root": "pages/people",
+      "pages": [{ "path": "index" }, { "path": "detail" }]
+    },
+    {
+      "root": "pages/mine",
+      "pages": [{ "path": "library" }, { "path": "profile" }]
+    },
+    {
+      "root": "pages/moderation",
+      "pages": [{ "path": "index" }, { "path": "detail" }]
+    },
+    {
+      "root": "pages/content-report",
+      "pages": [{ "path": "index" }, { "path": "detail" }]
+    },
+    {
+      "root": "pages/water-report",
+      "pages": [{ "path": "index" }, { "path": "history" }]
+    }
+  ],
+  "globalStyle": {
+    "navigationStyle": "custom",
+    "navigationBarTitleText": "钓友集",
+    "navigationBarTextStyle": "black",
+    "backgroundColor": "#f5f7f3",
+    "rpxCalcMaxDeviceWidth": 430,
+    "rpxCalcBaseDeviceWidth": 375
+  }
+}

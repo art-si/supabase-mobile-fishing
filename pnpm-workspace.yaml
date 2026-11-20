@@ -1,0 +1,10 @@
+packages:
+  - .
+allowBuilds:
+  '@parcel/watcher': true
+  esbuild: true
+  vue-demi: true
+  core-js: false
+  core-js-pure: false
+minimumReleaseAgeExclude:
+  - mediabunny@1.66.2
