@@ -47,7 +47,8 @@ const server = createServer((req, res) => {
 })
 await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve))
 const base = `http://127.0.0.1:${server.address().port}`
-const output = resolve('artifacts/h5')
+const visualOnly = process.argv.includes('--visual-audit-only')
+const output = resolve(visualOnly ? 'artifacts/visual-optimization' : 'artifacts/h5')
 mkdirSync(output, { recursive: true })
 const browser = await chromium.launch({
   headless: true,
@@ -55,10 +56,15 @@ const browser = await chromium.launch({
     ? {}
     : { channel: process.env.PLAYWRIGHT_CHANNEL || 'chrome' })
 })
+const useLocationFixture = ['author', 'map', 'moderation', 'session', 'water-report']
+  .some((name) => process.argv.includes(`--${name}-contract`))
 const context = await browser.newContext({
   viewport: { width: 375, height: 812 },
   locale: 'zh-CN',
-  reducedMotion: 'reduce'
+  reducedMotion: 'reduce',
+  ...(useLocationFixture
+    ? { permissions: ['geolocation'], geolocation: { longitude: 120.12, latitude: 31.12 } }
+    : {})
 })
 const page = await context.newPage()
 const errors = [],
@@ -105,7 +111,17 @@ async function screenshot(name, fullPage = true) {
   await page.screenshot({ path: resolve(output, name), fullPage })
 }
 try {
-  if (process.argv.includes('--alignment-contract')) {
+  if (visualOnly) {
+    await context.route('**/*', (route) =>
+      new URL(route.request().url()).origin === base ? route.continue() : route.abort()
+    )
+    await go('/pages/login/index')
+    await page.getByRole('button', { name: '进入本机体验', exact: true }).click()
+    await page.waitForURL((url) => url.hash === '#/' || url.hash.startsWith('#/pages/home'))
+    await visualAudit({ page, go, visible, pass, overflow, screenshot })
+    assert.deepEqual(errors, [], 'No uncaught visual regression errors')
+    assert.deepEqual(remoteRequests, [], 'Local visual checks do not contact hosted services')
+  } else if (process.argv.includes('--alignment-contract')) {
     await miniappAlignmentContract({ page, go, screenshot, pass })
     assert.deepEqual(errors, [], 'No uncaught alignment regression errors')
     assert.deepEqual(remoteRequests, [], 'Local alignment checks do not contact hosted services')
@@ -165,6 +181,26 @@ try {
     pass('compiled H5 boots and explicitly identifies local demo data')
     await screenshot('home-375.png')
     await overflow('home 375')
+    const libraryGuest = await context.newPage()
+    try {
+      await libraryGuest.route('**/*', (route) => {
+        const url = new URL(route.request().url())
+        if (url.origin === base || !url.protocol.startsWith('http')) return route.continue()
+        remoteRequests.push(url.origin + url.pathname)
+        return route.abort()
+      })
+      libraryGuest.on('pageerror', (error) => errors.push(error.message))
+      await libraryGuest.goto(`${base}/#/pages/mine/library?type=saved`)
+      await libraryGuest.getByText('登录后查看个人记录', { exact: true }).waitFor()
+      assert.equal(await libraryGuest.getByRole('button', { name: '重试', exact: true }).count(), 0)
+      await libraryGuest.evaluate(() => document.fonts.ready)
+      await libraryGuest.screenshot({ path: resolve(output, 'library-guest-375.png') })
+      await libraryGuest.getByRole('button', { name: '登录', exact: true }).click()
+      await libraryGuest.getByRole('heading', { name: '本机体验', exact: true }).waitFor()
+    } finally {
+      await libraryGuest.close()
+    }
+    pass('private library gives guests a working login action')
     await page
       .getByRole('button', { name: '点赞：秋天的鲫鱼，藏在这片芦苇边', exact: true })
       .click()
@@ -191,7 +227,7 @@ try {
     await page.getByRole('button', { name: '保存私人日志', exact: true }).click()
     await visible('给这次记录起个名字')
     await fill('标题', '空军也值得记下')
-    await fill('鱼情与心得', '观察水情，带走垃圾。只保存在我的私人日志。')
+    await fill('出钓记录', '观察水情，带走垃圾。只保存在我的私人日志。')
     assert.equal(
       await page.locator('#catch-details').count(),
       0,
@@ -200,79 +236,73 @@ try {
     await page.getByRole('button', { name: '渔获与钓法', exact: true }).click()
     await fill('渔获 1 尾数', '0')
     await fill('渔获 1 重量（kg）', '0')
-    await fill('渔获 1 鱼种', '鲫鱼')
-    await fill('饵料', '蚯蚓')
-    await fill('出钓日期', '2020-03-10')
+    for (const [trigger, title, opt] of [
+      ['渔获 1 鱼种', '选择鱼种', '鲫鱼'],
+      ['选择饵料', '选择饵料', '蚯蚓']
+    ]) {
+      await page.getByRole('button', { name: trigger, exact: true }).click()
+      const dialog = page.getByRole('dialog', { name: title, exact: true })
+      await dialog.getByRole('checkbox', { name: opt, exact: true }).click()
+      await dialog.getByRole('button', { name: /^确定/ }).click()
+    }
+    const sourceDate = await page.evaluate(() => {
+      const today = new Date()
+      const date = new Date(today.getFullYear(), today.getMonth() - 1, 10)
+      const mm = String(date.getMonth() + 1).padStart(2, '0')
+      return {
+        button: `${date.getFullYear()}年${date.getMonth() + 1}月10日`,
+        value: `${date.getFullYear()}-${mm}-10`
+      }
+    })
+    const dateTrigger = page.getByRole('button', { name: '选择出钓日期', exact: true })
+    await dateTrigger.click()
+    const calendar = page.getByRole('dialog', { name: '选择出钓日期', exact: true })
+    await calendar.getByRole('button', { name: '上个月', exact: true }).click()
+    await calendar.getByRole('button', { name: sourceDate.button, exact: true }).click()
+    await calendar.getByRole('button', { name: '确定', exact: true }).click()
+    assert.equal(await dateTrigger.getAttribute('aria-description'), sourceDate.value)
     await page.getByRole('button', { name: '保存私人日志', exact: true }).click()
     await visible('空军也值得记下')
     await visible('0 尾（空军） · 0 kg')
     pass('private trip validates required fields and preserves zero catch')
-    await draftContract({ page, go, fill, visible, pass, screenshot, overflow })
+    await draftContract({ page, go, fill, visible, pass, screenshot, overflow, sourceDate: sourceDate.value })
 
     await go('/pages/post/compose')
     await fill('标题', '一份只留给自己的鱼情')
-    await fill('鱼情与心得', '测试默认隐私设置，正文不会附带坐标。')
+    await fill('今天的渔获', '测试分享选项，正文不会附带坐标。')
+    const audience = page.getByRole('button', { name: '分享范围', exact: true })
+    assert.equal(await audience.getAttribute('aria-description'), '当前选项：公开')
+    await audience.click()
+    await page.getByRole('dialog', { name: '分享范围' })
+      .getByRole('button', { name: '仅自己', exact: true }).click()
     await page.reload()
     await visible('已恢复这台设备上的草稿。')
     assert.equal(
       await page.getByRole('textbox', { name: '标题', exact: true }).inputValue(),
       '一份只留给自己的鱼情'
     )
+    assert.equal(await audience.getAttribute('aria-description'), '当前选项：仅自己')
     await page.getByRole('button', { name: '保存并发布', exact: true }).click()
-    await visible('一份只留给自己的鱼情')
-    await visible('仅自己')
-    pass('post draft survives reload and defaults to private')
-
-    await go('/pages/home/index?tab=messages')
-    await page.getByRole('button', { name: '与老陈的野钓日记聊天', exact: true }).click()
-    await visible('这周准备去水边走走？可以先交流一下钓法。')
-    await page.locator('textarea').fill('测试出钓交流，不发送给真实用户。')
-    await page.getByRole('button', { name: '发送', exact: true }).click()
-    await visible('已发送')
-    await page.reload()
-    await visible('测试出钓交流，不发送给真实用户。')
-    const composer = await page.locator('.chat-composer').boundingBox()
-    assert.ok(
-      composer && composer.y + composer.height <= 812 + 1,
-      `chat composer outside viewport: ${JSON.stringify(composer)}`
-    )
-    await screenshot('chat-375.png')
-    pass('friend message sends, reload recovers history, composer remains in viewport')
-    await page.setViewportSize({ width: 375, height: 450 })
-    await page.waitForTimeout(150)
-    const compactComposer = await page.locator('.chat-composer').boundingBox()
-    assert.ok(
-      compactComposer && compactComposer.y + compactComposer.height <= 451,
-      'composer follows smaller viewport'
-    )
-    await page.setViewportSize({ width: 375, height: 812 })
-    pass('chat composer follows a resized viewport (not a real-device keyboard test)')
-
-    await go('/pages/people/detail?id=33333333-3333-4333-8333-333333333333')
-    await page.getByRole('button', { name: '加好友', exact: true }).click()
-    await fill('申请留言', '一起交流路亚钓法。')
-    await page.getByRole('button', { name: '发送好友申请', exact: true }).click()
-    await visible('申请已发送，等待对方同意。')
-    pass('friend request opens accessible sheet and sends')
+    await visible('选择所在位置后再发布')
+    pass('draft keeps the explicit privacy choice and blocks publishing without a location')
 
     await go('/pages/spot/create')
-    await fill('钓位名称', '我的私人练习水域')
-    await fill('所在城市', '苏州')
-    await fill('水域与鱼情', '仅用于本机验证，不是真实开放钓位。')
+    await fill('钓位名称（选填）', '我的私人练习水域')
     await page.getByRole('button', { name: '保存钓位', exact: true }).click()
-    await visible('我的私人练习水域')
-    assert.equal(await page.getByRole('button', { name: '用高德导航', exact: true }).count(), 0)
-    pass('private spot can be recorded without coordinates and does not expose navigation')
+    await page.getByText('请先确认实际钓位位置和所在城市，再保存。', { exact: true }).last().waitFor()
+    assert.equal(await page.locator('input[aria-label="钓位名称（选填）"]').inputValue(), '我的私人练习水域')
+    pass('spot editor requires a verified location and keeps text when validation fails')
     await go('/pages/map/index')
-    await visible('地图暂不可用')
-    await visible('体验模式不提供真实地点搜索和地图预览，可继续查看示例钓位')
+    await visible('本机体验不加载在线地图')
+    await page.getByRole('button', { name: '浏览示例钓位', exact: true }).click()
+    await visible('芦苇湾 · 示例水域')
     pass('demo refuses real AMap calls even when local live credentials are configured')
 
     await go('/pages/home/index')
     for (const [label, expected] of [
-      ['找钓位', '收藏好钓位，下次接着钓。'],
-      ['消息', '好友申请'],
-      ['我的', '水边的钓友'],
+      ['找钓位', '芦苇湾 · 示例水域'],
+      ['举报', '发布上报'],
+      ['我的', '钓友100001'],
       ['钓友圈', '秋天的鲫鱼，藏在这片芦苇边']
     ]) {
       await page.getByRole('link', { name: label, exact: true }).click()
@@ -291,6 +321,18 @@ try {
     await page.setViewportSize({ width: 320, height: 812 })
     await overflow('compose 320')
     await screenshot('compose-dark-320.png')
+    for (const [path, notice] of [
+      ['security', '体验记录仅保存于这台设备。账号安全设置在正式环境中使用。'],
+      ['password', '本机体验无需登录密码。正式账号可通过短信验证设置或找回密码。'],
+      ['phone', '体验账号无需绑定手机号。手机号换绑在正式账号内完成。']
+    ]) {
+      await go(`/pages/account/${path}`)
+      await visible(notice)
+      assert.equal(await page.locator('input,.account-content [role="alert"]').count(), 0)
+      assert.equal(await page.getByRole('button', { name: '重新读取', exact: true }).count(), 0)
+      await screenshot(`account-${path}-demo-dark-320.png`)
+    }
+    pass('demo account screens explain availability without exposing unsupported controls')
     await appearanceContract({ page, go, visible, pass, overflow, screenshot })
     await confirmationContract({ page, go, visible, pass, screenshot })
     if (process.argv.includes('--visual-audit'))

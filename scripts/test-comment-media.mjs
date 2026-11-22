@@ -22,7 +22,7 @@ await context.routeWebSocket(/supabase\.co/,socket=>socket.close())
 await context.route('**/*',async route=>{
  const request=route.request(),url=new URL(request.url())
  if(url.origin===base||!url.protocol.startsWith('http'))return route.continue()
- if(url.origin!=='https://tlfmfokyhahlpzmpliad.supabase.co'){escaped.push(url.origin);return route.abort()}
+ if(url.origin!=='https://jupuypvmgjpnpntfetqv.supabase.co'){escaped.push(url.origin);return route.abort()}
  const headers={'access-control-allow-origin':'*','access-control-allow-headers':'*','access-control-allow-methods':'*'}
  const reply=(json,status=200)=>route.fulfill({json,status,headers})
  if(request.method()==='OPTIONS')return reply({})

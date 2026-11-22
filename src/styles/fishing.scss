@@ -1,77 +1,3 @@
-@mixin tokens() {
-  :root,
-  page,
-  .fishing-page,
-  .wd-root-portal {
-    --lake: var(--wot-fish-lake, #0f6b5b);
-    --lake-rgb: var(--wot-fish-lake-rgb, 15, 107, 91);
-    --lake-soft: var(--wot-fish-lake-soft, #e8f1ec);
-    --on-lake: var(--wot-fish-on-lake, #ffffff);
-    --mist: var(--wot-fish-mist, #f5f7f5);
-    --paper: var(--wot-fish-paper, #ffffff);
-    --inset: var(--wot-fish-inset, #edf2ee);
-    --ink: var(--wot-fish-ink, #182d27);
-    --reed: var(--wot-fish-reed, #53665f);
-    --line: var(--wot-fish-line, #dde5e0);
-    --float: var(--wot-fish-float, #914c2d);
-    --float-soft: var(--wot-fish-float-soft, #faefe7);
-    --danger: var(--wot-fish-danger, #b42331);
-    --tms-primary: var(--lake);
-    --tms-primary-strong: var(--lake);
-    --tms-primary-rgb: var(--lake-rgb);
-    --tms-primary-soft: var(--lake-soft);
-    --tms-bg: var(--mist);
-    --tms-surface: var(--paper);
-    --tms-surface-raised: var(--paper);
-    --tms-surface-muted: var(--inset);
-    --tms-surface-soft: var(--inset);
-    --tms-text: var(--ink);
-    --tms-text-strong: var(--ink);
-    --tms-text-secondary: var(--reed);
-    --tms-muted: var(--reed);
-    --tms-line: var(--line);
-    --tms-line-subtle: var(--line);
-    --tms-material-regular: var(--paper);
-    --tms-red-strong: var(--danger);
-    --tms-red-soft: var(--paper);
-    --tms-orange-strong: var(--float);
-    --tms-orange-soft: var(--float-soft);
-    --tms-control-height: max(48px, 3rem);
-    --tms-control-font-size: 1rem;
-    --mobile-workspace-max-width: 600px;
-    --mobile-workspace-canvas: var(--mist);
-    --mobile-workspace-muted: var(--reed);
-    --mobile-workspace-ink: var(--ink);
-    --mobile-workspace-surface: var(--paper);
-    --mobile-workspace-accent: var(--lake);
-    --mobile-workspace-on-accent: var(--on-lake);
-    --mobile-workspace-line: var(--line);
-    --mobile-segmented-background: var(--inset);
-    --mobile-segmented-selection: var(--paper);
-    --mobile-header-background: var(--mist);
-    --mobile-header-title-size: 1.75rem;
-  }
-  @media (prefers-color-scheme: dark) {
-    :root,
-    page,
-    .fishing-page,
-    .wd-root-portal {
-      --lake: var(--wot-fish-lake, #79ceb8);
-      --lake-rgb: var(--wot-fish-lake-rgb, 121, 206, 184);
-      --lake-soft: var(--wot-fish-lake-soft, #233c32);
-      --on-lake: var(--wot-fish-on-lake, #10221b);
-      --mist: var(--wot-fish-mist, #111c19);
-      --paper: var(--wot-fish-paper, #1a2822);
-      --inset: var(--wot-fish-inset, #24362d);
-      --ink: var(--wot-fish-ink, #eaf2ee);
-      --reed: var(--wot-fish-reed, #a4b6ae);
-      --line: var(--wot-fish-line, #34483f);
-      --float: var(--wot-fish-float, #e7ae8d);
-      --float-soft: var(--wot-fish-float-soft, #3a2d25);
-      --danger: var(--wot-fish-danger, #ffadb5);
-    }
-  }
-}
 @mixin components() {
   .fishing-page .mobile-confirm__submit.mobile-action:not(.mobile-confirm__submit--danger),
   .wd-root-portal .mobile-confirm__submit.mobile-action:not(.mobile-confirm__submit--danger) {
@@ -81,11 +7,15 @@
     background: var(--fishing-canvas, var(--mist));
     color: var(--fishing-foreground, var(--ink));
     font-family: var(--tms-font-family);
-    font-size: 1rem;
+    font-size: var(--fishing-text-size);
     font-variant-numeric: tabular-nums;
     -webkit-font-smoothing: antialiased;
   }
   /* #ifdef H5 */
+  html {
+    // Uni sets an inline rem base. Use the browser's text preference for typography.
+    font-size: 100% !important;
+  }
   html,
   body {
     margin: 0;
@@ -103,32 +33,50 @@
   /* #endif */
   .fishing-page {
     padding-bottom: max(24px, var(--mobile-safe-bottom));
+    font-size: var(--fishing-text-size);
+  }
+  .fishing-page--narrow {
+    --mobile-workspace-max-width: var(--fishing-form-width);
   }
   .fishing-page--edge-to-bottom {
     // The chat composer owns its safe-area padding; do not create a second body scroll area.
     padding-bottom: 0;
+    /* #ifdef H5 */
+    display: flex;
+    flex-direction: column;
+    height: 100vh;
+    height: 100dvh;
+    /* #endif */
   }
   .fishing-page--tabbed {
     padding-bottom: calc(var(--mobile-nav-height) + 24px);
   }
   .fishing-content {
     box-sizing: border-box;
-    padding: 16px var(--mobile-workspace-inset) 24px;
+    grid-template-columns: minmax(0, 1fr);
+    padding: var(--fishing-page-top) var(--fishing-page-end) 24px var(--fishing-page-start);
     gap: 20px;
+  }
+  .fishing-page .top-bar {
+    flex: none;
+  }
+  .fishing-page .top-bar .top-bar__copy {
+    min-height: var(--fishing-target);
+    justify-content: center;
   }
   .stack {
     display: flex;
     flex-direction: column;
-    gap: 16px;
+    gap: var(--fishing-inset);
     min-width: 0;
   }
   .stack--tight {
-    gap: 8px;
+    gap: var(--fishing-gap-small);
   }
   .row {
     display: flex;
     align-items: center;
-    gap: 12px;
+    gap: var(--fishing-gap);
     min-width: 0;
   }
   .row--between {
@@ -143,31 +91,32 @@
   }
   .muted {
     color: var(--reed);
-    font-size: 0.875rem;
+    font-size: var(--fishing-label-size);
     line-height: 1.5;
   }
   .caption {
     color: var(--reed);
-    font-size: 0.8125rem;
+    font-size: var(--fishing-caption-size);
     line-height: 1.45;
   }
   .heading {
-    font-size: 1.25rem;
-    font-weight: 700;
-    line-height: 1.45;
+    font-size: var(--fishing-heading-size);
+    font-weight: 650;
+    line-height: 1.4;
     color: var(--ink);
+    overflow-wrap: anywhere;
   }
   .body {
-    font-size: 1rem;
+    font-size: var(--fishing-text-size);
     line-height: 1.7;
     color: var(--ink);
     white-space: pre-wrap;
     overflow-wrap: anywhere;
   }
   .panel {
-    padding: 20px;
+    padding: var(--fishing-card-padding);
     border: 0;
-    border-radius: 20px;
+    border-radius: var(--fishing-card-radius);
     background: var(--paper);
     min-width: 0;
   }
@@ -182,11 +131,11 @@
   .mobile-action.primary,
   .mobile-action.secondary,
   .mobile-action.danger {
-    min-height: max(48px, 3rem);
-    border-radius: 14px;
+    min-height: var(--tms-control-height);
+    border-radius: var(--fishing-control-radius);
     padding: 10px 18px;
     line-height: 1.45;
-    font-size: 1rem;
+    font-size: var(--fishing-action-size);
     font-weight: 650;
     display: flex;
     align-items: center;
@@ -212,9 +161,9 @@
     align-items: center;
     justify-content: center;
     gap: 8px;
-    min-height: max(48px, 3rem);
+    min-height: var(--tms-control-height);
     padding: 8px;
-    font-size: 0.875rem;
+    font-size: var(--fishing-label-size);
     line-height: 1.45;
     text-align: center;
     white-space: normal;
@@ -222,10 +171,17 @@
     color: var(--lake);
   }
   .mobile-action-group .mobile-action.text-action {
-    font-size: 1rem;
+    font-size: var(--fishing-action-size);
   }
   .mobile-action[disabled] {
     opacity: 0.55;
+  }
+  .mobile-action.primary[disabled],
+  .mobile-action.secondary[disabled],
+  .mobile-action.danger[disabled] {
+    background: var(--inset);
+    color: var(--reed);
+    opacity: 1;
   }
   .mobile-action:focus-visible {
     outline: 2px solid var(--lake);
@@ -237,7 +193,7 @@
     gap: 4px;
     border-radius: 7px;
     padding: 4px 8px;
-    font-size: 0.75rem;
+    font-size: var(--fishing-small-size);
     line-height: 1.4;
     color: var(--lake);
     background: var(--lake-soft);
@@ -248,7 +204,7 @@
   }
   .error {
     display: block;
-    font-size: 0.875rem;
+    font-size: var(--fishing-label-size);
     line-height: 1.5;
     color: var(--danger);
     padding: 8px 0;
@@ -262,7 +218,7 @@
     color: var(--reed);
     background: var(--inset);
     border-radius: 12px;
-    font-size: 0.8125rem;
+    font-size: var(--fishing-caption-size);
     line-height: 1.5;
   }
   .notice .mobile-icon {
@@ -277,17 +233,17 @@
     color: var(--lake);
     display: grid;
     place-items: center;
-    font-size: 1.125rem;
+    font-size: var(--fishing-heading-size);
     font-weight: 700;
   }
   .avatar--large {
     width: 72px;
     height: 72px;
-    font-size: 1.75rem;
+    font-size: var(--fishing-value-size);
   }
   .name {
     color: var(--ink);
-    font-size: 0.9375rem;
+    font-size: var(--fishing-label-size);
     font-weight: 650;
     line-height: 1.4;
     overflow-wrap: anywhere;
@@ -317,15 +273,47 @@
   .list-row:last-child {
     border-bottom: 0;
   }
+  .fishing-menu {
+    padding: 4px var(--fishing-inset);
+  }
+  .fishing-menu .list-row {
+    min-height: 56px;
+    padding: var(--fishing-gap) 0;
+  }
   .mobile-action.panel.list-row {
     padding: 16px 20px;
     border: 0;
   }
   .mobile-field__control {
-    font-size: 1rem;
+    font-size: var(--fishing-input-size);
     background: var(--inset);
     color: var(--ink);
-    min-height: 48px;
+    min-height: var(--fishing-target);
+  }
+  .fishing-page .bottom-nav .bottom-nav__label {
+    font-size: var(--fishing-small-size);
+  }
+  .fishing-page,
+  .wd-root-portal {
+    .mobile-field .mobile-field__label {
+      font-size: var(--fishing-label-size);
+    }
+    .mobile-search .mobile-search__field {
+      font-size: var(--fishing-input-size);
+    }
+    .mobile-search__suggestions .mobile-search__suggestion-label {
+      font-size: var(--fishing-text-size);
+    }
+    .mobile-empty .mobile-empty__title {
+      font-size: var(--fishing-heading-size);
+    }
+    .mobile-empty .mobile-empty__description,
+    .mobile-load-error .mobile-load-error__copy {
+      font-size: var(--fishing-label-size);
+    }
+    .mobile-load-error .mobile-load-error__title {
+      font-size: var(--fishing-action-size);
+    }
   }
   .mobile-field__control--textarea {
     min-height: 140px;
@@ -343,7 +331,7 @@
     padding: 12px 0 12px 12px;
     border-inline-start: 3px solid var(--lake);
     color: var(--reed);
-    font-size: 0.8125rem;
+    font-size: var(--fishing-caption-size);
     line-height: 1.55;
   }
   .fish-facts__main {
@@ -374,6 +362,10 @@
     -webkit-line-clamp: 3;
     overflow: hidden;
   }
+  .fishing-page .mobile-media-gallery .mobile-media-gallery__status,
+  .fishing-page .mobile-media-gallery .mobile-media-gallery__recovery {
+    display: none;
+  }
   .post-actions {
     display: grid;
     grid-template-columns: repeat(3, minmax(0, 1fr));
@@ -381,16 +373,17 @@
     padding-top: 6px;
   }
   .post-actions .mobile-action {
+    min-width: 0;
     min-height: 48px;
     display: flex;
     align-items: center;
     justify-content: center;
     gap: 6px;
-    font-size: 0.8125rem;
-    color: var(--reed);
+    font-size: var(--fishing-caption-size);
+    color: var(--discussion-name);
   }
   .post-actions .mobile-action.is-active {
-    color: var(--lake);
+    color: var(--discussion-name);
     font-weight: 700;
   }
   .record-masthead {
@@ -401,7 +394,7 @@
     padding: 4px 0 8px;
   }
   .record-masthead__title {
-    font-size: 1.375rem;
+    font-size: var(--fishing-title-size);
     font-weight: 700;
     line-height: 1.5;
   }

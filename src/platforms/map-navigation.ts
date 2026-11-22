@@ -7,13 +7,14 @@ import { Capacitor } from '@capacitor/core'
 import { Browser } from '@capacitor/browser'
 // #endif
 export type { SelectedPlace } from '@/domain/map'
-export function pickMap() {
+export function pickMap(context?: 'water') {
   const requestId = createId()
+  const query = `pick=1&requestId=${requestId}${context ? '&context=water' : ''}`
   // #ifdef MP-WEIXIN
-  uni.navigateTo({ url: `/pages/map/search?pick=1&requestId=${requestId}` })
+  uni.navigateTo({ url: `/pages/map/search?${query}` })
   // #endif
   // #ifdef H5
-  uni.navigateTo({ url: `/pages/map/index?pick=1&requestId=${requestId}` })
+  uni.navigateTo({ url: `/pages/map/index?${query}` })
   // #endif
   return requestId
 }

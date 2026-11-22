@@ -5,6 +5,7 @@ import { privateStorageKey } from '@/domain/private-storage'
 import { authSessionFromResponse, authSessionFromStorage } from '@/domain/auth-errors'
 import { clearTripDraft } from './draft-handoff'
 import { nativeCredentials, nativeCredentialsAvailable } from './native-credentials'
+import { waitForEntryLocation } from './entry-location'
 // #ifdef H5
 import { Capacitor } from '@capacitor/core'
 // #endif
@@ -164,6 +165,11 @@ export async function sessionRequest<T>(
 ): Promise<T> {
   if (!sessionReady.value) await hydrateSession()
   const scope = sessionScope.value
+  const location = waitForEntryLocation()
+  if (location) {
+    await location
+    assertSession(scope)
+  }
   const token = await accessToken()
   assertSession(scope)
   if (required && !token) throw new ApiError('请先登录，原账号草稿会保留', 401, 'NOT_AUTHENTICATED')

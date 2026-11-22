@@ -1,7 +1,7 @@
 import type { Profile, Post, Spot, Trip, Comment, Message, FriendRequest } from '@/domain/models'
 export const me: Profile = {
   id: '11111111-1111-4111-8111-111111111111',
-  nickname: '水边的钓友',
+  nickname: '钓友100001',
   handle: 'DY10001',
   city: '苏州',
   method: '台钓',

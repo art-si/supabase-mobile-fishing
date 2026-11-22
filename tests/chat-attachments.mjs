@@ -120,7 +120,44 @@ export async function chatAttachmentChecks({
   await rejects(
     () => send(alice, { kind: 'video', body: 'unsupported' }),
     /INVALID_INPUT/,
-    'unsupported message type is rejected'
+    'video messages require a video upload'
+  )
+  const videoId = randomUUID()
+  const videoPath = `${alice}/${videoId}.mp4`
+  await db.query(
+    "insert into public.media_assets(id,owner_id,path,width,height,kind,size,duration) values($1,$2,$3,800,600,'video',1024,3.5)",
+    [videoId, alice, videoPath]
+  )
+  await db.query("insert into storage.objects(bucket_id,name) values('fishing-media',$1)", [videoPath])
+  await rejects(
+    () => send(alice, { kind: 'image', media_id: videoId }),
+    /PHOTO_NOT_AVAILABLE/,
+    'a video cannot be attached to an image message'
+  )
+  await rejects(
+    () => send(bob, { kind: 'video', media_id: videoId }),
+    /VIDEO_NOT_AVAILABLE/,
+    'a conversation participant cannot attach another owner video'
+  )
+  const videoInput = { kind: 'video', media_id: videoId, client_id: randomUUID() }
+  const video = await send(alice, videoInput)
+  const videoRetry = await send(alice, videoInput)
+  const [receivedVideo] = await read(bob, 'message_content', { id: conversation, ids: [video.id] })
+  check(
+    videoRetry.id === video.id && receivedVideo.kind === 'video' &&
+      receivedVideo.media[0].kind === 'video' && Number(receivedVideo.media[0].duration) === 3.5,
+    'sender retries preserve one private video with playable metadata for the recipient'
+  )
+  for (const [viewer, visible] of [[bob, true], [eve, false], [null, false]]) {
+    const results = await as(viewer, () => db.query('select name from storage.objects where name=$1', [videoPath]))
+    check(Boolean(results.rows.length) === visible, 'chat video Storage follows conversation membership')
+  }
+  const sticker = await send(bob, { kind: 'sticker', body: '上鱼了' })
+  check(sticker.kind === 'sticker' && sticker.body === '上鱼了', 'built-in sticker sends without a media upload')
+  await rejects(
+    () => send(bob, { kind: 'sticker', body: 'https://invalid.example/foreign-sticker.png' }),
+    /INVALID_INPUT/,
+    'sticker messages cannot inject external URLs'
   )
 
   const post = randomUUID()

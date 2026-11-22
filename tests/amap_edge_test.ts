@@ -18,6 +18,7 @@ function fixture(overrides: Partial<Dependencies> = {}) {
       reservations++
     },
     readSpot: async () => ({ precision: 'exact', longitude: 120.123456, latitude: 31.123456 }),
+    shoreline: async () => undefined,
     fetch: ((url: string | URL | Request) => {
       urls.push(new URL(String(url)))
       return Promise.resolve(new Response(png, { headers: { 'content-type': 'image/png' } }))
@@ -34,6 +35,44 @@ Deno.test('AMap rejects anonymous before quota or external calls', async () => {
   const f = fixture({ authenticate: async () => null })
   const response = await f.call({ action: 'search', query: '河' })
   check(response.status === 401 && !f.urls.length && !f.reservations(), 'anonymous is denied')
+})
+Deno.test('static water lookup returns natural water features and keeps only their name and location', async () => {
+  let url: URL | undefined
+  const f = fixture({ fetch: async input => {
+    url = new URL(String(input))
+    return Response.json({ status: '1', pois: [
+      { name: '东荆河', type: '地名地址信息;自然地名;河流', location: '114.151786,30.445221' },
+      { name: '东荆河路', type: '地名地址信息;交通地名;道路名', location: '114.15178,30.4451' },
+      { name: '红星水库', type: '地名地址信息;自然地名;自然地名', location: ',' }
+    ] })
+  } })
+  const data = { action: 'water-places', longitude: 114.151786, latitude: 30.445221, radius: 1500 }
+  check((await f.call({ ...data, radius: 9000 })).status === 400 && !f.reservations(), 'bounded distance')
+  const response = await f.call(data), body = await response.json()
+  check(response.status === 200 && f.reservations() === 1 && url?.pathname === '/v3/place/around', 'typed nearby search')
+  check(body.items.length === 1 && body.items[0].name === '东荆河' && body.items[0].point[0] === data.longitude, 'water only')
+})
+Deno.test('static shoreline uses the shared WGS84 resolver with a bounded radius and independent of AMap credentials', async () => {
+  const f = fixture({ apiKey: () => '', shoreline: async (point, radius) => {
+    check(radius === 2000, 'fixed lookup radius')
+    return { name: '通顺河', distance: 0, point, line: [point, [114.145,30.447]] }
+  } })
+  const data = { action: 'shoreline', longitude: 114.1461, latitude: 30.4476, crs: 'WGS84' }
+  check((await f.call({ ...data, crs: 'GCJ-02' })).status === 400 && !f.reservations(), 'explicit coordinate frame')
+  const response = await f.call(data), body = await response.json()
+  check(response.status === 200 && f.reservations() === 1 && body.water.name === '通顺河' && body.crs === 'WGS84', 'line geometry')
+})
+Deno.test('water-point reverse lookup returns only its administrative region and telephone area code',async()=>{
+  let target:URL|undefined
+  const f=fixture({fetch:async input=>{
+    target=new URL(String(input))
+    return Response.json({status:'1',regeocode:{formatted_address:'private detail',addressComponent:{province:'湖北省',city:'十堰市',district:'丹江口市',adcode:'420381',citycode:'0719'}}})
+  }})
+  check((await f.call({action:'region',longitude:181,latitude:32})).status===400 && !f.reservations(),'invalid point')
+  const response=await f.call({action:'region',longitude:111.172702,latitude:32.594393})
+  const body=await response.json()
+  check(f.reservations()===1 && target?.pathname==='/v3/geocode/regeo' && target.searchParams.get('location')==='111.172702,32.594393','selected water position')
+  check(response.status===200 && body.adcode==='420381' && body.citycode==='0719' && Object.keys(body).length===5,'bounded area result')
 })
 Deno.test(
   'AMap rejects arbitrary proxy URLs, oversized input and invalid coordinates',
@@ -301,11 +340,16 @@ Deno.test(
     )
     check(
       f.urls[0].searchParams.get('location') === '120.123457,31.120000' &&
-        f.urls[0].searchParams.get('size') === '640*360',
+        f.urls[0].searchParams.get('size') === '640*360' && f.urls[0].searchParams.has('markers'),
       'bounded precision and size'
     )
   }
 )
+Deno.test('a client-rendered prohibition pin uses a marker-free exact base image', async () => {
+  const f = fixture()
+  const response = await f.call({ action: 'preview', longitude: 120.12, latitude: 31.12, hideMarker: true })
+  check((await response.json()).precision === 'exact' && !f.urls[0].searchParams.has('markers'), 'single pin at the exact map center')
+})
 Deno.test(
   'AMap uses caller-scoped spot read, rounds area even for owner, and never creates exact area pin',
   async () => {

@@ -40,6 +40,7 @@ import {
   experienceTopicOptions
 } from '@/domain/fishing-presets'
 import { validSelection } from '@/domain/map'
+import { pickMap } from '@/platforms/map-navigation'
 import { canCapturePostLocation, capturePostLocation } from '@/platforms/post-location'
 import { catchNumber } from '@/domain/catch-measurements'
 import { write } from '@/services/repository'
@@ -116,7 +117,7 @@ async function startPostLocation() {
     draft.value.location_longitude = Math.round(place.longitude / 0.02) * 0.02
     draft.value.location_latitude = Math.round(place.latitude / 0.02) * 0.02
   } catch {
-    if (version === locationVersion) locationNotice.value = '暂时无法定位，可点此选择附近地点。'
+    if (version === locationVersion) locationNotice.value = '附近水域暂未确认，可在水域地图选点。'
   } finally {
     if (version === locationVersion) locationBusy.value = false
   }
@@ -127,24 +128,8 @@ function selectLocation() {
   locationVersion++
   locationBusy.value = false
   if (locationRequestId) uni.removeStorageSync(`dyj.map.selection.${locationRequestId}`)
-  locationRequestId = createId()
   locationRequestScope = sessionScope.value
-  if (
-    draft.value.location_label &&
-    draft.value.location_longitude != null &&
-    draft.value.location_latitude != null
-  ) {
-    uni.setStorageSync(`dyj.map.initial.${locationRequestId}`, {
-      name: draft.value.location_label,
-      longitude: draft.value.location_longitude,
-      latitude: draft.value.location_latitude,
-      crs: 'GCJ-02',
-      created_at: Date.now()
-    })
-  }
-  uni.navigateTo({
-    url: `/pages/map/search?pick=1&context=post&requestId=${encodeURIComponent(locationRequestId)}`
-  })
+  locationRequestId = pickMap('water')
 }
 function receiveLocation() {
   if (!locationRequestId) return
@@ -153,7 +138,7 @@ function receiveLocation() {
     const place = uni.getStorageSync(key)
     if (!place) return
     uni.removeStorageSync(key)
-    if (!available.value || locationRequestScope !== sessionScope.value || !validSelection(place))
+    if (!available.value || locationRequestScope !== sessionScope.value || !validSelection(place) || place.kind !== 'water')
       return
     draft.value.location_label = place.name.slice(0, 80)
     draft.value.location_longitude = Math.round(place.longitude / 0.02) * 0.02
@@ -413,7 +398,8 @@ async function submit() {
     saved.value = true
     if (!editor.editing.value) uni.removeStorageSync(draftKey.value)
     if (mode.value === 'trip') uni.redirectTo({ url: '/pages/mine/library?type=trips' })
-    else uni.redirectTo({ url: `/pages/post/detail?id=${result.id}` })
+    else if (editor.editing.value) uni.redirectTo({ url: `/pages/post/detail?id=${result.id}` })
+    else uni.reLaunch({ url: '/pages/home/index?tab=feed' })
   })
 }
 async function confirmBack() {
@@ -667,20 +653,20 @@ async function confirmBack() {
                 field="audience"
                 label="分享范围"
                 placeholder="选择分享范围"
-                :options="audienceOptions" /></MobileField
+                :options="audienceOptions(draft.audience)" /></MobileField
             ><MobileField
               field="post-location"
               label="所在位置"
               required
               :error="errors['post-location']"
-              :hint="locationNotice || '地点会随动态展示，点击可更换附近水域或城市。'"
+              :hint="locationNotice || '动态仅展示大致位置，可在水域地图更换。'"
             >
               <MobilePickerTrigger
                 id="post-location"
                 label="选择所在位置"
                 :value="draft.location_label"
                 :expanded="false"
-                :placeholder="locationBusy ? '正在获取当前位置…' : '选择城市、水域或附近地点'"
+                :placeholder="locationBusy ? '正在查找附近水域…' : '在水域地图选点'"
                 :disabled="busy"
                 @click="selectLocation"
               /> </MobileField
@@ -766,12 +752,12 @@ async function confirmBack() {
   min-height: 180px;
 }
 .compose-media .caption {
-  font-size: 0.875rem;
+  font-size: var(--fishing-label-size);
   line-height: 1.5;
 }
 .compose-media :deep(.mobile-evidence__add) {
   min-height: 48px;
-  font-size: 1rem;
+  font-size: var(--fishing-text-size);
   border-style: solid;
 }
 .compose-privacy {
@@ -781,7 +767,7 @@ async function confirmBack() {
   padding-top: 12px;
   border-top: 1px solid var(--line);
   color: var(--reed);
-  font-size: 0.875rem;
+  font-size: var(--fishing-label-size);
   line-height: 1.55;
 }
 .compose-privacy :deep(.mobile-icon) {

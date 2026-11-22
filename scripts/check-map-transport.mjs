@@ -7,7 +7,7 @@ const env = Object.fromEntries(
     return m ? [[m[1], m[2].trim()]] : []
   })
 )
-const target = 'https://tlfmfokyhahlpzmpliad.supabase.co'
+const target = 'https://jupuypvmgjpnpntfetqv.supabase.co'
 if (env.VITE_SUPABASE_URL !== target || !env.VITE_SUPABASE_KEY?.startsWith('sb_publishable_'))
   throw new Error('Unconfirmed public configuration')
 const bundles = (await readdir('dist/build/h5/assets')).filter((name) => name.endsWith('.js'))

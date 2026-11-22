@@ -77,7 +77,7 @@ export async function sessionContract({
     const req = route.request(),
       url = new URL(req.url())
     if (url.origin === base || !url.protocol.startsWith('http')) return route.continue()
-    if (url.origin !== 'https://tlfmfokyhahlpzmpliad.supabase.co') {
+    if (url.origin !== 'https://jupuypvmgjpnpntfetqv.supabase.co') {
       escaped.push(url.href)
       return route.abort()
     }
@@ -185,7 +185,8 @@ export async function sessionContract({
     await target
       .locator('input[aria-label="手机号码"]')
       .fill(who === 'A' ? '13800138000' : '13800138001')
-    await target.locator('[aria-label="同意用户协议与隐私说明"]').click()
+    const consent = target.getByRole('checkbox', { name: '同意用户协议与隐私说明' })
+    if ((await consent.getAttribute('aria-checked')) !== 'true') await consent.click()
     await target.getByRole('button', { name: '获取验证码', exact: true }).click()
     await target.getByText(/^验证码已发送/).waitFor()
     await target.locator('input[aria-label="短信验证码"]').fill('123456')
@@ -233,14 +234,14 @@ export async function sessionContract({
     await visible('账号已在另一页面切换，旧账号内容已清空。')
     libraryGate.release()
     libraryGate = undefined
-    await visible('留给下一次好时光')
+    await visible('还没有出钓日志')
     assert.equal(await page.getByText(trip.title, { exact: true }).count(), 0)
     pass('cross-tab account switch clears a private library and rejects a late A response')
 
     await login(other, 'A')
     await go('/pages/post/compose?mode=trip')
     await fill('标题', 'A的待保存私人草稿')
-    await fill('鱼情与心得', '账号A的饵料记录，不应进入账号B。')
+    await fill('出钓记录', '账号A的饵料记录，不应进入账号B。')
     await login(other, 'B')
     await page.waitForFunction(
       () => document.querySelector('input[aria-label="标题"]')?.value === ''
@@ -250,7 +251,7 @@ export async function sessionContract({
     assert.equal((await stored(page, keyA)).data.title, 'A的待保存私人草稿')
     assert.ok(!JSON.stringify(await stored(page, keyB)).includes('A的待保存'))
     await fill('标题', 'B自己的草稿')
-    await fill('鱼情与心得', '账号B单独填写。')
+    await fill('出钓记录', '账号B单独填写。')
     await page.reload()
     assert.equal(await page.locator('input[aria-label="标题"]').inputValue(), 'B自己的草稿')
     pass('private editor switches to the new account without copying or overwriting the old draft')
@@ -305,7 +306,7 @@ export async function sessionContract({
     await waitUntil(() => countRefresh('A') > baselineA)
     assert.equal(countRefresh('A'), baselineA + 1)
     await login(other, 'B')
-    await visible('留给下一次好时光')
+    await visible('还没有出钓日志')
     refreshGates.set('B', gateB)
     await expireFromOther()
     await go('/pages/home/index')
@@ -315,7 +316,7 @@ export async function sessionContract({
     await go('/pages/mine/library?type=trips')
     gateB.release()
     refreshGates.delete('B')
-    await visible('留给下一次好时光')
+    await visible('还没有出钓日志')
     assert.equal(countRefresh('B'), baselineB + 1)
     assert.equal((await stored(page, 'dyj.auth.v1')).data.user.id, ids.B)
     pass(

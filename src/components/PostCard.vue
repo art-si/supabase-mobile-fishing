@@ -3,7 +3,7 @@ defineOptions({ options: { styleIsolation: 'apply-shared' } })
 import MobileAction from '@mobile-core/components/MobileAction.vue'
 import { activateActionKey, preventActionKey } from '@mobile-core/action-keyboard'
 import MobileAvatar from '@mobile-core/components/MobileAvatar.vue'
-import MobileIcon from '@mobile-core/components/MobileIcon.vue'
+import DiscussionActions from './DiscussionActions.vue'
 import FishFacts from './FishFacts.vue'
 import FishingPhotos from './FishingPhotos.vue'
 import FishingPlaceLink from './FishingPlaceLink.vue'
@@ -26,7 +26,7 @@ function person() {
         ><text class="name">{{ post.author.nickname }}</text
         ><text class="caption"
           >{{ relativeTime(post.created_at)
-          }}<template v-if="post.author.city"> · {{ post.author.city }}</template></text
+          }}<text v-if="post.author.city" class="post-card__city"> · {{ post.author.city }}</text></text
         ></view
       >
       <text class="badge">{{ post.kind === 'catch' ? '渔获' : '心得' }}</text>
@@ -76,33 +76,8 @@ function person() {
       }}</text>
       <text v-if="post.status === 'hidden'" class="badge badge--warm">暂不可见</text>
     </view>
-    <view class="post-actions">
-      <MobileAction
-        :aria-label="`${post.liked ? '取消点赞' : '点赞'}：${postCaption(post)}`"
-        :aria-pressed="post.liked"
-        :class="{ 'is-active': post.liked }"
-        :disabled="busy"
-        @click="$emit('react', 'like')"
-        ><MobileIcon :name="post.liked ? 'like-fill' : 'like'" :size="18" /><text>{{
-          post.like_count || '点赞'
-        }}</text></MobileAction
-      >
-      <MobileAction :aria-label="`查看评论：${postCaption(post)}`" @click="$emit('open')"
-        ><MobileIcon name="message" :size="18" /><text>{{
-          post.comment_count || '评论'
-        }}</text></MobileAction
-      >
-      <MobileAction
-        :aria-label="`${post.saved ? '取消收藏' : '收藏'}：${postCaption(post)}`"
-        :aria-pressed="post.saved"
-        :class="{ 'is-active': post.saved }"
-        :disabled="busy"
-        @click="$emit('react', 'bookmark')"
-        ><MobileIcon name="flag" :size="18" /><text>{{
-          post.saved ? '已收藏' : '收藏'
-        }}</text></MobileAction
-      >
-    </view>
+    <DiscussionActions :title="postCaption(post)" :likes="post.like_count" :comments="post.comment_count"
+      :liked="post.liked" :saved="post.saved" :busy="busy" @react="$emit('react',$event)" @comments="$emit('open')" />
     <slot name="management" />
   </view>
 </template>
@@ -119,5 +94,10 @@ function person() {
 }
 .post-card > .badge {
   align-self: flex-start;
+}
+.post-card__city {
+  display: inline-block;
+  max-width: 100%;
+  overflow-wrap: anywhere;
 }
 </style>

@@ -1,3 +1,4 @@
+import type { DiscussionPerson } from './models'
 export type NotificationCategory = 'interaction' | 'system'
 export interface NotificationCounts {
   interaction: number
@@ -8,6 +9,7 @@ export interface NotificationPreferences {
   comments: boolean
 }
 export interface InboxNotification {
+  actor?: DiscussionPerson | null
   id: string
   kind:
     | 'like'

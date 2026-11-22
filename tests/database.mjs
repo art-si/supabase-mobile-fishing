@@ -26,7 +26,11 @@ import { profileAvatarChecks } from './profile-avatar.mjs'
 import { spotPublicationChecks } from './spot-publication.mjs'
 import { spotFishingChecks } from './spot-fishing.mjs'
 import { spotDistanceChecks } from './spot-distance.mjs'
+import { spotDiscussionMediaChecks } from './spot-discussion-media.mjs'
 let publicationMigration, spotPublicationMigration, spotFishingMigration, communityPublicationMigration
+let discoveryMigration, automaticFencesMigration
+let retireChatMigration, spotCommunityMigration, spotDiscussionMigration, spotReplyMigration
+let discussionLikesMigration
 const db = new PGlite()
 const alice = '11111111-1111-4111-8111-111111111111',
   bob = '22222222-2222-4222-8222-222222222222',
@@ -70,22 +74,54 @@ await db.exec(`
 for (const file of (await readdir(new URL('../supabase/migrations/', import.meta.url)))
   .filter((f) => f.endsWith('.sql'))
   .sort()) {
+  // Function upgrades compare the previous definition with LF line breaks.
+  const migration = (await readFile(new URL(`../supabase/migrations/${file}`, import.meta.url), 'utf8'))
+    .replace(/\r\n/g, '\n')
   // Preserve migration-era review regressions, then exercise the current direct
   // publication policy and upgrade of real pre-policy records at the end.
   if (file.endsWith('_fishing_posts_direct_publish.sql')) {
-    publicationMigration = await readFile(new URL(`../supabase/migrations/${file}`, import.meta.url), 'utf8')
+    publicationMigration = migration
     continue
   }
   if (file.endsWith('_fishing_spots_direct_publish_location.sql')) {
-    spotPublicationMigration = await readFile(new URL(`../supabase/migrations/${file}`, import.meta.url), 'utf8')
+    spotPublicationMigration = migration
     continue
   }
   if (file.endsWith('_fishing_spot_fishing_status.sql')) {
-    spotFishingMigration = await readFile(new URL(`../supabase/migrations/${file}`, import.meta.url), 'utf8')
+    spotFishingMigration = migration
     continue
   }
   if (file.endsWith('_fishing_community_zones_direct_publish.sql')) {
-    communityPublicationMigration = await readFile(new URL(`../supabase/migrations/${file}`, import.meta.url), 'utf8')
+    communityPublicationMigration = migration
+    continue
+  }
+  if (file.endsWith('_fishing_discovery_connections.sql')) {
+    discoveryMigration = migration
+    continue
+  }
+  if (file.endsWith('_fishing_automatic_spot_fences.sql')) {
+    automaticFencesMigration = migration
+    continue
+  }
+  if (file.endsWith('_fishing_retire_chat_friend_requests.sql')) {
+    retireChatMigration = migration
+    continue
+  }
+  if (file.endsWith('_fishing_spot_community.sql')) {
+    spotCommunityMigration = migration
+    continue
+  }
+  if (file.endsWith('_fishing_spot_discussions.sql')) {
+    spotDiscussionMigration = migration
+    continue
+  }
+  if (file.endsWith('_fishing_scroll_pages.sql')) continue
+  if (file.endsWith('_fishing_discussion_like_previews.sql')) {
+    discussionLikesMigration = migration
+    continue
+  }
+  if (file.endsWith('_fishing_spot_comment_replies_media.sql')) {
+    spotReplyMigration = migration
     continue
   }
   if (file.endsWith('_fishing_trip_catches.sql')) {
@@ -95,7 +131,7 @@ for (const file of (await readdir(new URL('../supabase/migrations/', import.meta
       [trip, alice]
     )
   }
-  await db.exec(await readFile(new URL(`../supabase/migrations/${file}`, import.meta.url), 'utf8'))
+  await db.exec(migration)
   if (file.endsWith('_fishing_trip_catches.sql')) {
     const legacy = (
       await db.query(
@@ -163,6 +199,15 @@ try {
   check(
     (await db.query('select count(*)::int n from public.profiles')).rows[0].n === 3,
     'auth user creates exactly one profile'
+  )
+  const defaultNames = []
+  for (const id of [alice, bob, eve]) {
+    const { profile } = await read(null, 'profile', { id })
+    defaultNames.push(profile.nickname)
+  }
+  check(
+    new Set(defaultNames).size === 3 && defaultNames.every((name) => /^钓友\d{6,}$/.test(name)),
+    'new accounts have distinct numbered nicknames in their public profiles'
   )
   await accountLoginLimitChecks({ db, check, rejects, alice })
   const firstTicket = await write(alice, 'upload_ticket', {})
@@ -235,7 +280,9 @@ try {
     revision: 1,
     request_id: crypto.randomUUID()
   })
-  check((await read(null, 'feed', {})).items.length === 1, 'approved public post visible to guests')
+  const publicPosts = (await read(null, 'feed', {})).items
+  check(publicPosts.length === 1, 'approved public post visible to guests')
+  check(publicPosts[0].author.nickname === defaultNames[0], 'feed shows the author’s assigned nickname')
   await write(bob, 'reaction', { id: shared.id, kind: 'like', enabled: true })
   await write(bob, 'reaction', { id: shared.id, kind: 'like', enabled: true })
   check(
@@ -476,9 +523,75 @@ try {
   await postPublicationChecks({ db, as, rpc, read, write, check, rejects, base, migration: publicationMigration })
   check(Boolean(spotPublicationMigration), 'spot direct publication migration is present')
   await spotPublicationChecks({ db, as, rpc, read, write, check, rejects, migration: spotPublicationMigration })
-  await spotFishingChecks({ db, as, read, write, check, rejects, migration: spotFishingMigration, communityMigration: communityPublicationMigration })
+  await spotFishingChecks({
+    db, as, read, write, check, rejects, migration: spotFishingMigration,
+    communityMigration: communityPublicationMigration, automaticFencesMigration
+  })
+  await db.exec(discoveryMigration)
   await spotDistanceChecks({ db, read, check, rejects })
   await profileAvatarChecks({ db, as, read, write, check, rejects, base })
+  const archivedMedia = (await db.query(
+    'select id, owner_id, path from public.media_assets where message_id is not null limit 1'
+  )).rows[0]
+  const existingRows = (await db.query('select count(*)::int as count from public.messages')).rows[0].count
+  check(Boolean(retireChatMigration) && existingRows > 0 && !!archivedMedia, 'chat retirement starts with stored history')
+  await db.exec(retireChatMigration)
+  for (const action of ['people', 'social', 'messages', 'message_content'])
+    await rejects(() => read(alice, action), /INVALID_INPUT/, `retired read ${action} is denied`)
+  for (const action of ['friend_request', 'friend_respond', 'unfriend', 'conversation', 'send_message', 'read_conversation'])
+    await rejects(() => write(alice, action, { id: bob }), /INVALID_INPUT/, `retired action ${action} is denied`)
+  for (const table of ['messages', 'conversations', 'conversation_members', 'friend_requests', 'friendships'])
+    await rejects(() => as(alice, () => db.query(`select 1 from public.${table} limit 1`)), /permission denied/, `retired table ${table} is private`)
+  check((await db.query('select count(*)::int as count from public.messages')).rows[0].count === existingRows,
+    'retirement preserves existing message rows')
+  check((await as(archivedMedia.owner_id, () => db.query('select 1 from storage.objects where name=$1', [archivedMedia.path]))).rows.length === 0,
+    'existing chat media cannot be signed through Storage as the former uploader')
+  check(Array.isArray((await read(alice, 'water_reports')).items), 'private water reports remain readable')
+  // This upgrade uses the spot status column and fence functions installed by the staged checks above.
+  await db.exec(spotCommunityMigration)
+  await db.exec(spotDiscussionMigration)
+  await db.exec(await readFile(new URL('../supabase/migrations/20261121092639_fishing_scroll_pages.sql', import.meta.url), 'utf8'))
+  await db.query(`
+    with added as (
+      insert into public.fishing_spots(id,author_id,name,city,water_type,observed_on,audience,precision,status)
+      select gen_random_uuid(),$1,'分页钓位 '||n,'武汉市','自然水域',current_date,'public','exact','published'
+      from generate_series(1,27) n returning id,name
+    )
+    insert into public.spot_locations(spot_id,longitude,latitude)
+    select id,case when name='分页钓位 26' then 0 else 114.18 end,30.50
+    from added where name<>'分页钓位 27'
+  `, [alice])
+  const spotQuery = { query: '分页钓位', origin: { longitude: 114.17, latitude: 30.50, crs: 'GCJ-02' } }
+  const visibleSpots = await read(alice, 'spots', { ...spotQuery, cursor: null })
+  const finalSpots = await read(alice, 'spots', { ...spotQuery, cursor: visibleSpots.next })
+  check(visibleSpots.items.length === 24 && Boolean(visibleSpots.next) &&
+    finalSpots.items.length === 1 && !finalSpots.next &&
+    new Set([...visibleSpots.items, ...finalSpots.items].map(item => item.id)).size === 25,
+  'nearby spot pages exclude missing or invalid coordinates and resolve ties without duplicates')
+  const profilePage = await read(alice, 'profile', { id: alice, cursor: null })
+  check(Array.isArray(profilePage.posts) && 'posts_next' in profilePage, 'profile keeps metadata and returns a post cursor')
+  const target = 'spot:' + visibleSpots.items[0].id
+  await db.query(`
+    insert into fishing_private.spot_discussions(id,target,author_id,body)
+    select gen_random_uuid(),$1,$2,'分页评论 '||n from generate_series(1,22) n
+  `, [target, alice])
+  await db.exec(spotReplyMigration)
+  await db.exec(discussionLikesMigration)
+  await spotDiscussionMediaChecks({ db, as, rpc, write, base, check, rejects, target: 'spot:' + visibleSpots.items[1].id, other: target })
+  const discussionPage = async cursor => (await as(alice, () => db.query(
+    'select public.fishing_spot_community($1,$2::jsonb) as value', ['comments', JSON.stringify({ target, cursor })]
+  ))).rows[0].value
+  const firstDiscussion = await discussionPage(null)
+  const lastDiscussion = await discussionPage(firstDiscussion.next)
+  check(firstDiscussion.items.length === 20 && Boolean(firstDiscussion.next) &&
+    lastDiscussion.items.length === 2 && !lastDiscussion.next &&
+    new Set([...firstDiscussion.items, ...lastDiscussion.items].map(item => item.id)).size === 22,
+  'discussion cursor appends all comments once even with identical timestamps')
+  for (const action of ['library_posts', 'library_spots', 'library_trips', 'water_reports']) {
+    const page = await read(alice, action, { cursor: null })
+    check(Array.isArray(page.items) && page.items.length <= 20, action + ' returns a scoped page')
+    await rejects(() => read(null, action, { cursor: null }), /NOT_AUTHENTICATED/, action + ' rejects guest reads')
+  }
   console.log(
     `\n${assertions} database checks passed (PGlite PostgreSQL; not a hosted Supabase integration test).`
   )

@@ -38,8 +38,9 @@ export async function confirmationContract({ page, go, visible, pass, screenshot
       await go('/pages/settings/index')
       await page.getByRole('button', { name, exact: true }).click()
       await go('/pages/people/detail?id=22222222-2222-4222-8222-222222222222')
-      await page.getByRole('button', { name: '删除好友', exact: true }).click()
-      const dialog = page.getByRole('alertdialog', { name: '删除好友？', exact: true })
+      const trigger = page.getByRole('button', { name: '拉黑这位钓友', exact: true })
+      await trigger.click()
+      const dialog = page.getByRole('alertdialog', { name: '拉黑这位钓友？', exact: true })
       await dialog.waitFor()
       await checkColors(dialog)
       await page.waitForFunction(() =>
@@ -48,12 +49,15 @@ export async function confirmationContract({ page, go, visible, pass, screenshot
       await screenshot(`confirm-${skin}-${scheme}-320.png`)
       await page.keyboard.press('Escape')
       await dialog.waitFor({ state: 'hidden' })
-      await page.getByRole('button', { name: '发消息', exact: true }).waitFor()
+      assert.ok(await trigger.evaluate((node) => node === document.activeElement))
+      assert.equal(await page.getByRole('button', { name: '关注鱼情', exact: true }).isEnabled(), true)
       pass(
-        `${skin} ${scheme} destructive confirmation: readable, cancel-first focus, Escape leaves friend unchanged`
+        `${skin} ${scheme} destructive confirmation: readable, cancel-first focus and Escape restores the trigger`
       )
     }
   }
+  await page.getByRole('button', { name: '关注鱼情', exact: true }).click()
+  await page.getByRole('button', { name: '已关注', exact: true }).waitFor()
   await page.getByRole('button', { name: '拉黑这位钓友', exact: true }).click()
   await page.getByRole('alertdialog').getByRole('button', { name: '拉黑', exact: true }).click()
   await page.getByRole('button', { name: '解除拉黑', exact: true }).click()
@@ -62,12 +66,12 @@ export async function confirmationContract({ page, go, visible, pass, screenshot
   await screenshot('confirm-unblock-dark-320.png')
   await unblocking.getByRole('button', { name: '解除', exact: true }).click()
   await page.getByRole('button', { name: '拉黑这位钓友', exact: true }).waitFor()
-  await page.getByRole('button', { name: '加好友', exact: true }).waitFor()
-  assert.equal(await page.getByRole('button', { name: '发消息', exact: true }).count(), 0)
-  pass('block/unblock confirms explicitly; removing a block never silently restores friendship')
+  const follow = page.getByRole('button', { name: '关注鱼情', exact: true })
+  assert.equal(await follow.getAttribute('aria-pressed'), 'false')
+  pass('block/unblock confirms explicitly and unblocking leaves follow turned off')
 
   await go('/pages/mine/library?type=trips')
-  const copy = page.locator('.panel').filter({ hasText: '再记一次的新出钓' })
+  const copy = page.locator('.panel').filter({ hasText: '用于确认删除的出钓日志' })
   await copy.getByRole('button', { name: '删除日志', exact: true }).click()
   const deletion = page.getByRole('alertdialog', { name: '删除这条记录？', exact: true })
   await deletion.getByRole('button', { name: '取消', exact: true }).click()

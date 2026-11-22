@@ -144,7 +144,7 @@ async function setup(failure = false) {
     { owner, failure }
   )
   await context.routeWebSocket(/supabase\.co/, (socket) => socket.close())
-  await context.route('https://tlfmfokyhahlpzmpliad.supabase.co/**', async (route) => {
+  await context.route('https://jupuypvmgjpnpntfetqv.supabase.co/**', async (route) => {
     const request = route.request(),
       url = new URL(request.url()),
       headers = {

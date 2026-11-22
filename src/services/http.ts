@@ -11,11 +11,16 @@ export class ApiError extends Error {
     super(message)
   }
 }
+export function isTransientRequestError(error: unknown) {
+  return error instanceof ApiError &&
+    (error.status === 0 || error.status === 408 || error.status === 429 || error.status >= 500)
+}
 export interface RequestOptions {
   method?: 'GET' | 'POST' | 'PUT' | 'DELETE'
   data?: unknown
   token?: string
   headers?: Record<string, string>
+  timeout?: number
 }
 export async function request<T>(path: string, options: RequestOptions = {}): Promise<T> {
   if (!config.supabaseKey)
@@ -25,7 +30,7 @@ export async function request<T>(path: string, options: RequestOptions = {}): Pr
       url: `${config.supabaseUrl}${path}`,
       method: options.method || 'GET',
       data: options.data as UniApp.RequestOptions['data'],
-      timeout: 15000,
+      timeout: options.timeout ?? 15000,
       header: {
         apikey: config.supabaseKey,
         'Content-Type': 'application/json',

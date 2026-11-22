@@ -8,11 +8,17 @@ export interface ReportChannel {
   /** Explicit, verified names only; never fuzzy-match different jurisdictions. */
   cityAliases?: readonly string[]
   district?: string
+  /** Unspecified entries accept fishery reports. */
+  topic?: 'water' | 'general'
+  issueLabel?: string
   kind: 'phone' | 'wechat' | 'mini-program' | 'website'
   /** Optional only when the official source publishes a verifiable direct entry. Never infer an AppId. */
   miniProgram?: { appId: string; path?: string; source: string }
   /** Only an officially published reporting mailbox, never a staff/consultation mailbox. */
   email?: string
+  phoneHours?: string
+  additionalPhone?: { number: string; label: string }
+  scopeNote?: string
   /** Exact agency POI name, not the display label of a hotline. */
   officeName?: string
   address?: string
@@ -20,6 +26,7 @@ export interface ReportChannel {
   instructions: string
   source: string
   checked: string
+  standingNational?: boolean
   /** Annual/special-action notices stop being actionable without renewed verification. */
   validUntil?: string
 }
@@ -63,7 +70,7 @@ const heilongjiangCities = [
 ] as const
 export const REPORT_CHANNELS: readonly ReportChannel[] = [
   {
-    id: 'guilin-lijiang-mini', name: '星检漓江保护数字小卫士',
+    id: 'guilin-lijiang-mini', name: '星检漓江保护数字小卫士', topic: 'general',
     province: '广西壮族自治区', city: '桂林市', kind: 'mini-program', value: '星检漓江保护数字小卫士',
     checked: '2026-11-20',
     instructions: '七星区检察院的漓江生态环境线索入口。用于漓江流域生态保护问题，请在微信核对官方主体及受理范围后提交。',
@@ -73,12 +80,14 @@ export const REPORT_CHANNELS: readonly ReportChannel[] = [
     id: 'caidian-fishery', name: '蔡甸区农业综合执法大队',
     province: '湖北省', city: '武汉市', district: '蔡甸区',
     officeName: '蔡甸区农业综合执法大队', kind: 'phone', value: '027-84995835', checked: '2026-11-20',
+    phoneHours: '白天', additionalPhone: { number: '027-84993165', label: '夜间拨打' },
     instructions: '武汉市农业农村局公布：白天举报电话；夜间可拨027-84993165。受理情况以部门答复为准。',
     source: 'https://nyncj.wuhan.gov.cn/xwzx_25/whsn/202508/t20250829_2640592.html'
   },
   {
     id: 'wuhan-fishery', name: '武汉渔政举报电话',
     province: '湖北省', city: '武汉市', kind: 'phone', value: '027-82892218', checked: '2026-11-20',
+    phoneHours: '24小时',
     instructions: '武汉市农业农村局公布的24小时渔政举报电话。请说明具体水域与现场情况。',
     source: 'https://nyncj.wuhan.gov.cn/xwzx_25/whsn/202508/t20250829_2640592.html'
   },
@@ -93,6 +102,7 @@ export const REPORT_CHANNELS: readonly ReportChannel[] = [
     id: 'changjiang-police', name: '公安部“长江大保护”举报中心',
     provinces: ['上海市','江苏省','浙江省','安徽省','江西省','湖北省','湖南省','重庆市','四川省','贵州省','云南省'],
     kind: 'phone', value: '027-83922110', email: 'changjiangjinbu@163.com', checked: '2026-11-20',
+    scopeNote: '仅限长江流域非法捕捞等犯罪线索',
     instructions: '仅受理长江流域非法捕捞、非法采砂等犯罪线索，24小时热线。同省其他流域请联系当地部门。',
     source: 'https://cjjjd.ndrc.gov.cn/gongzuodongtai/bumendongtai/202309/t20230901_1360306.htm'
   },
@@ -104,7 +114,13 @@ export const REPORT_CHANNELS: readonly ReportChannel[] = [
     source: 'https://www.by.gov.cn/gzbyny/gkmlpt/content/10/10692/post_10692535.html'
   },
   {
-    id: 'national-fishery',
+    id: 'shanghai-agriculture-form', name: '上海市农业农村委员会行政执法举报信箱',
+    province: '上海市', kind: 'website', value: 'https://nyncw.sh.gov.cn/jb/index_zf.html',
+    checked: '2026-11-21', source: 'https://nyncw.sh.gov.cn/jb/index_zf.html',
+    instructions: '在官网填写上海事发区域和涉嫌违法事实，可附 JPG、PNG 图片或 PDF。'
+  },
+  {
+    id: 'national-fishery', standingNational: true,
     name: '中国渔政举报受理平台',
     kind: 'phone',
     value: '010-59191110',
@@ -114,7 +130,7 @@ export const REPORT_CHANNELS: readonly ReportChannel[] = [
     source: 'https://www.agri.cn/zx/hxgg/202605/t20260506_8833435.htm'
   },
   {
-    id: 'national-wechat',
+    id: 'national-wechat', standingNational: true,
     name: '中国渔政微信公众号',
     kind: 'wechat',
     value: '中国渔政',
@@ -124,7 +140,7 @@ export const REPORT_CHANNELS: readonly ReportChannel[] = [
     source: 'https://www.suzhou.gov.cn/szsrmzf/bmwj/202412/6c9adeb3cee443e2808f538ab61b654a.shtml'
   },
   {
-    id: 'local-12345',
+    id: 'local-12345', topic: 'general', standingNational: true,
     name: '事发地12345政务服务便民热线',
     kind: 'phone',
     value: '12345',
@@ -140,6 +156,7 @@ export const REPORT_CHANNELS: readonly ReportChannel[] = [
     city: '黄石',
     kind: 'phone',
     value: '0714-6288392',
+    phoneHours: '工作日 8:30–17:30',
     checked,
     instructions: '官方公告：工作日8:30–17:30。其他时段请查看来源中的24小时渠道。',
     source: huangshi
@@ -152,6 +169,7 @@ export const REPORT_CHANNELS: readonly ReportChannel[] = [
     district: '大冶',
     kind: 'phone',
     value: '0714-8762281',
+    phoneHours: '工作日 8:30–17:30',
     checked,
     instructions: '官方公告：工作日8:30–17:30。仅匹配大冶市辖区。',
     source: huangshi
@@ -164,6 +182,7 @@ export const REPORT_CHANNELS: readonly ReportChannel[] = [
     district: '阳新',
     kind: 'phone',
     value: '0714-3503111',
+    phoneHours: '24小时',
     checked,
     instructions: '官方公告：24小时。仅匹配阳新县辖区。',
     source: huangshi
@@ -231,6 +250,7 @@ export const REPORT_CHANNELS: readonly ReportChannel[] = [
     district: '于都',
     kind: 'phone',
     value: '0797-6223923',
+    phoneHours: '工作日',
     checked,
     validUntil: '2027-01-01T00:00:00+08:00',
     instructions:
@@ -271,13 +291,28 @@ export const REPORT_CHANNELS: readonly ReportChannel[] = [
     city: '云浮',
     kind: 'phone',
     value: '0766-8923252',
+    phoneHours: '工作日',
     checked,
     instructions:
       '市农业农村局2026年公告：工作日可拨打；其他时段公告建议0766-12345。如需联系具体水库管理方，请另行核对联系方式。',
     source: 'https://www.yunfu.gov.cn/nyncj/zwgk/gggs/content/post_2005247.html'
   },
   {
-    id: 'national-procuratorate-web', name: '12309中国检察网', kind: 'website', value: 'https://www.12309.gov.cn/',
+    id: 'water-supervision', name: '水利部12314监督举报平台', issueLabel: '河湖侵占 · 水利部 12314', topic: 'water', standingNational: true,
+    kind: 'website', value: 'https://supe.mwr.gov.cn/#/', checked: '2026-11-21',
+    additionalPhone: { number: '12314', label: '拨打热线' }, scopeNote: '河湖侵占、岸线及水资源管理问题',
+    instructions: '河湖侵占、岸线和水资源管理等水利问题可在官网填写地点、情况并提交附件，也可拨打12314。',
+    source: 'https://slj.xuancheng.gov.cn/News/show/1475925.html'
+  },
+  {
+    id: 'environment-report', name: '全国生态环境投诉举报平台', issueLabel: '水体污染 · 生态环境部', topic: 'water', standingNational: true,
+    kind: 'website', value: 'https://jubao.mee.gov.cn/', checked: '2026-11-21',
+    scopeNote: '违法排污、水体污染等环境问题',
+    instructions: '违法排污、水体污染等可在生态环境部官网举报并查询办理进度。',
+    source: 'https://www.mee.gov.cn/ywgz/hjwrjb/'
+  },
+  {
+    id: 'national-procuratorate-web', name: '12309中国检察网', topic: 'general', kind: 'website', value: 'https://www.12309.gov.cn/',
     checked: '2026-11-20',
     instructions: '生态环境和资源保护等公益损害线索，可在官网查找“公益诉讼线索”入口并按要求提交。普通涉渔问题优先联系当地渔政，紧急情况请报警。',
     source: 'https://www.spp.gov.cn/spp/zdgz/201909/t20190917_431888.shtml'
@@ -286,20 +321,23 @@ export const REPORT_CHANNELS: readonly ReportChannel[] = [
 const normalize = (value: string) => value.trim().replace(/(地区|市|区|县)$/, '')
 // A county name entered in the city field must not resolve to a different, broader jurisdiction.
 const normalizeCity = (value: string) => value.trim().replace(/(地区|市)$/, '')
-export const reportChannelSpecificity = (c: ReportChannel) => (c.district ? 4 : c.city ? 3 : c.province ? 2 : c.provinces ? 1 : 0)
+export const reportChannelSpecificity = (c: ReportChannel) =>
+  c.district ? 5 : c.city ? (c.id === 'local-12345' ? 2 : 4) : c.province ? 3 : c.provinces ? 1 : 0
 export function matchingReportChannels(
   province: string,
   city = '',
   district = '',
-  now = Date.now()
+  now = Date.now(),
+  options: { category?: string; areaCode?: string } = {}
 ) {
   // Do not imply mainland agencies have jurisdiction over these separately administered channels.
   if (['香港特别行政区', '澳门特别行政区', '台湾省'].includes(province)) return []
   return REPORT_CHANNELS.filter(
     (c) =>
       now >= Date.parse(c.checked) &&
-      now - Date.parse(c.checked) < 180 * 86400000 &&
+      (c.standingNational || now - Date.parse(c.checked) < 180 * 86400000) &&
       (!c.validUntil || now < Date.parse(c.validUntil)) &&
+      (!options.category || c.topic === 'general' || (options.category === 'other' ? c.topic === 'water' : c.topic !== 'water')) &&
       (!c.province || c.province === province) &&
       (!c.provinces || c.provinces.includes(province)) &&
       (!c.city ||
@@ -307,5 +345,11 @@ export function matchingReportChannels(
           (name) => normalizeCity(name) === normalizeCity(city)
         )) &&
       (!c.district || normalize(c.district) === normalize(district))
-  ).sort((a, b) => reportChannelSpecificity(b) - reportChannelSpecificity(a))
+  ).map(c => {
+    // Use only the telephone area code returned for this water coordinate. An adcode is not a dialling code.
+    if (c.id !== 'local-12345' || !province || !city || !options.areaCode || !/^0[1-9]\d{1,2}$/.test(options.areaCode)) return c
+    return { ...c, city, name: city + '12345政务服务便民热线', value: options.areaCode + '-12345',
+      instructions: '接通后说明事发区县、水域和问题，请热线转交当地主管部门。' }
+  }).sort((a, b) => reportChannelSpecificity(b) - reportChannelSpecificity(a) ||
+    (options.category === 'other' ? Number(b.topic === 'water') - Number(a.topic === 'water') : 0))
 }

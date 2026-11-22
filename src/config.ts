@@ -1,13 +1,13 @@
 const env = import.meta.env
 export const config = {
   mode: env.VITE_DATA_MODE === 'demo' ? 'demo' : 'live',
-  supabaseUrl: (env.VITE_SUPABASE_URL || 'https://tlfmfokyhahlpzmpliad.supabase.co').replace(
+  supabaseUrl: (env.VITE_SUPABASE_URL || 'https://jupuypvmgjpnpntfetqv.supabase.co').replace(
     /\/$/,
     ''
   ),
   supabaseKey: (env.VITE_SUPABASE_KEY || '').trim(),
   amapKey: (env.VITE_AMAP_KEY || '').trim(),
-  amapServiceHost: (env.VITE_AMAP_SERVICE_HOST || '').trim(),
+  amapServiceHost: env.DEV ? '/_AMapService' : (env.VITE_AMAP_SERVICE_HOST || '').trim(),
   // Confirmed by the owner: personal WeChat Mini Program, not an organization.
   miniProgramSubject: 'personal',
   wechatPhone: false,

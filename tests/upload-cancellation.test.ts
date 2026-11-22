@@ -1,10 +1,14 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
+import { resolve } from 'node:path'
 import { runInNewContext } from 'node:vm'
 import ts from 'typescript'
+import { resolveMobileProRoot } from '../scripts/mobile-pro.mjs'
+
+const file = resolve(resolveMobileProRoot(), 'packages/mobile-core/src/upload-progress.ts')
 const exports: any = {}
-runInNewContext(ts.transpileModule(readFileSync('../supabase-mobile-pro/packages/mobile-core/src/upload-progress.ts', 'utf8'), { compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 } }).outputText, { exports })
+runInNewContext(ts.transpileModule(readFileSync(file, 'utf8'), { compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 } }).outputText, { exports })
 const { createUploadCancellation } = exports
 test('linked cancellation works without native AbortController and aborts each listener once', () => {
   const parent = createUploadCancellation(), child = createUploadCancellation(parent.signal)

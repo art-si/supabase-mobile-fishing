@@ -31,7 +31,7 @@ await context.addInitScript(
           configuration = {
             ...value,
             serviceHost:
-              'https://tlfmfokyhahlpzmpliad.supabase.co/functions/v1/amap-js/_AMapService'
+              'https://jupuypvmgjpnpntfetqv.supabase.co/functions/v1/amap-js/_AMapService'
           }
         }
       })
@@ -89,7 +89,7 @@ try {
   assert.match(await weather.locator('.weather-time').innerText(), /高德天气.*北京时间/)
   const provider = responses.find((r) => r.path.endsWith('/weatherInfo'))
   assert.equal(provider?.status, 200)
-  if (cloud) assert.equal(provider.host, 'tlfmfokyhahlpzmpliad.supabase.co')
+  if (cloud) assert.equal(provider.host, 'jupuypvmgjpnpntfetqv.supabase.co')
   checks.push(
     'real search → coordinate selection → district geocoder → actual weather through configured proxy'
   )

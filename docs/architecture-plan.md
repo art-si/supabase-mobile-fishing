@@ -19,7 +19,7 @@
 
 Uni 编译包保持参考项目的同一发行版本，采用 Vue 3.4.21、@wot-ui/ui 2.3.2、Capacitor 8。为满足 Vue 3.4 peer 约束，本仓固定 Pinia 2.1.7，并显式安装 vue-demi 0.14.10，避免 H5 产物留下未解析模块；参考仓依赖不作修改。
 
-共享控件改动归属 Pro 主仓；钓位卡、渔获字段、好友规则、数据 API 和路由归属 fishing。字体子集和图标生成需纳入钓友集的用字与图标。独立检出支持同级 Pro 或 `MOBILE_PRO_ROOT`。
+共享控件改动归属 Pro 主仓；钓位卡、渔获字段、好友规则、数据 API 和路由归属 fishing。字体子集和图标生成需纳入钓友集的用字与图标。独立检出通过 pnpm 安装锁定提交的 Gitee Pro 源码包。联调时可用 `MOBILE_PRO_ROOT` 指向本地 Pro 仓库。
 
 主仓分发和 Android 脚本目前只注册现有应用。钓友集先在本仓提供构建入口，纳入主仓统一命令时再增加消费者注册及回归验证。
 
@@ -59,7 +59,7 @@ H5 与 App 使用浏览器构建，微信通过条件编译与原生能力适配
 
 ## Supabase 接入状态
 
-目标为用户新建的 [tlfmfokyhahlpzmpliad](https://supabase.com/dashboard/project/tlfmfokyhahlpzmpliad)。项目级 MCP 已连通，基础权限表结构、地图配额和三个服务端函数已部署；公开 Key 已写入忽略提交的本地配置。公开读取与匿名鉴权通过，短信 provider 未启用，真实登录后流程仍需联调。
+四端使用 `jupuypvmgjpnpntfetqv`。10 个云函数已部署，短信服务和发送 Hook 已启用，手机号收码登录待真机验收。客户端公开 Key 位于忽略提交的本机配置中。[项目控制台](https://supabase.com/dashboard/project/jupuypvmgjpnpntfetqv)
 
 前端需要 Project URL 与 Publishable key；建表和部署需要工具连接的账号有项目管理权限。服务端凭据置于 Secret，访问令牌和数据库密码留在安全本地配置中。
 

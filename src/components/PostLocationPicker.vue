@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import MobileSearch from '@mobile-core/components/MobileSearch.vue'
+import MobileListFooter from '@mobile-core/components/MobileListFooter.vue'
 import MobileField from '@mobile-core/components/MobileField.vue'
 import FishingCityPicker from './FishingCityPicker.vue'
 import MobileAction from '@mobile-core/components/MobileAction.vue'
@@ -35,6 +36,7 @@ const searchError = ref(''),
   locationError = ref(''),
   nearbyError = ref('')
 const needsLogin = ref(false),
+  retryMore = ref(false),
   searched = ref(false),
   hasMore = ref(false),
   page = ref(1)
@@ -75,6 +77,7 @@ function resetSearch() {
   searched.value = false
   searchError.value = ''
   needsLogin.value = false
+  retryMore.value = false
   results.value = []
   hasMore.value = false
   page.value = 1
@@ -97,11 +100,12 @@ watch(
 )
 
 async function search(more = false) {
-  if (!query.value.trim() || searching.value || disposed) return
+  if (!query.value.trim() || searching.value || disposed || (more && !hasMore.value)) return
   const version = ++queryVersion
   const next = more ? page.value + 1 : 1
   searching.value = true
   searchError.value = ''
+  retryMore.value = false
   needsLogin.value = false
   try {
     const response = await findPostPlaces(query.value, city.value, next)
@@ -120,11 +124,15 @@ async function search(more = false) {
       failure.status === 401 ||
       failure.code === 'NOT_AUTHENTICATED' ||
       failure.code === 'SESSION_EXPIRED'
+    retryMore.value = more
     searchError.value = errorText(error)
   } finally {
     if (!disposed && version === queryVersion) searching.value = false
   }
 }
+defineExpose({ reachBottom: () => {
+  if (hasMore.value && !searchError.value && canChoose.value) void search(true)
+} })
 
 async function locateCurrent() {
   if (!canCapturePostLocation || locating.value || disposed) return
@@ -220,25 +228,23 @@ onBeforeUnmount(() => {
       ><FishingCityPicker v-model="city" field="post-place-city" label="选择搜索城市" clearable :disabled="accountChanged" /></MobileField>
     </view>
 
-    <view v-if="searchError" class="notice stack stack--tight" role="alert">
+    <view v-if="searchError && (!retryMore || needsLogin || accountChanged)" class="notice stack stack--tight" role="alert">
       <text>{{ searchError }}</text>
       <MobileAction
         v-if="!accountChanged"
         variant="link"
-        @click="needsLogin ? login() : search(false)"
+        @click="needsLogin ? login() : search(retryMore)"
         >{{ needsLogin ? '去登录' : '重新搜索' }}</MobileAction
       >
     </view>
-    <text v-if="hasQuery && searched && !results.length && !searching && !searchError" class="muted"
+    <text v-if="hasQuery && searched && !results.length && !hasMore && !searching && !searchError" class="muted"
       >没有找到相关地点，试试附近的桥、公园或城市。</text
     >
-    <MobileAction
-      v-if="hasQuery && hasMore"
-      class="secondary"
-      :disabled="searching"
-      @click="search(true)"
-      >更多地点</MobileAction
-    >
+    <MobileListFooter v-if="hasQuery && canChoose && !needsLogin"
+      :loading="searching && (!!results.length || hasMore)" :error="retryMore ? searchError : ''"
+      :can-load-more="hasMore && !searching" :finished="searched && !hasMore && !searching && !searchError"
+      :count="results.length" loading-label="正在加载更多地点…" more-text="加载更多地点"
+      error-title="更多地点暂未加载" @more="search(true)" />
 
     <template v-if="!hasQuery">
       <view v-if="initial || current" class="panel place-list">
@@ -382,7 +388,7 @@ onBeforeUnmount(() => {
 .place-distance {
   flex: 0 0 3.5rem;
   color: var(--reed);
-  font-size: 0.8125rem;
+  font-size: var(--fishing-caption-size);
   white-space: nowrap;
   font-variant-numeric: tabular-nums;
 }

@@ -26,7 +26,7 @@ await context.addInitScript(()=>{
  },set(value){provider=value}})
 })
 await context.routeWebSocket(/supabase\.co/,(socket)=>socket.close())
-await context.route('https://tlfmfokyhahlpzmpliad.supabase.co/**',async route=>{
+await context.route('https://jupuypvmgjpnpntfetqv.supabase.co/**',async route=>{
  const request=route.request(), path=new URL(request.url()).pathname
  if(path.includes('/amap-js/'))return route.continue()
  const headers={'access-control-allow-origin':'*','access-control-allow-headers':'*','access-control-allow-methods':'*'}

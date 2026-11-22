@@ -17,27 +17,28 @@ const client = await automator.connect({ wsEndpoint: value('--endpoint', 'ws://1
 const routes = [
   ['feed', '/pages/home/index'],
   ['spots', '/pages/home/index?tab=spots'],
-  ['messages', '/pages/home/index?tab=messages'],
+  ['report-tab', '/pages/water-report/index?tabbed=1'],
   ['mine', '/pages/home/index?tab=mine'],
   ['login', '/pages/login/index'],
   ['security', '/pages/account/security'],
   ['password', '/pages/account/password'],
   ['phone', '/pages/account/phone'],
+  ['connections', '/pages/account/connections'],
   ['settings', '/pages/settings/index'],
   ['privacy', '/pages/settings/legal?type=privacy'],
   ['terms', '/pages/settings/legal?type=terms'],
-  ['contact', '/pages/settings/legal?type=contact'],
+  ['contact', '/pages/contact/index'],
   ['post', '/pages/post/detail?id=a1111111-1111-4111-8111-111111111111'],
   ['compose', '/pages/post/compose'],
   ['spot', '/pages/spot/detail?id=b1111111-1111-4111-8111-111111111111'],
   ['spot-create', '/pages/spot/create'],
+  ['spot-discover', '/pages/spot/discover'],
   ['map', '/pages/map/index'],
+  ['map-pick', '/pages/map/index?pick=1&requestId=simulator-review'],
   ['map-search', '/pages/map/search'],
   ['map-marks', '/pages/map/marks'],
   ['map-bridge', '/pages/map/bridge'],
-  ['chat', '/pages/chat/index?id=e1111111-1111-4111-8111-111111111111'],
   ['notifications', '/pages/notifications/index'],
-  ['people', '/pages/people/index'],
   ['person', '/pages/people/detail?id=22222222-2222-4222-8222-222222222222'],
   ['library', '/pages/mine/library?type=posts'],
   ['profile', '/pages/mine/profile'],
@@ -49,6 +50,13 @@ const routes = [
   ['water-report-history', '/pages/water-report/history']
 ]
 const selected = value('--only', '').split(',').filter(Boolean)
+const destinations = {
+  map: '/pages/map/search?pick=0',
+  'map-pick': '/pages/map/search?pick=1&requestId=simulator-review',
+  'map-bridge': '/pages/map/search',
+  'spot-discover': '/pages/home/index?tab=spots',
+  'water-report-history': '/pages/water-report/index?tab=records'
+}
 const results = []
 const exceptions = []
 client.on('exception', (event) => exceptions.push({ message: String(event.message || event.text || 'Runtime exception') }))
@@ -69,13 +77,14 @@ try {
         setTimeout(() => wx.reLaunch({ url: target }), 250)
         return true
       }, url)
-      const expected = name === 'map-bridge' ? 'pages/map/search' : url.split('?')[0].slice(1)
-      const query = Object.fromEntries(new URLSearchParams(url.split('?')[1] || ''))
+      const [path, search = ''] = (destinations[name] || url).split('?')
+      const expected = path.slice(1)
+      const query = Object.fromEntries(new URLSearchParams(search))
       let page
       const deadline = Date.now() + 20000
       do {
         await pause(500)
-        page = await client.currentPage()
+        page = await client.currentPage().catch(() => null)
         if (page?.path === expected && Object.entries(query).every(([key, value]) => page.query[key] === value)) break
       } while (Date.now() < deadline)
       if (page?.path !== expected || !Object.entries(query).every(([key, value]) => page.query[key] === value)) {

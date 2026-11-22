@@ -41,7 +41,7 @@ await context.addInitScript(() => {
     }
   })
 })
-await context.route('https://tlfmfokyhahlpzmpliad.supabase.co/rest/v1/rpc/**', async (route) => {
+await context.route('https://jupuypvmgjpnpntfetqv.supabase.co/rest/v1/rpc/**', async (route) => {
   const request = route.request(),
     path = new URL(request.url()).pathname,
     body = request.postDataJSON() || {}
@@ -60,7 +60,7 @@ page.setDefaultTimeout(60000)
 page.on('pageerror', (e) => errors.push(e.message))
 page.on('response', (response) => {
   const url = new URL(response.url())
-  if (url.hostname === 'tlfmfokyhahlpzmpliad.supabase.co' && url.pathname.includes('/rest/v1/rpc/'))
+  if (url.hostname === 'jupuypvmgjpnpntfetqv.supabase.co' && url.pathname.includes('/rest/v1/rpc/'))
     reads.push({ path: url.pathname, status: response.status() })
 })
 try {

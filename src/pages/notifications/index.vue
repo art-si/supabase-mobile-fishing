@@ -1,13 +1,15 @@
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue'
-import { onLoad } from '@dcloudio/uni-app'
+import { onLoad, onReachBottom } from '@dcloudio/uni-app'
 import FishingShell from '@/components/FishingShell.vue'
+import DiscussionAvatar from '@/components/DiscussionAvatar.vue'
 import FishingLoadingStatus from '@/components/FishingLoadingStatus.vue'
 import FishingEmptyState from '@/components/FishingEmptyState.vue'
 import MobileAction from '@mobile-core/components/MobileAction.vue'
 import MobileIcon from '@mobile-core/components/MobileIcon.vue'
 import MobileSegmented from '@mobile-core/components/MobileSegmented.vue'
 import MobileLoadError from '@mobile-core/components/MobileLoadError.vue'
+import MobileListFooter from '@mobile-core/components/MobileListFooter.vue'
 import MobileBottomSheet from '@mobile-core/components/MobileBottomSheet.vue'
 import { usePageActivity } from '@mobile-core/page-activity'
 import { useAuthStore } from '@/stores/auth'
@@ -15,6 +17,7 @@ import { isDemo } from '@/config'
 import { appForeground } from '@/services/app-activity'
 import { onSocialUpdate } from '@/services/live-updates'
 import { notifications } from '@/services/notifications'
+import { isTransientRequestError } from '@/services/http'
 import { errorText, relativeTime } from '@/domain/rules'
 import {
   notificationSections,
@@ -39,6 +42,7 @@ const preferences = ref<NotificationPreferences | null>(null),
   settingsOpen = ref(false)
 const operation = ref(''),
   error = ref(''),
+  moreError = ref(''),
   status = ref(''),
   hasNew = ref(false)
 const unread = computed(() => items.value.some((item) => !item.read && item.available))
@@ -48,6 +52,9 @@ let active = false,
   showSettings = false,
   firstId: string | undefined
 let poll: ReturnType<typeof setInterval> | undefined, stopLive: (() => void) | undefined
+onReachBottom(() => {
+  if (!error.value && !moreError.value && !settingsOpen.value) void load(true)
+})
 function clear() {
   version++
   items.value = []
@@ -57,6 +64,7 @@ function clear() {
   preferences.value = null
   operation.value = ''
   error.value = ''
+  moreError.value = ''
   status.value = ''
   hasNew.value = false
 }
@@ -69,11 +77,16 @@ async function run(name: string, task: (current: () => boolean) => Promise<void>
   const currentVersion = version
   operation.value = name
   error.value = ''
+  if (name === 'more' || name === 'page') moreError.value = ''
   const current = () => active && currentVersion === version
   try {
     await task(current)
   } catch (e) {
     if (!current()) return
+    if (name === 'more' && isTransientRequestError(e)) {
+      moreError.value = errorText(e)
+      return
+    }
     // Never leave private previews on screen after reauthorization fails.
     items.value = []
     next.value = null
@@ -85,7 +98,7 @@ async function run(name: string, task: (current: () => boolean) => Promise<void>
   }
 }
 async function load(more = false) {
-  if (more && (!next.value || items.value.length >= 200)) return
+  if (more && !next.value) return
   await run(more ? 'more' : 'page', async (current) => {
     const [result, prefs] = await Promise.all([
       notifications<NotificationPage>('page', {
@@ -112,14 +125,21 @@ async function load(more = false) {
 async function refresh(markRead = false) {
   if (error.value) return
   await run(markRead ? 'read' : 'refresh', async (current) => {
+    const section = category.value
+    const ids = items.value.map(item => item.id)
+    const action = markRead ? 'mark_read' : 'refresh'
     const [result, prefs] = await Promise.all([
-      notifications<NotificationRefresh>(markRead ? 'mark_read' : 'refresh', {
-        category: category.value,
-        ids: items.value.map((item) => item.id)
-      }),
+      notifications<NotificationRefresh>(action, { category: section, ids: ids.slice(0, 200) }),
       notifications<NotificationPreferences>('preferences')
     ])
     if (!current()) return
+    for (let offset = 200; offset < ids.length; offset += 200) {
+      const part = await notifications<NotificationRefresh>(action, { category: section, ids: ids.slice(offset, offset + 200) })
+      if (!current()) return
+      result.items.push(...part.items)
+      result.summary = part.summary
+      result.latest = part.latest
+    }
     items.value = refreshNotifications(items.value, result.items)
     summary.value = result.summary
     preferences.value = prefs
@@ -231,7 +251,7 @@ onLoad((options) => {
         >
         <MobileLoadError v-if="error" title="通知未能更新" :message="error" @retry="load()" />
         <FishingLoadingStatus
-          v-if="operation === 'page' || operation === 'more'"
+          v-if="operation === 'page'"
           label="正在读取通知…"
         />
         <view v-if="items.length" class="panel inbox-list">
@@ -242,13 +262,14 @@ onLoad((options) => {
               :disabled="busy"
               @click="open(item)"
             >
+              <DiscussionAvatar v-if="item.actor && item.category === 'interaction'" :person="item.actor" />
               <view class="grow stack stack--tight">
                 <view class="row row--between row--wrap">
+                  <text class="name inbox-text">{{ item.title }}</text>
                   <text class="caption">{{ relativeTime(item.created_at) }}</text>
-                  <text v-if="!item.read" class="inbox-unread">未读</text>
                 </view>
-                <text class="name inbox-text">{{ item.title }}</text>
                 <text class="muted inbox-text">{{ item.preview }}</text>
+                <text v-if="!item.read" class="inbox-unread">未读</text>
               </view>
               <MobileIcon name="chevron" :size="16" />
             </MobileAction>
@@ -262,12 +283,12 @@ onLoad((options) => {
           </template>
         </view>
         <FishingEmptyState
-          v-else-if="!error && !hasNew && operation !== 'page'"
+          v-else-if="!error && !hasNew && !next && operation !== 'page' && operation !== 'more'"
           icon="message"
           :title="category === 'interaction' ? '还没有互动通知' : '还没有系统通知'"
           :description="
             category === 'interaction'
-              ? '新的点赞、评论回复和好友申请结果会出现在这里。'
+              ? '新的点赞和评论回复会出现在这里。'
               : '内容审核、社区举报和禁钓提醒的处理结果会出现在这里。'
           "
         />
@@ -277,14 +298,11 @@ onLoad((options) => {
             >已显示的标为已读</MobileAction
           >
         </view>
-        <MobileAction
-          v-if="next && items.length < 200"
-          class="secondary"
-          :disabled="busy"
-          @click="load(true)"
-          >更早的通知</MobileAction
-        >
-        <text v-else-if="next" class="caption">已显示最近 200 条，刷新可返回最新通知。</text>
+        <MobileListFooter :loading="operation === 'more'" :error="moreError"
+          :can-load-more="!!next && !busy && !error && !settingsOpen"
+          :finished="!next && !busy && !error" :count="items.length"
+          loading-label="正在加载更早的通知…" more-text="加载更早的通知"
+          error-title="更早的通知暂未加载" @more="load(true)" />
         <text
           v-if="status && !settingsOpen"
           class="caption"
@@ -326,9 +344,9 @@ onLoad((options) => {
         <MobileLoadError v-if="error" :message="error" @retry="load()" />
         <FishingLoadingStatus v-else-if="!preferences && !isDemo" label="正在读取设置…" />
         <text class="muted"
-          >更改只影响之后的新通知，不删除已有记录。好友申请结果、审核和举报结果仍会保留。</text
+          >更改只影响之后的新通知，不删除已有记录。审核和举报结果仍会保留。</text
         >
-        <text class="caption">聊天消息的未读数单独计算。这些开关不启用手机系统推送。</text>
+        <text class="caption">这些开关只影响站内通知。</text>
         <text v-if="status" class="caption" role="status" aria-live="polite" aria-atomic="true">{{
           status
         }}</text>
@@ -356,15 +374,16 @@ onLoad((options) => {
   color: var(--lake);
 }
 .inbox-row {
-  padding-block: 20px;
+  padding-block: 14px;
   text-align: start;
 }
+.inbox-row .name { color: var(--discussion-name); }
 .inbox-text {
   white-space: pre-wrap;
   overflow-wrap: anywhere;
 }
 .inbox-unread {
-  font-size: 0.8125rem;
+  font-size: var(--fishing-caption-size);
   font-weight: 650;
   color: var(--lake);
 }

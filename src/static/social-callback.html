@@ -1,0 +1,17 @@
+<!doctype html>
+<html lang="zh-CN">
+<meta charset="utf-8">
+<meta name="referrer" content="no-referrer">
+<title>返回钓友集</title>
+<script>
+  const query = new URLSearchParams(location.search)
+  const callback = new URLSearchParams()
+  for (const key of ['code', 'state', 'error']) {
+    const value = query.get(key)
+    if (value && value.length <= 512) callback.set(key, value)
+  }
+  try { sessionStorage.setItem('dyj.social.return', callback.toString()) } catch {}
+  location.replace('../#/pages/account/connections')
+</script>
+<a href="../#/pages/account/connections">返回钓友集</a>
+</html>

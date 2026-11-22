@@ -108,7 +108,7 @@ async function fixture(options = {}) {
           'access-control-allow-methods': '*'
         }
       })
-    if (url.origin !== 'https://tlfmfokyhahlpzmpliad.supabase.co') {
+    if (url.origin !== 'https://jupuypvmgjpnpntfetqv.supabase.co') {
       escaped.push(url.origin)
       return route.abort()
     }

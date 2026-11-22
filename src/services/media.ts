@@ -267,3 +267,19 @@ export async function resolvePhotos(posts: { media: Media[] }[]) {
   assertSession(scope)
   return posts
 }
+
+/** Sign avatars and attachments in the same batch, deduplicating shared paths. */
+export async function resolveContentMedia<T>(result: T): Promise<T> {
+  const groups: { media: Media[] }[] = []
+  function collect(value: unknown) {
+    if (Array.isArray(value)) { value.forEach(collect); return }
+    if (!value || typeof value !== 'object') return
+    if ('media' in value && Array.isArray(value.media)) groups.push(value as { media: Media[] })
+    if ('avatar' in value && value.avatar && typeof value.avatar === 'object' && 'path' in value.avatar)
+      groups.push({ media: [value.avatar as Media] })
+    for (const [key, child] of Object.entries(value)) if (key !== 'media' && key !== 'avatar') collect(child)
+  }
+  collect(result)
+  if (groups.length) await resolvePhotos(groups)
+  return result
+}

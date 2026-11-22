@@ -6,6 +6,7 @@ import ts from 'typescript'
 import { errorText, normalizePhone, optionalNumber, validCoordinates } from '../src/domain/rules'
 import * as userErrors from '../src/domain/user-errors'
 import * as weatherDomain from '../src/domain/weather'
+import * as waterPlaces from '../supabase/functions/_shared/water-places'
 import { authErrorMessage } from '../src/domain/auth-errors'
 
 test('global error copy rejects arbitrary vendor, configuration and storage diagnostics', () => {
@@ -138,6 +139,7 @@ function browserMap(
       },
       '@/domain/user-errors': userErrors,
       '@/domain/weather': weatherDomain,
+      '../../supabase/functions/_shared/water-places': waterPlaces,
       '@/domain/rules': { validCoordinates },
       '@capacitor/core': { Capacitor: { isNativePlatform: () => false } },
       '@mobile-core/location': {}
@@ -157,6 +159,7 @@ test('browser map configuration failures offer a fallback, not developer instruc
     { key: '' },
     { proxy: '' },
     { proxy: 'http://private.invalid/_AMapService' },
+    { proxy: 'https://map.invalid/functions/v1/amap-js/_AMapService' },
     { proxy: 'https://map.invalid/wrong' }
   ]) {
     const map = browserMap(options)

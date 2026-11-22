@@ -4,7 +4,7 @@ $ErrorActionPreference = 'Stop'
 $ProgressPreference = 'SilentlyContinue'
 . (Join-Path $PSScriptRoot 'private-supabase-cli.ps1')
 $root = Split-Path -Parent $PSScriptRoot
-$project = 'tlfmfokyhahlpzmpliad'
+$project = 'jupuypvmgjpnpntfetqv'
 $origin = "https://$project.supabase.co"
 $runId = [guid]::NewGuid().ToString()
 $email = "dyj-cleanup-$runId@example.invalid"
@@ -78,7 +78,7 @@ try {
   foreach($media in @($evidence,$draft)){if($media.id -notmatch '^[a-f0-9-]{36}$' -or $media.path -ne "$userId/$($media.id).jpg"){throw 'Unexpected upload identity'}}
   $reportId=[guid]::NewGuid().ToString()
   $stage='save-private-report'
-  $report=@{id=$reportId;category='electric';province='江苏省';city='苏州市';district='';location_label='清理验收虚构地点';observed_at=[DateTime]::UtcNow.AddMinutes(-10).ToString('o');description='系统私密清理验收，不是真实线索，不发送';media=@(@{id=$evidence.id});consent_version='2026-11-19-water-v1'}
+  $report=@{id=$reportId;category='electric';province='江苏省';city='苏州市';district='';location_label='清理验收虚构地点';longitude=120.707;latitude=31.306;observed_at=[DateTime]::UtcNow.AddMinutes(-10).ToString('o');description='系统私密清理验收，不是真实线索，不发送';media=@(@{id=$evidence.id})}
   $null=Api POST '/rest/v1/rpc/fishing_write' @{action='save_water_report';payload=$report}
   $before=@(Sql "select count(*)::int as n from storage.objects where bucket_id='fishing-media' and name in ('$($evidence.path)','$($draft.path)')")
   Check ($before[0].n -eq 2) 'two real private Storage objects exist'

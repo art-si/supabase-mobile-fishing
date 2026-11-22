@@ -6,7 +6,7 @@ import { setH5TextScale } from './h5-text-scale.mjs'
 const base=process.env.FISHING_H5_URL||'http://127.0.0.1:5178',output='artifacts/report-email-channels',owner='11111111-1111-4111-8111-111111111111'
 assert.ok(['127.0.0.1','localhost'].includes(new URL(base).hostname));await mkdir(output,{recursive:true})
 const browser=await chromium.launch({channel:'chrome',headless:true}),checks=[],errors=[],escaped=[]
-const context=await browser.newContext({viewport:{width:375,height:812},locale:'zh-CN',timezoneId:'Asia/Shanghai',reducedMotion:'reduce'})
+const context=await browser.newContext({viewport:{width:375,height:812},locale:'zh-CN',timezoneId:'Asia/Shanghai',reducedMotion:'reduce',permissions:['geolocation'],geolocation:{longitude:121.55,latitude:29.87}})
 const report={id:'22222222-2222-4222-8222-222222222222',category:'electric',province:'湖北省',city:'武汉市',district:'蔡甸区',location_label:'隔离验收河段',longitude:114.18,latitude:30.497,description:'亲眼所见的线索（隔离验收样本）',media:[],created_at:new Date().toISOString(),observed_at:new Date().toISOString(),status:'saved',crs:'GCJ-02'}
 await context.addInitScript(({owner})=>{
  localStorage.setItem('dyj.auth.v1',JSON.stringify({type:'object',data:{access_token:'isolated-channel-fixture',refresh_token:'fixture',expires_at:Date.now()/1000+3600,user:{id:owner}}}))
@@ -26,7 +26,7 @@ await context.route('**/*',route=>{
   return route.continue()
  }
  if(!url.protocol.startsWith('http'))return route.continue()
- if(url.origin==='https://tlfmfokyhahlpzmpliad.supabase.co'){
+ if(url.origin==='https://jupuypvmgjpnpntfetqv.supabase.co'){
   if(req.method()==='OPTIONS')return route.fulfill({headers,json:{}})
   if(url.pathname==='/auth/v1/user')return route.fulfill({headers,json:{id:owner}})
   if(url.pathname.endsWith('/fishing_read'))return route.fulfill({headers,json:req.postDataJSON()?.payload?.id?report:{items:[],next:null}})
@@ -37,11 +37,14 @@ const page=await context.newPage();page.setDefaultTimeout(25000);page.on('pageer
 const button=name=>page.getByRole('button',{name,exact:true})
 try{
  await page.goto(`${base}/#/pages/water-report/index?id=${report.id}`,{waitUntil:'domcontentloaded'})
+ await button('举报联系方式').click()
  await page.getByText('蔡甸区农业综合执法大队',{exact:true}).waitFor()
- await page.getByText(/距当前位置\d+米/).waitFor()
+ await page.getByText(/距所选水域约[\d.]+[米公]/).waitFor()
  const cards=page.locator('.panel').filter({has:page.getByText('信息核对：2026-11-20',{exact:true})})
  assert.match(await cards.first().innerText(),/蔡甸区农业综合执法大队/)
- assert.ok((await page.locator('body').innerText()).indexOf('蔡甸区农业综合执法大队')<(await page.locator('body').innerText()).indexOf('中国渔政举报受理平台'))
+ const directoryNames=await page.locator('.report-channel__toggle + .stack > .panel .name').allTextContents()
+ assert.equal(directoryNames[0],'蔡甸区农业综合执法大队')
+ assert.ok(directoryNames.indexOf('中国渔政举报受理平台')>0)
  checks.push('current location resolves an exact same-city agency; local contact leads national fallbacks and displays real-adapter straight-line distance')
  const emailCard=page.locator('.panel').filter({has:page.getByText('公安部“长江大保护”举报中心',{exact:true})})
  await emailCard.getByRole('button',{name:'发送邮件',exact:true}).click()
@@ -78,6 +81,21 @@ try{
   await page.screenshot({path:`${output}/channels-${name}.png`})
  }
  checks.push('all contact/source/email actions align, equal columns adapt at 320/375/440/landscape/wide/dark large text without overflow')
+ await button('选择举报机构').click()
+ const agencies=page.getByRole('dialog',{name:'选择举报机构',exact:true})
+ const writeMail=agencies.getByRole('button',{name:'公安部“长江大保护”举报中心，写举报邮件',exact:true})
+ await writeMail.click()
+ await confirm.waitFor()
+ await confirm.getByRole('button',{name:'取消',exact:true}).click()
+ await confirm.waitFor({state:'hidden'})
+ await writeMail.click()
+ assert.equal(await page.evaluate(()=>window.mailHandoffs.length),1)
+ await confirm.getByRole('button',{name:'打开邮箱',exact:true}).click()
+ const picked=new URL(await page.evaluate(()=>window.mailHandoffs[1]))
+ assert.equal(picked.pathname,'changjiangjinbu@163.com')
+ assert.match(picked.searchParams.get('body'),/114\.18, 30\.497/)
+ assert.ok(picked.searchParams.get('body').includes(report.description))
+ checks.push('selecting an official mailbox in the picker prepares only the chosen recipient, saved text and exact incident coordinates')
  assert.deepEqual(escaped,[]);assert.deepEqual(errors,[])
 }catch(e){process.exitCode=1;errors.push(String(e));await page.screenshot({path:`${output}/failed.png`}).catch(()=>{})}
 finally{const result={passed:!process.exitCode,scope:'isolated H5 GPS/POI/API/mail contracts; no actual mail or official contact',checks,errors,escaped};await writeFile(`${output}/result.json`,JSON.stringify(result,null,2));console.log(JSON.stringify(result,null,2));await browser.close()}

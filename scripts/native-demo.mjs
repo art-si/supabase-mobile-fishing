@@ -1,9 +1,8 @@
 import { spawnSync } from 'node:child_process'
-import { createRequire } from 'node:module'
-import { dirname, join } from 'node:path'
-const require = createRequire(import.meta.url)
-const cli = join(dirname(require.resolve('@capacitor/cli/package.json')), 'bin/capacitor')
-const result = spawnSync(process.execPath, [cli, 'sync'], {
+import { fileURLToPath } from 'node:url'
+
+const cli = fileURLToPath(import.meta.resolve('supabase-mobile-pro/scripts/mobile-cli.mjs'))
+const result = spawnSync(process.execPath, [cli, 'cap', 'sync'], {
   stdio: 'inherit',
   env: { ...process.env, FISHING_DEMO_BUILD: '1' }
 })

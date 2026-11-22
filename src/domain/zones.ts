@@ -29,7 +29,9 @@ export interface Zone extends ZoneCircle {
   description: string
   location_label: string
   crs: 'GCJ-02'
-  source: 'community' | 'official'
+  source: 'community' | 'official' | 'spot' | 'notice'
+  spot_id?: string
+  community_based?: boolean
   boundary?: ZoneBoundary | null
   reporter?: string
   issuer?: string
@@ -57,7 +59,27 @@ export interface ZoneMap {
   released?: Zone[]
   truncated: boolean
   zoom_in: boolean
+  spot_points?: ProhibitedSpotPoint[]
 }
+export interface ProhibitedSpotPoint {
+  id: string
+  catalog?: boolean
+  community_based?: boolean
+  name: string
+  city: string
+  observed_on: string | null
+  created_at: string
+  review_revision: number
+  longitude: number
+  latitude: number
+}
+export const zoneSourceLabels: Record<Zone['source'], string> = {
+  official: '官方公告',
+  community: '钓友上报',
+  spot: '钓位上报',
+  notice: '公告线索'
+}
+export const zoneSourceLabel = (zone: Zone) => zone.community_based ? '钓友评论' : zoneSourceLabels[zone.source]
 export const zoneStatus = {
   pending: '待审核 · 尚未公开',
   published: '已公开 · 钓友提醒',

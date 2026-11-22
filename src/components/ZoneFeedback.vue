@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { ref, watch, onBeforeUnmount } from 'vue'
 import MobileAction from '@mobile-core/components/MobileAction.vue'
+import FishingLoadingStatus from './FishingLoadingStatus.vue'
 import MobileField from '@mobile-core/components/MobileField.vue'
 import { useAuthStore } from '@/stores/auth'
 import { zoneFeedback } from '@/services/zones'
@@ -136,7 +137,7 @@ async function vote(choice: 'can_fish' | 'cannot_fish') {
         认为仍需禁钓，将恢复围栏。范围或依据更新后重新计票。</text
       >
     </template>
-    <text v-else-if="loading" class="caption" role="status">正在读取钓友反馈…</text>
+    <FishingLoadingStatus v-else-if="loading" label="正在读取钓友反馈…" :block="false" />
     <text v-if="error" class="error" role="alert">{{ error }}</text>
     <MobileAction
       v-if="error"

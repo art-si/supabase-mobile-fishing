@@ -11,7 +11,7 @@ const env = {
 }
 const build = spawnSync(
   process.platform === 'win32' ? 'pnpm.cmd' : 'pnpm',
-  ['exec', 'uni', 'build', '-p', 'h5', '--mode', 'test', '--outDir', env.H5_BUILD_DIR],
+  ['exec', 'mobile-pro', 'uni', 'build', '-p', 'h5', '--mode', 'test', '--outDir', env.H5_BUILD_DIR],
   { stdio: 'inherit', shell: process.platform === 'win32', env }
 )
 if (build.status !== 0) process.exit(build.status ?? 1)

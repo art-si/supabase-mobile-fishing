@@ -76,7 +76,7 @@ async function fixture(platform) {
     const req = route.request(),
       url = new URL(req.url())
     if (url.origin === base || !url.protocol.startsWith('http')) return route.continue()
-    if (url.origin !== 'https://tlfmfokyhahlpzmpliad.supabase.co') {
+    if (url.origin !== 'https://jupuypvmgjpnpntfetqv.supabase.co') {
       unexpected.push(url.origin)
       return route.abort()
     }

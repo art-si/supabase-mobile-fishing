@@ -12,14 +12,16 @@ const video = await readFile('tests/fixtures/flower-cc0.mp4')
 const owner = '11111111-1111-4111-8111-111111111111'
 const post = { id: '22222222-2222-4222-8222-222222222222', author: { id:owner,nickname:'媒体验收',city:'苏州',bio:'',method:'',handle:'' }, title:'今天的渔获',body:'水草边慢慢找鱼，记录这次出钓。', kind:'catch', species:'鲫鱼',method:'台钓',bait:'蚯蚓',additives:'',weight_kg:3,count:10,length_cm:null,occurred_on:'2026-11-20',location_label:'测试水域 · 隔离界面样例',audience:'public',status:'published',created_at:new Date().toISOString(),like_count:0,comment_count:0,liked:false,saved:false,review_revision:0,media:[{id:'image-1',path:`${owner}/image.png`,kind:'image',width:800,height:800},{id:'video-1',path:`${owner}/video.mp4`,kind:'video',width:960,height:540,duration:5.005}] }
 const browser = await chromium.launch({channel:'chrome',headless:true})
-const context = await browser.newContext({viewport:{width:375,height:812},locale:'zh-CN',reducedMotion:'reduce'})
+const context = await browser.newContext({viewport:{width:375,height:812},locale:'zh-CN',reducedMotion:'reduce',
+  permissions:['geolocation'],geolocation:{longitude:114.1885,latitude:30.5128}})
 const errors=[],escaped=[],checks=[]
+let failPlayback = false
 await context.addInitScript(({owner})=>localStorage.setItem('dyj.auth.v1',JSON.stringify({type:'object',data:{access_token:'isolated-post-media',refresh_token:'isolated',expires_at:Date.now()/1000+3600,user:{id:owner}}})),{owner})
 await context.routeWebSocket(/supabase\.co/,socket=>socket.close())
 await context.route('**/*',async route=>{
   const req=route.request(),url=new URL(req.url())
   if(url.origin===base||!url.protocol.startsWith('http'))return route.continue()
-  if(url.origin!=='https://tlfmfokyhahlpzmpliad.supabase.co'){escaped.push(url.origin);return route.abort()}
+  if(url.origin!=='https://jupuypvmgjpnpntfetqv.supabase.co'){escaped.push(url.origin);return route.abort()}
   const headers={'access-control-allow-origin':'*','access-control-allow-headers':'*','access-control-allow-methods':'*'}
   const reply=json=>route.fulfill({json,headers})
   if(req.method()==='OPTIONS')return reply({})
@@ -29,13 +31,15 @@ await context.route('**/*',async route=>{
     const {action}=req.postDataJSON()||{}
     if(action==='post')return reply({post,comments:[],comments_next:null})
     if(action==='library')return reply({posts:[post],spots:[],trips:[]})
+    if(action==='library_posts')return reply({items:[post],next:null})
     if(action==='profile')return reply({profile:post.author,posts:[]})
     return reply({items:[],next:null})
   }
   if(url.pathname.startsWith('/storage/v1/object/sign/fishing-media/')){
     if(req.method()==='POST')return reply({signedURL:`/object/sign/fishing-media/${url.pathname.split('/').at(-1)}?token=fixture`})
     const isVideo=url.pathname.endsWith('.mp4')
-    return route.fulfill({status:200,contentType:isVideo?'video/mp4':'image/png',body:isVideo?video:image,headers:{...headers,'accept-ranges':'bytes'}})
+    if(isVideo && failPlayback) return route.fulfill({status:503,headers})
+    return route.fulfill({status:200,contentType:isVideo?'video/mp4':'image/png',body:isVideo?video:image,headers:{...headers,'accept-ranges':'bytes','cache-control':'no-store'}})
   }
   escaped.push(`${req.method()} ${url.pathname}`);return route.abort()
 })
@@ -58,12 +62,14 @@ try {
   await page.setViewportSize({width:375,height:812});await page.emulateMedia({colorScheme:'light'});await setH5TextScale(page,16)
   await page.getByRole('button',{name:/播放视频，第2项/}).click()
   await page.getByRole('dialog',{name:'视频预览',exact:true}).waitFor()
+  assert.equal(await page.evaluate(() => document.body.style.overflow), 'hidden')
   await page.waitForFunction(()=>document.querySelector('dialog[open] video')?.currentTime>.2)
   const close=page.getByRole('button',{name:'关闭视频预览',exact:true}),box=await close.boundingBox()
   assert.ok(box.width>=44&&box.height>=44&&box.y<80)
   await page.screenshot({path:`${output}/video-preview-375.png`})
   await close.click()
   assert.equal(await page.locator('dialog[open]').count(),0)
+  assert.equal(await page.evaluate(() => document.body.style.overflow), '')
   assert.ok(await page.getByRole('button',{name:/播放视频，第2项/}).evaluate(node=>node===document.activeElement))
   checks.push('list video opens the shared full-screen player, plays real MP4, closes with X and returns focus')
   await page.getByRole('button',{name:/阅读全文/}).click()
@@ -82,10 +88,26 @@ try {
   await page.setViewportSize({width:375,height:812});await page.emulateMedia({colorScheme:'light'});await setH5TextScale(page,16)
   await page.getByRole('button',{name:/查看大图，第1项/}).click()
   await page.locator('.mobile-image-viewer[open] img.mobile-image-viewer__loaded').waitFor()
+  assert.equal(await page.evaluate(() => document.body.style.overflow), 'hidden')
   await page.screenshot({path:`${output}/image-preview-375.png`})
   await page.getByRole('button',{name:'关闭预览',exact:true}).click()
   checks.push('detail image reuses the same full-screen image viewer as the uploader')
-  await page.getByRole('button',{name:/播放视频，第2项/}).click()
+  const videoTrigger = page.getByRole('button',{name:/播放视频，第2项/})
+  failPlayback = true
+  await videoTrigger.press('Enter')
+  const player = page.getByRole('dialog',{name:'视频预览',exact:true})
+  await player.getByRole('alert').filter({hasText:'视频暂时无法播放'}).waitFor()
+  await page.screenshot({path:`${output}/video-error-375.png`})
+  const retry = player.getByRole('button',{name:'重新播放',exact:true})
+  failPlayback = false
+  await retry.press('Enter')
+  await page.waitForFunction(()=>document.querySelector('dialog[open] video')?.currentTime>.2)
+  assert.equal(await player.locator('.mobile-video-viewer__stage').evaluate(stage=>stage===document.activeElement),true)
+  await page.keyboard.press('Escape')
+  await player.waitFor({state:'hidden'})
+  assert.equal(await videoTrigger.evaluate(node=>node===document.activeElement),true)
+  checks.push('video error offers keyboard recovery, retry keeps focus in the player, and Escape returns it')
+  await videoTrigger.click()
   await page.waitForFunction(()=>document.querySelector('dialog[open] video')?.currentTime>.2)
   await page.evaluate(()=>{ window.galleryReviewPlayer=document.querySelector('dialog[open] video'); location.hash='/pages/mine/library?type=posts' })
   await page.waitForFunction(()=>document.querySelectorAll('dialog[open]').length===0)

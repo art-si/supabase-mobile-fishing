@@ -1,54 +1,75 @@
 <script setup lang="ts">
-import { computed, ref, watch, onBeforeUnmount } from 'vue'
+import { computed, ref, shallowRef, watch, onBeforeUnmount } from 'vue'
 import MobileAction from '@mobile-core/components/MobileAction.vue'
 import MobileLoadError from '@mobile-core/components/MobileLoadError.vue'
-import MobileLoadingStatus from '@/components/FishingLoadingStatus.vue'
 import { getStaticPreview } from '@/services/amap'
 import { errorText } from '@/domain/rules'
 import { useAuthStore } from '@/stores/auth'
 import type { MapPreviewTarget } from '@/domain/map'
+import noFishingPin from '@/brand/no-fishing-pin.png'
 defineOptions({ options: { styleIsolation: 'apply-shared' } })
 const props = withDefaults(
-  defineProps<{ target: MapPreviewTarget; area?: boolean; automatic?: boolean }>(),
+  defineProps<{ target: MapPreviewTarget; area?: boolean; automatic?: boolean; prohibited?: boolean }>(),
   { automatic: false }
 )
+type Frame = { request: number; image: string; zoom: number; prohibited: boolean }
 const auth = useAuthStore(),
-  image = ref(''),
+  preview = shallowRef<Frame>(),
+  candidate = shallowRef<Frame>(),
   error = ref(''),
   loading = ref(false),
-  zoom = ref(14)
+  requestedZoom = ref(14)
+const frames = computed(() => [preview.value, candidate.value].filter((frame) => !!frame))
+const maxZoom = computed(() => props.area ? 11 : 17)
 const circle = computed(() => 'radiusM' in props.target && !!props.target.radiusM)
 let version = 0,
   disposed = false
-async function load() {
+async function load(zoom = requestedZoom.value) {
   if (loading.value || !auth.requireLogin()) return
   const current = ++version
+  requestedZoom.value = zoom
   loading.value = true
   error.value = ''
-  image.value = ''
   try {
-    const result = await getStaticPreview(props.target, zoom.value)
+    const result = await getStaticPreview(props.prohibited ? { ...props.target, hideMarker: true } : props.target, zoom)
     if (disposed || current !== version) return
-    image.value = result.image
-    zoom.value = result.zoom
+    candidate.value = { request: current, image: result.image, zoom: result.zoom, prohibited: !!props.prohibited && result.precision === 'exact' }
   } catch (e) {
-    if (!disposed && current === version) error.value = errorText(e)
-  } finally {
-    if (!disposed && current === version) loading.value = false
+    if (disposed || current !== version) return
+    error.value = errorText(e)
+    loading.value = false
   }
 }
+function imageReady(frame: Frame) {
+  if (frame.request !== candidate.value?.request) return
+  preview.value = frame
+  candidate.value = undefined
+  requestedZoom.value = frame.zoom
+  loading.value = false
+}
+function imageFailed(frame: Frame) {
+  if (frame.request !== candidate.value?.request) return
+  candidate.value = undefined
+  error.value = '图片显示失败，请重新加载地图'
+  loading.value = false
+}
+function canZoom(delta: number) {
+  if (loading.value || !preview.value) return false
+  const next = preview.value.zoom + delta
+  return next >= 8 && next <= maxZoom.value
+}
 function changeZoom(delta: number) {
-  zoom.value = Math.max(8, Math.min(props.area ? 11 : 17, zoom.value + delta))
-  void load()
+  if (canZoom(delta)) void load(preview.value!.zoom + delta)
 }
 watch(
-  () => JSON.stringify([props.target, props.area, auth.context]),
+  () => JSON.stringify([props.target, props.area, props.prohibited, auth.context]),
   () => {
     version++
     loading.value = false
-    image.value = ''
+    preview.value = undefined
+    candidate.value = undefined
     error.value = ''
-    zoom.value = props.area ? 11 : 14
+    requestedZoom.value = props.area ? 11 : 14
     if (props.automatic && auth.signedIn) void load()
   },
   { immediate: true }
@@ -65,41 +86,54 @@ onBeforeUnmount(() => {
         circle ? '圈选范围' : area ? '大致位置' : '位置预览'
       }}</text>
     </view>
-    <image
-      v-if="image && !error"
-      class="static-map-image"
-      :src="image"
-      mode="aspectFit"
-      :aria-label="
-        circle
-          ? '高德静态地图上的圈选参考范围，不是官方边界'
-          : area
-            ? '高德大致水域静态地图，不可据此导航'
-            : '高德地点静态预览，不可拖动选点'
-      "
-      @error="error = '图片显示失败，请重新加载地图'"
-    />
-    <MobileLoadingStatus v-if="loading" label="正在读取高德静态地图…" />
-    <MobileLoadError v-else-if="error" title="静态地图暂不可用" :message="error" @retry="load" />
-    <MobileAction v-else-if="!image" class="secondary" @click="load">{{
-      auth.signedIn ? '加载静态地图' : '登录后查看地图'
-    }}</MobileAction>
-    <view v-if="image && !error" class="mobile-action-group">
+    <view v-if="preview || loading" class="static-map-stage" :aria-busy="loading || undefined">
+      <image
+        v-for="frame in frames"
+        :key="frame.request"
+        class="static-map-image"
+        :class="{ 'static-map-image--incoming': frame.request !== preview?.request }"
+        :src="frame.image"
+        mode="aspectFit"
+        :aria-hidden="frame.request !== preview?.request || undefined"
+        :aria-label="
+          circle
+            ? '高德静态地图上的圈选参考范围，不是官方边界'
+            : area
+              ? '高德大致水域静态地图，不可据此导航'
+              : '高德地点静态预览，不可拖动选点'
+        "
+        @load="imageReady(frame)"
+        @error="imageFailed(frame)"
+      />
+      <image v-if="preview?.prohibited" class="static-map-pin" :src="noFishingPin" mode="aspectFit" aria-label="禁钓点位" />
+      <text v-if="loading && !preview" class="caption" role="status">正在读取高德静态地图…</text>
+    </view>
+    <view v-if="preview" class="mobile-action-group static-map-actions">
       <MobileAction
         class="secondary"
-        :disabled="loading || zoom <= 8"
+        :aria-disabled="!canZoom(-1) || undefined"
         aria-label="缩小静态地图"
         @click="changeZoom(-1)"
         >缩小</MobileAction
       >
       <MobileAction
         class="secondary"
-        :disabled="loading || zoom >= (area ? 11 : 17)"
+        :aria-disabled="!canZoom(1) || undefined"
         aria-label="放大静态地图"
         @click="changeZoom(1)"
         >放大</MobileAction
       >
     </view>
+    <text v-if="preview && loading" class="caption" role="status">正在更新地图…</text>
+    <MobileLoadError
+      v-if="error"
+      :title="preview ? '未能更新地图' : '静态地图暂不可用'"
+      :message="preview ? '仍可查看上一次的地图。' + error : error"
+      @retry="load()"
+    />
+    <MobileAction v-else-if="!preview && !loading" class="secondary" @click="load()">{{
+      auth.signedIn ? '加载静态地图' : '登录后查看地图'
+    }}</MobileAction>
     <text class="caption"
       >高德提供底图 · 图片不能拖动选点{{
         area ? '，不代表实际下竿位置' : ''
@@ -109,12 +143,37 @@ onBeforeUnmount(() => {
   </view>
 </template>
 <style scoped>
-.static-map-image {
-  display: block;
+.static-map-stage {
+  position: relative;
+  display: grid;
+  place-items: center;
   width: 100%;
   aspect-ratio: 16 / 9;
-  height: auto;
   background: var(--inset);
   border: 1px solid var(--line);
+  overflow: hidden;
+  text-align: center;
+}
+.static-map-image {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+}
+.static-map-image--incoming {
+  opacity: 0;
+}
+.static-map-pin {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 44px;
+  height: 48px;
+  transform: translate(-50%, -100%);
+  pointer-events: none;
+}
+.static-map-actions :deep(.mobile-action[aria-disabled='true']) {
+  color: var(--reed);
+  background: var(--inset);
 }
 </style>

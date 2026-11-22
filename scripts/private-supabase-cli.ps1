@@ -3,7 +3,7 @@ function Invoke-FishingPrivateCli {
   param([string[]]$Arguments, [hashtable]$ChildEnvironment = @{})
   $projectRoot = Split-Path -Parent $PSScriptRoot
   $linked = Join-Path $projectRoot 'supabase/.temp/project-ref'
-  if (!(Test-Path -LiteralPath $linked) -or (Get-Content -LiteralPath $linked -Raw).Trim() -ne 'tlfmfokyhahlpzmpliad') {
+  if (!(Test-Path -LiteralPath $linked) -or (Get-Content -LiteralPath $linked -Raw).Trim() -ne 'jupuypvmgjpnpntfetqv') {
     throw 'Refusing an unconfirmed linked Supabase project'
   }
   $cliProcess = [Diagnostics.Process]::new()

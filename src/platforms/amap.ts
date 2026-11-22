@@ -5,14 +5,18 @@ import { serviceErrorMessage } from '@/domain/user-errors'
 import { Capacitor } from '@capacitor/core'
 import { captureCapacitorGcj02 } from '@mobile-core/location'
 import { normalizeAmapWeather, validAdcode, type WeatherTarget } from '@/domain/weather'
-import type { MobileMapInstance, MobileMapSdk } from '@mobile-core/map'
+import type { MapPoint, MobileMapInstance, MobileMapSdk } from '@mobile-core/map'
 import { validCoordinates } from '@/domain/rules'
 import type { MapPlace } from '@/domain/map'
+import { naturalPlaceType, waterPlace, type WaterPlace } from '../../supabase/functions/_shared/water-places'
 export interface LngLat {
   getLng(): number
   getLat(): number
 }
-export type AmapMap = MobileMapInstance
+export interface AmapMap extends MobileMapInstance {
+  setCenter(point: MapPoint, immediately?: boolean, duration?: number): void
+  setZoomAndCenter?(zoom: number, point: MapPoint, immediately?: boolean, duration?: number): void
+}
 interface Marker {
   setPosition(point: [number, number]): void
   on(name: string, callback: () => void): void
@@ -20,6 +24,7 @@ interface Marker {
 export interface POI {
   id: string
   name: string
+  type?: string
   address: string
   location: LngLat
   adcode?: string
@@ -87,8 +92,10 @@ interface AmapNamespace extends MobileMapSdk {
         result: {
           regeocode?: {
             formattedAddress: string
+            pois?: { name: string; distance: number }[]
             addressComponent?: {
               adcode?: string
+              citycode?: string
               province?: string
               city?: string | []
               district?: string
@@ -109,20 +116,19 @@ let pending: Promise<AmapNamespace> | undefined
 export function loadAmap(): Promise<AmapNamespace> {
   if (isDemo) return Promise.reject(new Error(serviceErrorMessage('MAP_DEMO_UNAVAILABLE')))
   if (!config.amapKey) return Promise.reject(new Error(serviceErrorMessage('MAP_NOT_CONFIGURED')))
-  if (!config.amapServiceHost)
-    return Promise.reject(new Error(serviceErrorMessage('MAP_NOT_CONFIGURED')))
   if (window.AMap) return Promise.resolve(window.AMap)
   if (pending) return pending
   pending = new Promise<AmapNamespace>((resolve, reject) => {
     let proxy: URL
     try {
       // iOS Capacitor can report an opaque ("null") origin; its href is still a valid base.
+      if (!config.amapServiceHost) throw new Error()
       proxy = new URL(config.amapServiceHost, window.location.href)
       const sameOrigin = proxy.origin === window.location.origin
       if (proxy.protocol !== 'https:' && !(sameOrigin && proxy.protocol === 'http:'))
         throw new Error()
       if (
-        !proxy.pathname.endsWith('/_AMapService') ||
+        proxy.pathname !== '/_AMapService' ||
         proxy.search ||
         proxy.hash ||
         proxy.username ||
@@ -281,6 +287,65 @@ export async function reverseGeocode(point: [number, number]) {
     ),
     '地址识别'
   )
+}
+export async function reversePlaceName(point: MapPoint) {
+  const amap = await loadAmap()
+  return timed(
+    new Promise<string>((resolve) =>
+      new amap.Geocoder({ extensions: 'all', radius: 250 }).getAddress(point, (status, result) => {
+        const address = result?.regeocode
+        if (status !== 'complete' || !address) return resolve('')
+        let nearestName = ''
+        let nearestDistance = Infinity
+        for (const poi of address.pois ?? []) {
+          const name = poi.name?.trim()
+          if (
+            !name || !Number.isFinite(poi.distance) || poi.distance < 0 ||
+            poi.distance >= nearestDistance
+          ) continue
+          nearestName = name
+          nearestDistance = poi.distance
+        }
+        resolve(nearestName || address.formattedAddress?.trim() || '')
+      })
+    ),
+    '地点识别'
+  )
+}
+
+async function fetchWaterPlaces(point: MapPoint, radius: number) {
+  const amap = await loadAmap()
+  return timed(new Promise<WaterPlace[]>((resolve, reject) => {
+    const search = new amap.PlaceSearch({ type: naturalPlaceType, pageSize: 25, extensions: 'base' })
+    search.searchNearBy('', point, radius, (status, result) => {
+      if (status === 'no_data') return resolve([])
+      if (status !== 'complete') return reject(new Error('水域名称暂时无法读取'))
+      const places: WaterPlace[] = []
+      for (const poi of result.poiList?.pois ?? []) {
+        const place = waterPlace(poi.name, poi.type, poi.location?.getLng?.(), poi.location?.getLat?.())
+        if (place) places.push(place)
+      }
+      resolve(places)
+    })
+  }), '水域名称识别', 7000)
+}
+
+const waterPlaceCache = new Map<string, { expires: number; request: Promise<WaterPlace[]> }>()
+
+export function nearbyWaterPlaces(point: MapPoint, radius: number) {
+  // GPS and an immediate tap can ask for the same labels. The caller checks
+  // each candidate against the actual selected geometry, even on a cache hit.
+  const key = [point[0].toFixed(4), point[1].toFixed(4), radius].join('/')
+  const cached = waterPlaceCache.get(key)
+  if (cached && cached.expires > Date.now()) return cached.request
+  const request = fetchWaterPlaces(point, radius).catch(error => {
+    if (waterPlaceCache.get(key)?.request === request) waterPlaceCache.delete(key)
+    throw error
+  })
+  waterPlaceCache.delete(key)
+  waterPlaceCache.set(key, { expires: Date.now() + 120_000, request })
+  if (waterPlaceCache.size > 24) waterPlaceCache.delete(waterPlaceCache.keys().next().value!)
+  return request
 }
 /** A new post defaults to an area name, never an automatically disclosed street address. */
 export async function reverseAreaName(point: [number, number]) {

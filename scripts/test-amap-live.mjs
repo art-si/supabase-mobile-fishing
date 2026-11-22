@@ -12,31 +12,11 @@ const output = resolve(
 )
 mkdirSync(output, { recursive: true })
 const browser = await chromium.launch({ channel: 'chrome', headless: true })
-const context = await browser.newContext({ viewport: { width: 375, height: 812 }, locale: 'zh-CN' })
-// Do not obtain this computer's actual location during automation.
-await context.addInitScript(() => {
-  Object.defineProperty(navigator, 'permissions', {
-    configurable: true,
-    value: { query: async () => ({ state: 'denied' }) }
-  })
+const context = await browser.newContext({
+  viewport: { width: 375, height: 812 }, locale: 'zh-CN',
+  geolocation: { longitude: 120.69, latitude: 31.31, accuracy: 20 }
 })
-if (cloud) {
-  // Exercise the real SDK against the deployed proxy, including browser CORS.
-  // Only the proxy destination changes; no provider response or SDK is mocked.
-  await context.addInitScript(() => {
-    let configuration
-    Object.defineProperty(window, '_AMapSecurityConfig', {
-      configurable: true,
-      get: () => configuration,
-      set: (value) => {
-        configuration = {
-          ...value,
-          serviceHost: 'https://tlfmfokyhahlpzmpliad.supabase.co/functions/v1/amap-js/_AMapService'
-        }
-      }
-    })
-  })
-}
+await context.grantPermissions(['geolocation'], { origin: new URL(base).origin })
 const page = await context.newPage()
 const searchInput = page.locator('input[aria-label="搜索高德地点"]')
 page.setDefaultTimeout(20000)
@@ -137,20 +117,11 @@ try {
     )
     await page.screenshot({ path: resolve(output, `map-${label}.png`), fullPage: true })
   }
-  const secured = await page.evaluate(
-    () =>
-      Boolean(window._AMapSecurityConfig?.serviceHost) &&
-      !window._AMapSecurityConfig?.securityJsCode
-  )
+  const proxy = new URL(await page.evaluate(() => window._AMapSecurityConfig?.serviceHost))
+  const secured = proxy.pathname === '/_AMapService' &&
+    await page.evaluate(() => !window._AMapSecurityConfig?.securityJsCode)
   assert.ok(secured)
-  if (cloud)
-    assert.ok(
-      await page.evaluate(() =>
-        window._AMapSecurityConfig.serviceHost.startsWith(
-          'https://tlfmfokyhahlpzmpliad.supabase.co/'
-        )
-      )
-    )
+  if (cloud) assert.equal(proxy.protocol, 'https:')
   const proxyResponses = responses.filter((r) => r.path.includes('_AMapService'))
   assert.ok(
     proxyResponses.some((r) => r.path.endsWith('/v3/assistant/inputtips') && r.status === 200)
@@ -158,7 +129,7 @@ try {
   console.log(
     JSON.stringify({
       check: 'live-amap-search-select-geocode-layout',
-      proxy: cloud ? 'deployed-supabase' : 'configured',
+      proxy: cloud ? 'hosted' : 'configured',
       artifacts: output,
       count,
       ready,
@@ -175,7 +146,7 @@ try {
     JSON.stringify({
       check: 'live-amap-search-select',
       passed: false,
-      messages: await page.locator('.fishing-content').innerText(),
+      messages: await page.locator('body').innerText().then(text => text.slice(0, 300)),
       issued,
       responses,
       failures

@@ -34,8 +34,6 @@ export interface DurableDeliveryStore {
 
 export interface SmsHookConfig extends PnvsConfig {
   deliveryEnabled: boolean
-  // Empty/invalid allowlists fail closed; public delivery is not an available mode.
-  allowedTestPhones: readonly string[]
   hookSecret: string
   // Independent 32-byte base64 HMAC key; never use a bare hash of low-entropy OTP data.
   idempotencySecret: string
@@ -196,13 +194,6 @@ export function createSmsHookHandler(deps: SmsHookDependencies) {
       const fingerprintKey = base64Key(config.idempotencySecret)
       if (
         !config.deliveryEnabled ||
-        !Array.isArray(config.allowedTestPhones) ||
-        config.allowedTestPhones.length === 0 ||
-        config.allowedTestPhones.length > 10 ||
-        !config.allowedTestPhones.every(
-          (phone) => typeof phone === 'string' && /^\+861[3-9]\d{9}$/.test(phone)
-        ) ||
-        !config.allowedTestPhones.includes(message.phone) ||
         !validPnvsConfig(config) ||
         !fingerprintKey ||
         !deps.store ||

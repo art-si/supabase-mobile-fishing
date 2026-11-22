@@ -5,10 +5,13 @@ import{mkdir,writeFile}from'node:fs/promises'
 import{setH5TextScale}from'./h5-text-scale.mjs'
 const base=process.env.FISHING_H5_URL||'http://127.0.0.1:5178',out='artifacts/report-official-entries'
 assert.ok(['127.0.0.1','localhost'].includes(new URL(base).hostname));await mkdir(out,{recursive:true})
-const browser=await chromium.launch({channel:'chrome',headless:true}),context=await browser.newContext({viewport:{width:375,height:812},locale:'zh-CN',reducedMotion:'reduce'}),errors=[],escaped=[],checks=[]
+const browser=await chromium.launch({channel:'chrome',headless:true}),context=await browser.newContext({viewport:{width:375,height:812},locale:'zh-CN',reducedMotion:'reduce',permissions:['geolocation'],geolocation:{longitude:120.62,latitude:31.3}}),errors=[],escaped=[],checks=[]
 await context.addInitScript(()=>{
  window.copiedNames=[];window.openedUrls=[]
- Object.defineProperty(navigator,'permissions',{value:{query:async()=>({state:'denied'})}})
+ window.AMap={
+  Geolocation:class{getCurrentPosition(done){done('complete',{position:{getLng:()=>120.62,getLat:()=>31.3},location_type:'html5'})}},
+  Geocoder:class{getAddress(point,done){done('complete',{regeocode:{addressComponent:{province:'江苏省',city:'苏州市',district:'姑苏区',adcode:'320508'}}})}}
+ }
  Object.defineProperty(navigator,'clipboard',{value:{writeText:async value=>{window.copiedNames.push(value)}}})
  window.open=(url)=>{window.openedUrls.push(url);return null}
 })

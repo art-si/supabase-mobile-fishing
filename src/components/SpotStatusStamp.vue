@@ -1,27 +1,30 @@
 <script setup lang="ts">
+import noFishingStamp from '@/brand/no-fishing-stamp.png'
+
 defineOptions({ options: { styleIsolation: 'apply-shared' } })
 defineProps<{ prohibited?: boolean }>()
 </script>
 <template>
-  <text v-if="prohibited" class="spot-status-stamp" aria-label="禁钓">禁钓</text>
+  <view v-if="prohibited" class="spot-status-stamp" role="img" aria-label="禁钓">
+    <image class="spot-status-stamp__icon" :src="noFishingStamp" mode="aspectFit" aria-hidden="true" />
+  </view>
 </template>
 <style scoped>
 .spot-status-stamp {
-  display: inline-flex;
+  display: block;
   flex: 0 0 auto;
-  align-items: center;
-  justify-content: center;
-  box-sizing: border-box;
-  width: 3.25rem;
-  height: 3.25rem;
-  border: 3px double currentColor;
-  border-radius: 50%;
-  color: var(--danger);
-  font-size: 0.875rem;
-  font-weight: 700;
-  line-height: 1.3;
-  letter-spacing: 0.08em;
-  white-space: nowrap;
-  transform: rotate(-12deg);
+  width: clamp(52px, 3.8rem, 76px);
+  height: clamp(52px, 3.8rem, 76px);
+  transform: rotate(-14deg);
+}
+.spot-status-stamp__icon {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+@media (prefers-color-scheme: dark) {
+  .spot-status-stamp__icon {
+    filter: brightness(1.75) saturate(0.85);
+  }
 }
 </style>

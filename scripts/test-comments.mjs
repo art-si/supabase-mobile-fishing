@@ -16,7 +16,7 @@ const compositionSuite = process.argv.includes('--composition')
 const updatesSuite = process.argv.includes('--content-updates')
 const photoSuite = compositionSuite || updatesSuite
 const base = process.env.FISHING_H5_URL || 'http://127.0.0.1:5179',
-  project = 'https://tlfmfokyhahlpzmpliad.supabase.co'
+  project = 'https://jupuypvmgjpnpntfetqv.supabase.co'
 const out = resolve(
   updatesSuite
     ? 'artifacts/content-updates'
@@ -45,7 +45,7 @@ grant select,insert,update on realtime.messages to anon,authenticated,service_ro
 create function realtime.topic() returns text language sql stable as $$select current_setting('realtime.topic',true)$$;
 create function realtime.send(payload jsonb,event text,topic text,private boolean default true) returns void language sql as $$insert into realtime.messages(payload,event,topic,private,extension) values(payload,event,topic,private,'broadcast');$$;`)
 for (const file of (await readdir('supabase/migrations')).filter((f) => f.endsWith('.sql')).sort())
-  await db.exec(await readFile(`supabase/migrations/${file}`, 'utf8'))
+  await db.exec((await readFile(`supabase/migrations/${file}`, 'utf8')).replace(/\r\n/g, '\n'))
 const data = {
   accounts: ['a', 'b', 'outsider'].map((label, i) => ({
     label,
@@ -114,12 +114,34 @@ const pausedPost = new Promise((resolve) => {
 const checks = [],
   unexpected = [],
   errors = []
-const browser = await chromium.launch({ channel: 'chrome', headless: true }),
-  context = await browser.newContext({
+const browser = await chromium.launch({ channel: 'chrome', headless: true })
+async function fixtureContext() {
+  const context = await browser.newContext({
     viewport: { width: 375, height: 812 },
     locale: 'zh-CN',
-    reducedMotion: 'reduce'
+    reducedMotion: 'reduce',
+    geolocation: { longitude: 114.18, latitude: 30.51, accuracy: 20 }
   })
+  await context.grantPermissions(['geolocation'], { origin: new URL(base).origin })
+  await context.addInitScript(() => {
+    window.AMap = {
+      Geolocation: class {
+        getCurrentPosition(callback) {
+          callback('complete', { position: { getLng: () => 114.18, getLat: () => 30.51 }, accuracy: 20 })
+        }
+      },
+      Geocoder: class {
+        getAddress(_point, callback) {
+          callback('complete', { regeocode: {
+            addressComponent: { city: '武汉市', district: '汉阳区' }
+          } })
+        }
+      }
+    }
+  })
+  return context
+}
+const context = await fixtureContext()
 await context.addInitScript((session) => {
   if (!localStorage.getItem('dyj.auth.v1'))
     localStorage.setItem('dyj.auth.v1', JSON.stringify({ type: 'object', data: session }))
@@ -233,11 +255,7 @@ const routeRequest = async (route) => {
 }
 await context.route('**/*', routeRequest)
 async function accountPage(label) {
-  const child = await browser.newContext({
-    viewport: { width: 375, height: 812 },
-    locale: 'zh-CN',
-    reducedMotion: 'reduce'
-  })
+  const child = await fixtureContext()
   await child.addInitScript(
     (session) => {
       if (!localStorage.getItem('dyj.auth.v1'))
@@ -308,10 +326,7 @@ try {
       setPhase: (v) => (phase = v)
     })
   } else if (notificationSuite) {
-    const guestContext = await browser.newContext({
-      viewport: { width: 375, height: 812 },
-      locale: 'zh-CN'
-    })
+    const guestContext = await fixtureContext()
     await guestContext.route('**/*', routeRequest)
     const guest = await guestContext.newPage()
     await go(guest, '/pages/notifications/index?settings=1')
@@ -367,10 +382,10 @@ try {
     phase = 'comments-permission-revoked'
     const post = new URLSearchParams(page.url().split('?').at(-1)).get('id')
     await page.reload()
-    await button(page, '加载更多评论').waitFor()
+    await page.locator('.post-comments__item').first().waitFor()
     await queue
     await db.query("update public.posts set status='deleted' where id=$1", [post])
-    await button(page, '加载更多评论').click()
+    await page.evaluate(() => window.scrollTo(0, document.documentElement.scrollHeight))
     await page.getByText('内容不存在或你暂时无权查看', { exact: true }).waitFor()
     check(
       (await page.locator('.post-card:visible,.post-comments:visible').count()) === 0,

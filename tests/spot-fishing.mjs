@@ -8,7 +8,8 @@ export async function spotFishingChecks({
   check,
   rejects,
   migration,
-  communityMigration
+  communityMigration,
+  automaticFencesMigration
 }) {
   const owner = randomUUID(),
     other = randomUUID(),
@@ -48,6 +49,7 @@ export async function spotFishingChecks({
     await write(owner, 'save_spot', draft)
     await db.exec(migration)
     await db.exec(communityMigration)
+    await db.exec(automaticFencesMigration)
     check(
       (await read(null, 'spot', { id: draft.id })).fishing_status === 'allowed',
       'existing spots default to allowed'
@@ -64,6 +66,14 @@ export async function spotFishingChecks({
       (await read(null, 'spot', { id: marked.id })).fishing_status === 'prohibited',
       'new prohibited spots publish their marker immediately'
     )
+    const bounds = { west: 114.17, east: 114.19, south: 30.47, north: 30.49 }
+    const fencePoints = async () => (await callZone(null, 'read', 'nearby', bounds)).spot_points
+    const hiddenPoint = { ...marked, id: randomUUID(), precision: 'area' }
+    await write(owner, 'save_spot', hiddenPoint)
+    const automaticPoints = await fencePoints()
+    check(automaticPoints.some(point => point.id === marked.id && point.longitude === marked.longitude) &&
+      !automaticPoints.some(point => [draft.id, hiddenPoint.id].includes(point.id)),
+      'anonymous fence projection includes exact public prohibited spots only')
     const edit = async (fields) => ({
       ...fields,
       type: 'spot',
@@ -104,6 +114,8 @@ export async function spotFishingChecks({
       (await read(null, 'spot', { id: draft.id })).fishing_status === 'allowed',
       'author can change prohibited back to allowed'
     )
+    check(!(await fencePoints()).some(point => point.id === draft.id),
+      'changing a spot to allowed immediately removes its fence')
     await write(
       owner,
       'update_content',
@@ -114,6 +126,8 @@ export async function spotFishingChecks({
       /NOT_FOUND/,
       'marking preserves spot privacy'
     )
+    check(!(await fencePoints()).some(point => point.id === draft.id),
+      'private prohibited spots never publish a fence')
 
     const zone = {
       id: randomUUID(),

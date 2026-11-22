@@ -31,7 +31,7 @@ await context.route('**/*',async route=>{
   return route.fulfill({response,body:body.replace(signature,signature+' return window.fixtureUpload(filePath, options);')})
  }
  if(url.origin===base||!url.protocol.startsWith('http'))return route.continue()
- if(url.origin!=='https://tlfmfokyhahlpzmpliad.supabase.co'){escaped.push(url.origin);return route.abort()}
+ if(url.origin!=='https://jupuypvmgjpnpntfetqv.supabase.co'){escaped.push(url.origin);return route.abort()}
  const headers={'access-control-allow-origin':'*','access-control-allow-headers':'*','access-control-allow-methods':'*'},reply=json=>route.fulfill({json,headers})
  if(req.method()==='OPTIONS')return reply({})
  if(url.pathname==='/auth/v1/user')return reply({id:owner})

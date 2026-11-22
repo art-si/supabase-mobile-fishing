@@ -13,7 +13,7 @@ export async function miniappAlignmentContract({ page, go, screenshot, pass }) {
     ['settings', '/pages/settings/index', '.skin-choice'],
     ['compose', '/pages/post/compose', '.compose-submit'],
     ['post', '/pages/post/detail?id=a1111111-1111-4111-8111-111111111111', '.fishing-place-link'],
-    ['chat', '/pages/chat/index?id=e1111111-1111-4111-8111-111111111111', '.chat-composer']
+    ['report', '/pages/water-report/index?tabbed=1', '#report-region']
   ]
   for (const [name, route, ready] of cases) {
     await go(route)

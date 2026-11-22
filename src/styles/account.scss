@@ -1,36 +1,27 @@
 .fishing-page .account-content {
-  --tms-control-font-size: max(18px, 1.125rem);
-  --tms-control-height: max(56px, 3.5rem);
   --tms-line: var(--reed);
+  --tms-control-radius: var(--fishing-auth-control-radius);
+  --fishing-control-radius: var(--fishing-auth-control-radius);
   width: 100%;
-  max-width: 480px;
-  margin-inline: auto;
-  padding: 28px 24px 40px;
+  padding-block: 12px 24px;
   display: flex;
   flex-direction: column;
-  gap: 32px;
+  gap: 16px;
   .mobile-field {
-    gap: 10px;
+    gap: 6px;
   }
   .mobile-field__control {
     background: var(--paper);
-    border-radius: 14px;
-    padding-inline: 16px;
-    font-size: max(18px, 1.125rem);
+    font-size: var(--fishing-input-size);
   }
-  .mobile-field__input-wrap--secret .mobile-field__control {
-    padding-inline-end: 56px;
+  .mobile-field__control:not(.mobile-field__control--error):focus-within {
+    outline-offset: -1px;
   }
   .mobile-field__required {
     display: none;
   }
-  .primary {
-    min-height: max(56px, 3.5rem);
-    border-radius: 14px;
-    font-weight: 650;
-  }
   .caption {
-    font-size: max(14px, 0.875rem);
+    font-size: var(--fishing-label-size);
     line-height: 1.6;
   }
 }
@@ -42,36 +33,36 @@
   min-width: 0;
 }
 .account-heading {
-  gap: 10px;
+  gap: 6px;
 }
 .account-form {
-  gap: 24px;
+  gap: 16px;
 }
 .account-number {
   gap: 10px;
 }
 .account-title {
-  font-size: max(28px, 1.75rem);
+  font-size: var(--mobile-header-title-size);
   line-height: 1.35;
-  font-weight: 700;
+  font-weight: var(--fishing-title-weight);
   color: var(--ink);
   overflow-wrap: anywhere;
 }
 .account-description {
   color: var(--reed);
-  font-size: max(16px, 1rem);
+  font-size: var(--fishing-text-size);
   line-height: 1.7;
   overflow-wrap: anywhere;
 }
 .account-label {
   color: var(--ink);
-  font-size: max(14px, 0.875rem);
+  font-size: var(--fishing-label-size);
   line-height: 1.4;
   font-weight: 650;
 }
 .account-phone-value {
   color: var(--ink);
-  font-size: max(24px, 1.5rem);
+  font-size: var(--fishing-value-size);
   font-weight: 600;
   line-height: 1.4;
   font-variant-numeric: tabular-nums;
@@ -79,7 +70,7 @@
 .account-code-block {
   display: flex;
   flex-direction: column;
-  gap: 10px;
+  gap: 6px;
 }
 .account-code-row {
   display: flex;
@@ -96,8 +87,6 @@
 }
 .fishing-page .account-content .account-send {
   flex: 1 1 max(120px, 7.5rem);
-  min-height: max(56px, 3.5rem);
-  border-radius: 14px;
   background: var(--lake-soft);
   padding-inline: 12px;
 }
@@ -106,7 +95,7 @@
 }
 .account-step {
   color: var(--lake);
-  font-size: max(14px, 0.875rem);
+  font-size: var(--fishing-label-size);
   line-height: 1.5;
   font-weight: 600;
 }
@@ -139,9 +128,4 @@
   flex: 1;
   min-width: 0;
   text-align: start;
-}
-@media (max-width: 359px) {
-  .fishing-page .account-content {
-    padding-inline: 20px;
-  }
 }

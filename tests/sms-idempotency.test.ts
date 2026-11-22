@@ -5,7 +5,7 @@ import { randomUUID } from 'node:crypto'
 import { PGlite } from '@electric-sql/pglite'
 import { createSupabaseDeliveryStore } from '../supabase/functions/_shared/sms-idempotency'
 
-const baseUrl = 'https://tlfmfokyhahlpzmpliad.supabase.co'
+const baseUrl = 'https://jupuypvmgjpnpntfetqv.supabase.co'
 const serviceKey = 'test-only-service-role-key'
 const digest = 'a'.repeat(64)
 const signal = () => new AbortController().signal

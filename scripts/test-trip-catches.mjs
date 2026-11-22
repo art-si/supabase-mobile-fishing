@@ -5,7 +5,7 @@ import { mkdir, writeFile } from 'node:fs/promises'
 import { resolve } from 'node:path'
 import { tripCatchesFlow } from './trip-catches-flow.mjs'
 const base = process.env.FISHING_H5_URL || 'http://127.0.0.1:5179'
-const project = 'https://tlfmfokyhahlpzmpliad.supabase.co'
+const project = 'https://jupuypvmgjpnpntfetqv.supabase.co'
 const out = resolve(
   'artifacts/trip-catches',
   new URL(base).port === '5181' ? 'production-contract' : 'contract'

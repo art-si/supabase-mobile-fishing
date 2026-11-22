@@ -6,7 +6,7 @@ import { createSupabaseDeliveryStore } from '../_shared/sms-idempotency.ts'
 function deliveryStore() {
   try {
     const supabaseUrl = Deno.env.get('SUPABASE_URL') || ''
-    if (supabaseUrl.replace(/\/$/, '') !== 'https://tlfmfokyhahlpzmpliad.supabase.co')
+    if (supabaseUrl.replace(/\/$/, '') !== 'https://jupuypvmgjpnpntfetqv.supabase.co')
       return undefined
     return createSupabaseDeliveryStore({
       supabaseUrl,
@@ -17,18 +17,14 @@ function deliveryStore() {
   }
 }
 
-// Test-recipient-only and disabled by default. No public send mode exists.
-// Enabling delivery alone cannot bypass the durable ledger or recipient allowlist.
+// Delivery is disabled by default. Each Auth event must pass signature verification
+// and claim a place in the durable ledger before sending.
 // Deployment also needs verify_jwt=false for this function only, plus an authenticated
 // Standard Webhooks Send SMS Hook in Supabase Auth. No changes are made here to Auth.
 Deno.serve(
   createSmsHookHandler({
     config: () => ({
       deliveryEnabled: Deno.env.get('SMS_DELIVERY_ENABLED') === 'true',
-      allowedTestPhones: (Deno.env.get('SMS_ALLOWED_TEST_PHONES') || '')
-        .split(',')
-        .map((phone) => phone.trim())
-        .filter(Boolean),
       hookSecret: Deno.env.get('SEND_SMS_HOOK_SECRET') || '',
       idempotencySecret: Deno.env.get('SMS_IDEMPOTENCY_SECRET') || '',
       accessKeyId: Deno.env.get('ALIYUN_PNVS_ACCESS_KEY_ID') || '',

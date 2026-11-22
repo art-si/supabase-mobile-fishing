@@ -1,15 +1,17 @@
 <script setup lang="ts">
-import { computed, ref, watch } from 'vue'
-import { onLoad, onShow, onHide, onUnload } from '@dcloudio/uni-app'
+import { computed, nextTick, ref, watch } from 'vue'
+import { onLoad, onShow, onHide, onUnload, onReachBottom } from '@dcloudio/uni-app'
 import FishingShell from '@/components/FishingShell.vue'
+import FishingPrimaryNav from '@/components/FishingPrimaryNav.vue'
+import { returnToHomeTab } from '@/services/primary-navigation'
 import FishingPhotos from '@/components/FishingPhotos.vue'
-import ReportChannels from '@/components/ReportChannels.vue'
+import ReportChannels from './ReportChannels.vue'
 import ReportRegionFields from '@/components/ReportRegionFields.vue'
 import MobileAction from '@mobile-core/components/MobileAction.vue'
+import MobileIcon from '@mobile-core/components/MobileIcon.vue'
 import MobileField from '@mobile-core/components/MobileField.vue'
 import MobileSelect from '@mobile-core/components/MobileSelect.vue'
 import MobileConfirmDialog from '@mobile-core/components/MobileConfirmDialog.vue'
-import MobileIcon from '@mobile-core/components/MobileIcon.vue'
 import MobileDateTimeField from '@mobile-core/components/MobileDateTimeField.vue'
 import MobileMediaUploader from '@mobile-core/components/MobileMediaUploader.vue'
 import MobileSegmented from '@mobile-core/components/MobileSegmented.vue'
@@ -33,8 +35,11 @@ import { sessionScope, assertSession } from '@/services/session'
 import { read, write } from '@/services/repository'
 import { canRetryPhoto, uploadPhoto, uploadVideo, resolvePhotos } from '@/services/media'
 import { canLocateReport,locateReport,describeReportLocation, type ReportLocation } from '@/platforms/report-location'
-import { errorText, createId } from '@/domain/rules'
+import { errorText, createId, validCoordinates } from '@/domain/rules'
 import { pickMap, consumeSelection } from '@/platforms/map-navigation'
+import { formatMapCoordinates } from '@/domain/map'
+import { sampleWaterPoints } from '@/domain/water-surfaces'
+import { regionLabel, type RegionNames } from '@/domain/regions'
 import { isDemo } from '@/config'
 import { updateWaterReportPayload } from '@/domain/report-edit'
 
@@ -46,20 +51,35 @@ const tab = ref('publish')
 const tabs = [{ value: 'publish', label: '发布上报' }, { value: 'records', label: '我的上报记录' }]
 const editing = ref<WaterReport | null>(null)
 const recordsVersion = ref(0)
+const records = ref<InstanceType<typeof ReportRecords>>()
+const contactDirectory=ref<InstanceType<typeof ReportChannels>>()
+const agencyPickerOpen = ref(false)
+const submissionReport = computed(() => contactDirectory.value?.submissionReport || report.value)
+const submissionNextStep = computed(() => {
+  const options = contactDirectory.value?.agencies || []
+  const first = options[0]?.channel
+  if (!first) return '请按事发地主管部门公布的方式提交。'
+  if (draft.value.category === 'other') {
+    const choices = options.flatMap(({ channel }) => channel.issueLabel ? [`「${channel.issueLabel}」`] : []).join('或')
+    if (!choices) return '请选择受理该问题的主管部门。'
+    return `请按现场情况选择${choices}，到官网提交。`
+  }
+  if (first.kind === 'website') return `可到「${first.name}」填写并提交。`
+  if (first.province && first.kind === 'phone') return `可联系${first.name}或全国渔政举报热线。`
+  return '可拨打全国渔政举报热线，也可在微信「中国渔政」提交。'
+})
+onReachBottom(() => records.value?.reachBottom())
 const recordsBusy=ref(false), editConflict=ref(false),reloadEditOpen=ref(false)
 const storageNotice=ref('')
 const currentPosition = ref<{ longitude: number; latitude: number } | null>(null)
 const currentRegion=ref<{province:string;city:string;district:string}|null>(null)
-let currentFix:ReportLocation|null=null
 function rememberCurrentLocation(value:ReportLocation){
- currentFix={...value}
  currentPosition.value={longitude:value.longitude,latitude:value.latitude}
  currentRegion.value={province:value.province,city:value.city,district:value.district}
 }
 let applying = false, edited = false, formVersion = 0, initialized = false
 let submitId = '', submitSignature = '', editBaseRevision=1
-const consent = ref(false),
-  copied = ref(''),
+const copied = ref(''),
   errors = ref<Record<string, string>>({}),
   requestId = ref('')
 const photos = ref<MediaUploadEntry[]>([]),
@@ -77,21 +97,45 @@ function rememberUnfinishedMedia(){
 }
 const uploader=ref<InstanceType<typeof MobileMediaUploader>>()
 const locating=ref(false),locationMessage=ref('')
+const selectedRegion=ref<ReportLocation|null>(null)
+let pinLookup=0
+const incidentPoint=computed(()=>{
+  const place=tab.value==='records' ? report.value : draft.value
+  if(place?.longitude==null || place.latitude==null || !validCoordinates(place.longitude,place.latitude))return null
+  return {longitude:place.longitude,latitude:place.latitude}
+})
+const resolvedRegion=computed(()=>{
+  const place=selectedRegion.value, point=incidentPoint.value
+  return point && place?.longitude===point.longitude && place.latitude===point.latitude ? place : null
+})
+const demoWaters = isDemo ? sampleWaterPoints() : []
+const coordinatesText = computed(() => {
+  const { longitude, latitude } = draft.value
+  return longitude != null && latitude != null && validCoordinates(longitude, latitude)
+    ? formatMapCoordinates(longitude, latitude) : ''
+})
 const observedDate=computed({get:()=>draft.value.observed_local.slice(0,10),set:value=>{draft.value.observed_local=value+' '+observedTime.value}})
 const observedTime=computed({get:()=>draft.value.observed_local.slice(11,16),set:value=>{draft.value.observed_local=observedDate.value+' '+value}})
-const channelsOpen = ref(false)
+const tabbed = ref(false)
 // Public directory filters never restore or expose an account's private report draft.
 const publicRegion = ref({ province: '', city: '', district: '' })
 const active = ref(true)
 let locationVersion=0, locationAttempted=false
 function cancelLocation(){locationVersion++;locating.value=false;locationMessage.value=''}
 watch(draft,()=>{if(!applying)edited=true}, {deep:true,flush:'sync'})
+watch(()=>[draft.value.province,draft.value.city,draft.value.district],(_next,previous)=>{
+ if(applying || !previous[0] || !previous[1] || !validCoordinates(draft.value.longitude,draft.value.latitude))return
+ pinLookup++;selectedRegion.value=null
+ Object.assign(draft.value,{longitude:null,latitude:null})
+ locationMessage.value='事发地区已更改，请重新选择水域。'
+},{flush:'sync'})
 watch(()=>[draft.value.province,draft.value.city,draft.value.district,draft.value.location_label,draft.value.longitude,draft.value.latitude],()=>{if(!applying)formVersion++},{flush:'sync'})
 watch(publicRegion,()=>{if(!applying)formVersion++}, {deep:true,flush:'sync'})
 onHide(() => {
   active.value = false
   cancelLocation()
   copyOpen.value = false
+  agencyPickerOpen.value = false
   reloadEditOpen.value = false
 })
 onUnload(() => {
@@ -102,11 +146,11 @@ onUnload(() => {
 const { busy, error, run } = useMutation()
 const { owner, available, resetting } = useDraftOwner(() => {
   cancelLocation();locationAttempted=false
-  currentPosition.value=null;currentRegion.value=null;currentFix=null;editing.value=null;initialized=false;edited=false;formVersion++
+  currentPosition.value=null;currentRegion.value=null;editing.value=null;initialized=false;edited=false;formVersion++
   releaseLocalMedia()
   applying=true;draft.value = freshWaterReport();applying=false
   photos.value = []
-  consent.value = false
+  pinLookup++;selectedRegion.value=null
   requestId.value = ''
   errors.value = {}
   report.value = null
@@ -121,7 +165,6 @@ watch(
     copyOpen.value = false
     reloadEditOpen.value=false
     copied.value = ''
-    consent.value = false
   }
 )
 async function restore() {
@@ -153,8 +196,8 @@ async function prepareDraft(){
  initialized=true
  const restored=await restore()
  if(!restored){
-  applying=true;draft.value={...freshWaterReport(),...(currentFix||{})};applying=false;edited=false
-  locationMessage.value=currentFix?'已自动填入当前位置，可按实际事发地点修改。':''
+  applying=true;draft.value={...freshWaterReport(),...currentRegion.value};applying=false;edited=false
+  locationMessage.value=''
  }
  if(!locationAttempted)void currentLocation(!restored && !id.value)
 }
@@ -169,13 +212,12 @@ async function currentLocation(fillDraft=false){
   rememberCurrentLocation(value)
   if(version===formVersion){
    applying=true
-   if(!available.value)Object.assign(publicRegion.value,{province:value.province,city:value.city,district:value.district})
-   else if(fillDraft && draft.value.id===draftId && !id.value && !editing.value)Object.assign(draft.value,value)
+   if(!available.value)Object.assign(publicRegion.value,currentRegion.value)
+   else if(fillDraft && !validCoordinates(draft.value.longitude,draft.value.latitude) && draft.value.id===draftId && !id.value && !editing.value)Object.assign(draft.value,currentRegion.value)
    applying=false
-   if(fillDraft)locationMessage.value='已自动填入当前位置，可按实际事发地点修改。'
   }
  }catch{
-  if(current===locationVersion && active.value)locationMessage.value='暂未获取当前位置，可手动选择地区并填写具体地点。'
+  if(current===locationVersion && active.value)locationMessage.value='暂未获取当前位置，请选择事发地区。'
  }finally{if(current===locationVersion)locating.value=false}
 }
 async function loadReport() {
@@ -188,9 +230,10 @@ async function loadReport() {
   })
 }
 onLoad((options) => {
+  tabbed.value = options?.tabbed === '1'
   id.value = options?.id || ''
   tab.value=id.value || options?.tab==='records'?'records':'publish'
-  if (id.value) {void loadReport();void currentLocation()}
+  if (id.value) void loadReport()
   else void prepareDraft()
 })
 watch(
@@ -218,27 +261,45 @@ onShow(() => {
     void applySelectedPlace(selected)
   }
 })
-async function applySelectedPlace(selected:{longitude:number;latitude:number;name:string}){
- formVersion++;const version=formVersion,scope=sessionScope.value,target=draft.value.id
+async function applySelectedPlace(selected:{longitude:number;latitude:number;name:string}, region?:RegionNames){
+ cancelLocation()
+ formVersion++;const version=++pinLookup,scope=sessionScope.value,target=draft.value.id
+ selectedRegion.value=null
  applying=true
- Object.assign(draft.value,{longitude:selected.longitude,latitude:selected.latitude,location_label:selected.name,province:'',city:'',district:''})
+ Object.assign(draft.value,{longitude:selected.longitude,latitude:selected.latitude,location_label:selected.name},region || {province:'',city:'',district:''})
+ delete errors.value.location
+ delete errors.value.location_label
  applying=false;edited=true
+ if(region){
+  selectedRegion.value={...selected,...region,location_label:selected.name}
+  delete errors.value.province
+  delete errors.value.city
+  locationMessage.value=''
+  return
+ }
  locationMessage.value='正在识别所选地点的省市区…'
  try{
   const value=await describeReportLocation([selected.longitude,selected.latitude])
-  if(scope!==sessionScope.value || version!==formVersion || draft.value.id!==target || !active.value)return
+  if(scope!==sessionScope.value || version!==pinLookup || draft.value.id!==target ||
+    draft.value.longitude!==selected.longitude || draft.value.latitude!==selected.latitude)return
+  selectedRegion.value=value
   applying=true;Object.assign(draft.value,{province:value.province,city:value.city,district:value.district});applying=false
-  locationMessage.value='已按所选地点更新省市区。'
+  delete errors.value.province
+  delete errors.value.city
+  delete errors.value.district
+  locationMessage.value=''
  }catch{
-  if(version===formVersion && active.value)locationMessage.value='所选地点已保留，请手动补充对应的省市区。'
+  if(version===pinLookup && scope===sessionScope.value && draft.value.id===target)locationMessage.value='请确认所选水域的省市区。'
  }
 }
 function selectLocation() {
-  if (auth.requireLogin()) requestId.value = pickMap()
+  if (auth.requireLogin()) requestId.value = pickMap('water')
 }
-function clearLocation() {
-  draft.value.longitude = null
-  draft.value.latitude = null
+function selectDemoWater(id: string) {
+  const water = demoWaters.find(water => water.id === id)
+  if (!water) return
+  const [longitude, latitude] = water.point
+  void applySelectedPlace({ name: water.name, longitude, latitude }, { province: '湖北省', city: '武汉市', district: '' })
 }
 function syncMedia() {
   draft.value.media = photos.value.flatMap((p) => (p.asset ? [p.asset] : []))
@@ -250,7 +311,6 @@ async function save() {
   if(editConflict.value){error.value='这份材料已在其他地方更新，请先重新读取最新材料。你的编辑草稿仍保留。';return}
   errors.value = validateWaterReport(draft.value)
   if(photos.value.some(item=>!item.asset))errors.value.media='请等待附件上传完成，失败的附件可重试或移除。'
-  if (!consent.value) errors.value.consent = '请先确认私密保存说明'
   if (Object.keys(errors.value).length) {
     uni.pageScrollTo({ scrollTop: 0, duration: 0 })
     return
@@ -272,7 +332,11 @@ async function save() {
     try{uni.removeStorageSync(draftKey())}catch{storageNotice.value='材料已保存，但本机草稿未能清理；请以后从“我的上报记录”查看最新内容。'}
     id.value = report.value.id
     editing.value=null;initialized=false;tab.value='records';recordsVersion.value++
-    if(active.value)uni.pageScrollTo({scrollTop:0,duration:0})
+    await nextTick()
+    if (active.value && scope === sessionScope.value) {
+      uni.pageScrollTo({scrollTop:0,duration:0})
+      agencyPickerOpen.value = true
+    }
   })
 }
 async function selectTab(value:string){
@@ -281,20 +345,21 @@ async function selectTab(value:string){
  if(value==='records' && editing.value){await cancelEdit();return}
  tab.value=value;copyOpen.value=false
  if(value==='publish' && !editing.value && (id.value || !initialized)){
-  id.value='';report.value=null;initialized=false;photos.value=[];consent.value=false
+  id.value='';report.value=null;initialized=false;photos.value=[]
   await prepareDraft()
   if(!edited && currentPosition.value)void currentLocation(true)
  }
  if(value==='records'){report.value=null;id.value='';recordsVersion.value++}
 }
 function viewReport(value:WaterReport){report.value=value;id.value=value.id;tab.value='records';error.value='';uni.pageScrollTo({scrollTop:0,duration:0})}
+watch(()=>report.value?.id,()=>{copied.value='';copyOpen.value=false;agencyPickerOpen.value=false},{flush:'sync'})
 function backToRecords(){report.value=null;id.value='';tab.value='records';recordsVersion.value++}
 async function editReport(value:WaterReport){
  if(tab.value==='publish')rememberUnfinishedMedia()
  editConflict.value=false
  locationMessage.value=''
   editBaseRevision=value.revision||1
- editing.value=value;id.value='';report.value=null;tab.value='publish';consent.value=false;errors.value={};error.value=''
+ editing.value=value;id.value='';report.value=null;tab.value='publish';errors.value={};error.value=''
  applying=true;draft.value=waterReportDraftFromRecord(value);applying=false;edited=true;formVersion++
  photos.value=value.media.map(asset=>({key:`saved-${asset.id}`,path:asset.url||asset.path,kind:asset.kind||'image',asset,busy:false,error:''}))
  submitId='';submitSignature=''
@@ -304,7 +369,7 @@ async function editReport(value:WaterReport){
 async function cancelEdit(){
  if(busy.value||uploader.value?.uploading||uploader.value?.choosing)return
  rememberUnfinishedMedia()
- editing.value=null;editConflict.value=false;initialized=false;id.value='';report.value=null;photos.value=[];consent.value=false;errors.value={};error.value=''
+ editing.value=null;editConflict.value=false;initialized=false;id.value='';report.value=null;photos.value=[];errors.value={};error.value=''
  await prepareDraft();tab.value='records';recordsVersion.value++
 }
 async function reloadEdit(){
@@ -317,12 +382,13 @@ async function reloadEdit(){
  })
 }
 function copyMaterial() {
-  if (!report.value || !available.value) return
+  const material = submissionReport.value
+  if (!material || !available.value) return
   uni.setClipboardData({
-    data: reportMaterial(report.value),
+    data: reportMaterial(material),
     showToast: false,
     success: () => {
-      copied.value = '文字材料已复制。图片和视频需在官方渠道另外上传，尚未向管理单位发送。'
+      copied.value = '已复制时间、地点、坐标和现场情况，可到官方入口粘贴。'
     },
     fail: () => {
       copied.value = '复制失败，请手动整理材料。'
@@ -331,33 +397,43 @@ function copyMaterial() {
 }
 </script>
 <template>
-  <FishingShell title="线索上报" back>
+  <FishingShell :title="tabbed ? '举报' : '线索上报'" :tabbed="tabbed" :back="!tabbed">
     <view class="fishing-content stack">
       <MobileSegmented :model-value="tab" :options="tabs" label="线索上报页面" :disabled="busy || recordsBusy || uploader?.uploading || uploader?.choosing" @update:model-value="selectTab" />
+      <view v-if="tab === 'publish'" class="notice report-notice report-notice--safety" role="note" aria-labelledby="report-safety-title">
+        <MobileIcon name="shield" size="1.125rem" color="var(--float)" />
+        <view class="report-notice__copy">
+          <text id="report-safety-title" class="report-notice__title">现场安全提醒</text>
+          <text>请保持安全距离，避免上前阻拦或与人争执。遇到人身危险请先报警。只记录亲眼所见，由主管部门核实。</text>
+        </view>
+      </view>
       <text v-if="storageNotice" class="notice" role="status">{{ storageNotice }}</text>
       <text v-if="isDemo" class="notice"
         >本机体验 · 材料只保存在本机，不上传云端、不联系官方。</text
       >
-      <text v-if="tab==='publish'" class="notice"
-        >先确保自身安全，不靠近、不阻拦。有人身危险时请联系当地警方。只描述亲眼所见，由主管单位核实。</text
-      >
-      <ReportRecords v-if="tab==='records' && !report" :key="`${auth.context}-${recordsVersion}`" @open="viewReport" @edit="editReport" @create="selectTab('publish')" @busy="recordsBusy=$event" />
+      <template v-if="tab==='records' && !report">
+        <ReportRecords ref="records" :key="`${auth.context}-${recordsVersion}`" @open="viewReport" @edit="editReport" @create="selectTab('publish')" @busy="recordsBusy=$event" />
+      </template>
       <template v-else-if="tab==='records' && available && report">
         <view class="mobile-action-group">
           <MobileAction class="secondary" @click="backToRecords">返回上报记录</MobileAction>
           <MobileAction class="secondary" @click="editReport(report)">编辑材料</MobileAction>
         </view>
         <view class="panel stack">
-          <text class="heading">已私密保存</text>
-          <text class="body"
-            >保存不会自动发送给管理单位。通过下方官方渠道提交后，以官方回复为准。</text
-          >
+          <text class="heading">到官方渠道完成上报</text>
+          <text class="body">材料已存入「我的上报记录」。选择机构后，请在电话中说明情况，或按官方入口要求提交材料。</text>
+          <MobileAction id="report-choose-agency" class="primary" aria-haspopup="dialog" @click="agencyPickerOpen = true">选择举报机构</MobileAction>
+          <MobileAction class="secondary" @click="copyOpen = true">复制文字材料</MobileAction>
+          <text v-if="copied" class="notice" role="status">{{ copied }}</text>
+          <text v-if="contactDirectory?.recordFeedback" class="notice" role="status">{{ contactDirectory.recordFeedback }}</text>
+        </view>
+        <view class="panel stack">
+          <text class="heading">上报材料</text>
           <text class="name">{{
             reportCategories.find((c) => c.id === report!.category)?.name
           }}</text>
           <text class="caption"
-            >{{ localReportTime(new Date(report.observed_at)) }} · {{ report.province }}
-            {{ report.city }} {{ report.district }}</text
+            >{{ localReportTime(new Date(report.observed_at)) }} · {{ regionLabel(submissionReport || report) }}</text
           >
           <text class="body">{{ report.location_label }}</text>
           <text class="body" selectable>{{ report.description }}</text>
@@ -367,21 +443,22 @@ function copyMaterial() {
             label="私密线索附件"
             compact
           />
-          <MobileAction class="primary" @click="copyOpen = true">复制文字材料</MobileAction>
-          <text v-if="copied" class="notice" role="status">{{ copied }}</text>
         </view>
-        <ReportChannels
+        <ReportChannels ref="contactDirectory" :key="report.id" v-model:picker-open="agencyPickerOpen" compact
           :province="report.province"
           :city="report.city"
           :district="report.district"
-          :current-location="currentPosition"
+          :incident-point="incidentPoint"
+          :resolved-region="resolvedRegion"
+          :category="report.category"
           :report="report"
+          :copy-feedback="copied"
+          @copy-material="copyOpen = true"
         />
       </template>
       <template v-else-if="tab==='publish' && available && !id">
         <view v-if="editing" class="panel stack stack--tight">
           <text class="name">编辑上报材料</text>
-          <text class="caption">修改应用内这份材料，不会更新已通过外部渠道发送的副本。</text>
           <template v-if="editConflict">
             <text class="error" role="alert">这份材料已在其他地方更新。当前显示的是保留的编辑草稿，请重新读取最新材料后再保存。</text>
             <MobileAction class="secondary" :disabled="busy" @click="reloadEditOpen=true">重新读取最新材料</MobileAction>
@@ -398,9 +475,6 @@ function copyMaterial() {
               :options="reportCategories"
               :disabled="busy"
           /></MobileField>
-          <text class="caption"
-            >网捕不一定违法；是否符合禁渔、许可及网具规定，由主管部门判断。</text
-          >
           <ReportRegionFields
             v-model:province="draft.province"
             v-model:city="draft.city"
@@ -421,27 +495,16 @@ function copyMaterial() {
             placeholder="水库、湖泊、河段及附近标志物"
             required
           />
-          <text v-if="locating || locationMessage" class="caption" role="status">{{ locating ? '正在获取当前位置…' : locationMessage }}</text>
-          <!-- #ifdef H5 -->
-          <MobileAction class="secondary" :disabled="busy" @click="selectLocation"
-            >高德定位／选点</MobileAction
+          <text v-if="(!coordinatesText && locating) || locationMessage" class="caption" role="status">{{ locating && !coordinatesText ? '正在获取当前位置…' : locationMessage }}</text>
+          <MobileSelect v-if="isDemo" field="report-demo-water" label="选择示例水域" placeholder="选择示例水域" :options="demoWaters" :model-value="draft.location_label" :disabled="busy" @update:model-value="selectDemoWater" />
+          <MobileAction v-else class="secondary" :disabled="busy" @click="selectLocation"
+            >水域地图选点</MobileAction
           >
-          <!-- #endif -->
-          <!-- #ifdef MP-WEIXIN -->
-          <MobileAction class="secondary" :disabled="busy" @click="selectLocation"
-            >高德地点搜索选点</MobileAction
-          >
-          <!-- #endif -->
-          <text class="caption">{{
-            draft.longitude === null
-              ? '未提供坐标。定位不可用时，可手填详细地点；不会自动追踪位置。'
-              : `已选位置：${draft.longitude}, ${draft.latitude}。请确认是事发地点。`
-          }}</text>
-          <MobileAction v-if="draft.longitude !== null" class="text-action" :disabled="busy" @click="clearLocation"
-            >清除坐标，保留文字地点</MobileAction
-          >
-          <MobileDateTimeField v-model:date="observedDate" v-model:time="observedTime" field="report-time" label="事发时间" :error="errors.observed_local" :disabled="busy" required />
-          <text class="caption">{{ editing ? '保留原事发时间，可按实际情况修改。' : '默认当前时间，请按实际事发时间调整。' }}</text>
+          <text v-if="coordinatesText" class="caption" role="status">已选位置：{{ coordinatesText }}</text>
+          <text v-else-if="errors.location" class="error" role="alert">{{ errors.location }}</text>
+          <MobileDateTimeField v-model:date="observedDate" v-model:time="observedTime"
+            field="report-time" label="事发时间" :error="errors.observed_local"
+            :disabled="busy" disable-future required />
           <MobileField
             v-model="draft.description"
             field="report-description"
@@ -451,66 +514,31 @@ function copyMaterial() {
             show-count
             :error="errors.description"
             :disabled="busy"
-            placeholder="看到什么工具、行为、人数及持续时间；不确定的内容请注明，不要猜测身份。"
+            placeholder="描述现场看到的情况"
             required
           />
         </view>
         <view class="panel stack">
           <view class="row row--between"><text class="name">现场图片 / 视频</text><text class="caption">{{ photos.length }} / 6</text></view>
-        <view class="stack stack--tight">
-          <MobileAction
-            class="text-action report-consent"
-            role="checkbox"
-            :aria-checked="consent"
-            :disabled="busy"
-            @click="consent = !consent"
-            ><view class="report-consent__box" aria-hidden="true"
-              ><wd-checkbox
-                :model-value="consent"
-                type="circle"
-                :readonly="true"
-                checked-color="var(--lake)"
-                unchecked-color="var(--reed)"
-                custom-style="--wot-checkbox-icon-size:22px;pointer-events:none;" /></view
-            ><text>{{
-              isDemo
-                ? '我确认将体验材料保存在本机'
-                : '我确认将文字、所选坐标、图片和视频私密保存到钓友集云端'
-            }}</text></MobileAction
-          >
-          <text v-if="!isDemo" class="caption"
-            >材料将私密保存到钓友集，主要存储在中国大陆境外的德国法兰克福。材料不进入社区，也不会自动发给任何外部单位。请勿上传无关人员隐私。</text
-          >
-          <text v-if="errors.consent" class="error" role="alert">{{ errors.consent }}</text>
-          <MobileAction
-            class="text-action"
-            @click="uni.navigateTo({ url: '/pages/settings/legal?type=privacy' })"
-            >查看隐私说明</MobileAction
-          >
-        </view>
-
-          <MobileMediaUploader ref="uploader" v-model="photos" :scope="auth.context" :active="active" :accept="['image','video']" :limit="6" :max-image-bytes="8*1024*1024" :max-video-bytes="20*1024*1024" :upload-image="uploadPhoto" :upload-video="uploadVideo" :error-text="errorText" :recovery="uploadRecovery" :disabled="busy || !consent" upload-label="添加图片 / 视频" @change="syncMedia" />
-          <text v-if="!consent" class="caption">确认上方私密保存说明后，可添加图片和视频。</text>
+          <MobileMediaUploader ref="uploader" v-model="photos" :scope="auth.context" :active="active" :accept="['image','video']" :limit="6" :max-image-bytes="8*1024*1024" :max-video-bytes="20*1024*1024" :upload-image="uploadPhoto" :upload-video="uploadVideo" :error-text="errorText" :recovery="uploadRecovery" :disabled="busy" upload-label="添加图片 / 视频" @change="syncMedia" />
           <text v-if="errors.media" class="error" role="alert">{{ errors.media }}</text>
-          <text class="caption">最多 6 项，图片每张 8MB、视频每段 20MB。可选常见图片和视频格式，添加后自动处理并私密上传；请保留手机原片。</text>
+          <text class="caption">最多 6 项，图片每张 8 MB，视频每段 20 MB。</text>
         </view>
-        <MobileAction class="primary" :disabled="busy || uploader?.uploading || editConflict" @click="save">{{
-          busy ? '正在保存材料…' : editing ? '保存修改' : '私密保存，选择官方渠道'
-        }}</MobileAction>
-        <text class="caption">文字草稿自动保存在当前账号本机。保存成功不等于举报送达。</text>
-        <MobileAction
-          class="text-action"
-          :aria-expanded="channelsOpen"
-          @click="channelsOpen = !channelsOpen"
-          >{{ channelsOpen ? '收起官方渠道' : '先查看官方举报渠道' }}</MobileAction
-        >
-        <ReportChannels
-          v-if="channelsOpen"
-          :province="draft.province"
-          :city="draft.city"
-          :district="draft.district"
-          :current-location="currentPosition"
-        />
+        <view class="stack stack--tight">
+          <MobileAction class="primary" aria-haspopup="dialog" aria-describedby="report-submit-help" :disabled="busy || uploader?.uploading || uploader?.choosing || editConflict" @click="save">{{
+            busy ? '正在保存材料…' : '上报'
+          }}</MobileAction>
+          <view class="notice report-notice" role="note" aria-labelledby="report-submit-title">
+            <MobileIcon name="info" size="1.125rem" color="var(--lake)" />
+            <view class="report-notice__copy">
+              <text id="report-submit-title" class="report-notice__title">上报去向</text>
+              <text v-if="isDemo" id="report-submit-help">材料保存在本机的「我的上报记录」。下一步可预览官方举报渠道。</text>
+              <text v-else id="report-submit-help">材料存入「我的上报记录」后，会弹出可选举报机构。{{ submissionNextStep }}办理情况以接收部门回复为准。</text>
+            </view>
+          </view>
+        </view>
+        <ReportChannels ref="contactDirectory" compact :province="incidentPoint ? draft.province : ''" :city="incidentPoint ? draft.city : ''" :district="incidentPoint ? draft.district : ''"
+          :incident-point="draft.province ? incidentPoint : null" :resolved-region="resolvedRegion" :category="draft.category" />
       </template>
       <view v-else-if="tab==='publish' && !available" class="stack">
         <view class="panel stack">
@@ -528,7 +556,6 @@ function copyMaterial() {
           :province="publicRegion.province"
           :city="publicRegion.city"
           :district="publicRegion.district"
-          :current-location="currentPosition"
         />
         <text class="caption">需要保存图片、视频和现场记录，可登录后私密保存。</text>
         <MobileAction class="secondary" @click="auth.requireLogin()">手机号登录</MobileAction>
@@ -551,26 +578,28 @@ function copyMaterial() {
       :destructive="false"
       @confirm="copyMaterial"
     />
+    <FishingPrimaryNav v-if="tabbed" active="reports" @navigate="returnToHomeTab" />
   </FishingShell>
 </template>
+
 <style scoped>
-.report-consent.mobile-action {
-  display: flex;
-  align-items: flex-start;
-  gap: 10px;
-  text-align: left;
-  white-space: normal;
-  color: var(--ink);
-  min-height: 48px;
-  line-height: 1.5;
+.report-notice {
+  background: var(--lake-soft);
+  font-size: var(--fishing-action-size);
+  line-height: 1.55;
 }
-.report-consent__box {
-  box-sizing: border-box;
-  flex: 0 0 22px;
-  height: 1.5em;
-  min-height: 22px;
-  display: grid;
-  place-items: center;
-  pointer-events: none;
+.report-notice--safety {
+  background: var(--float-soft);
+}
+.report-notice__copy {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.report-notice__title {
+  color: var(--ink);
+  font-weight: 650;
 }
 </style>

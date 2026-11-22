@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { ref, watch } from 'vue'
-import { onLoad, onShow, onHide, onUnload } from '@dcloudio/uni-app'
+import { onLoad, onShow, onHide, onUnload, onReachBottom } from '@dcloudio/uni-app'
 import FishingShell from '@/components/FishingShell.vue'
 import ZoneInfo from '@/components/ZoneInfo.vue'
 // #ifdef H5
@@ -12,8 +12,11 @@ import StaticMapPreview from '@/components/StaticMapPreview.vue'
 import MobileAction from '@mobile-core/components/MobileAction.vue'
 import MobileField from '@mobile-core/components/MobileField.vue'
 import MobileLoadError from '@mobile-core/components/MobileLoadError.vue'
+import MobileListFooter from '@mobile-core/components/MobileListFooter.vue'
+import FishingLoadingStatus from '@/components/FishingLoadingStatus.vue'
 import MobileConfirmDialog from '@mobile-core/components/MobileConfirmDialog.vue'
 import { useAuthStore } from '@/stores/auth'
+import { isTransientRequestError } from '@/services/http'
 import { zonesRead, zonesMine, zonesWrite } from '@/services/zones'
 import type { Zone, ZonePage } from '@/domain/zones'
 import { createId, errorText } from '@/domain/rules'
@@ -23,7 +26,9 @@ const auth = useAuthStore(),
   items = ref<Zone[]>([]),
   next = ref<ZonePage['next']>(null),
   loading = ref(false),
+  loadingMore = ref(false),
   error = ref(''),
+  moreError = ref(''),
   busy = ref(false),
   feedback = ref(''),
   confirm = ref(false),
@@ -41,17 +46,24 @@ function clear() {
   target.value = null
   confirm.value = false
   loading.value = false
+  loadingMore.value = false
   busy.value = false
   expanded.value = ''
   reason.value = ''
   feedback.value = ''
   error.value = ''
+  moreError.value = ''
 }
+onReachBottom(() => {
+  if (!error.value && !moreError.value && !busy.value) void load(true)
+})
 async function load(more = false) {
-  if (!auth.signedIn || loading.value || (more && !next.value)) return
+  if (!auth.signedIn || loading.value || (more && (!next.value || busy.value))) return
   const current = ++version
   loading.value = true
+  loadingMore.value = more
   error.value = ''
+  moreError.value = ''
   stale.value = false
   try {
     const data = review.value
@@ -65,12 +77,19 @@ async function load(more = false) {
     next.value = data.next
   } catch (e) {
     if (current === version) {
+      if (more && isTransientRequestError(e)) {
+        moreError.value = errorText(e)
+        return
+      }
       items.value = []
       next.value = null
       error.value = errorText(e)
     }
   } finally {
-    if (current === version) loading.value = false
+    if (current === version) {
+      loading.value = false
+      loadingMore.value = false
+    }
   }
 }
 function prepare(zone: Zone, value: string) {
@@ -159,8 +178,8 @@ function changeStatus() {
           >逐条核实依据、地点和期限。通过后仍是钓友提醒，不成为官方公告。</text
         >
         <MobileLoadError v-if="error" title="标记未加载" :message="error" @retry="load()" />
-        <text v-if="loading" class="caption" role="status">正在读取标记…</text>
-        <text v-if="!loading && !error && !items.length" class="muted">{{
+        <FishingLoadingStatus v-if="loading && !loadingMore" label="正在读取标记…" />
+        <text v-if="!loading && !error && !items.length && !next" class="muted">{{
           review ? '没有符合条件的提醒。' : '还没有提交过标记。到地图上圈选需要提醒的水域吧。'
         }}</text>
         <view v-for="zone in items" :key="zone.id" class="panel stack">
@@ -181,6 +200,7 @@ function changeStatus() {
           <StaticMapPreview
             v-if="expanded === zone.id"
             :target="{ longitude: zone.longitude, latitude: zone.latitude }"
+            :prohibited="!zone.feedback?.released"
           />
           <!-- #endif -->
           <template v-if="review">
@@ -251,9 +271,10 @@ function changeStatus() {
             ></view
           >
         </view>
-        <MobileAction v-if="next" class="secondary" :disabled="loading || busy" @click="load(true)"
-          >继续查看</MobileAction
-        >
+        <MobileListFooter :loading="loadingMore" :error="moreError"
+          :can-load-more="!!next && !loading && !error && !busy" :finished="!next && !loading && !error"
+          :count="items.length" loading-label="正在加载更多标记…"
+          error-title="更多标记暂未加载" @more="load(true)" />
         <text v-if="!review && feedback" class="error" role="alert">{{ feedback }}</text>
       </template>
     </view>

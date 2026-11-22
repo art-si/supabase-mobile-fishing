@@ -32,7 +32,7 @@ async function setup(options = {}) {
     const request = route.request(),
       url = new URL(request.url())
     if (url.origin === base || !url.protocol.startsWith('http')) return route.continue()
-    if (url.origin !== 'https://tlfmfokyhahlpzmpliad.supabase.co') {
+    if (url.origin !== 'https://jupuypvmgjpnpntfetqv.supabase.co') {
       escaped.push(url.origin)
       return route.abort()
     }

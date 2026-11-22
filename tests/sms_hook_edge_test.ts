@@ -22,7 +22,6 @@ const hookKey = btoa('h'.repeat(32))
 const fingerprintKey = btoa('i'.repeat(32))
 const config: SmsHookConfig = {
   deliveryEnabled: true,
-  allowedTestPhones: ['+8613800000000', '+8613900000000'],
   hookSecret: `v1,whsec_${hookKey}`,
   idempotencySecret: fingerprintKey,
   accessKeyId: 'TestAccessKeyId',
@@ -108,22 +107,13 @@ Deno.test('SMS hook dynamically shortens dispatch to leave durable completion ti
   check(performance.now() - started < 4500, 'dispatch plus receipt fits total budget')
 })
 
-Deno.test('SMS hook blocks absent, invalid or non-matching server test allowlists', async () => {
-  for (const allowedTestPhones of [
-    [],
-    ['*'],
-    ['13800000000'],
-    ['8613800000000'],
-    ['+8613700000000'],
-    ['+8613800000000', 'invalid']
-  ]) {
-    const f = fixture({ config: () => ({ ...config, allowedTestPhones }) })
-    check((await f.handler(signed())).status === 500, 'test recipient must be explicitly allowed')
-    check(
-      f.sends.length === 0 && f.claims.length === 0,
-      'blocked requests do not reach provider or ledger'
-    )
-  }
+Deno.test('SMS hook dispatches signed requests for mainland numbers outside the old allowlist', async () => {
+  const f = fixture()
+  const phone = '+8619200000000'
+  const body = JSON.stringify({ user: { phone }, sms: event.sms })
+  check((await f.handler(signed(body))).status === 200, 'mainland recipient can request an OTP')
+  check(f.sends.length === 1 && f.sends[0].phone === phone, 'provider receives the requested recipient')
+  check(f.claims.length === 1, 'delivery still requires a durable claim')
 })
 
 Deno.test(

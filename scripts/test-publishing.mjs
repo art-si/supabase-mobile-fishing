@@ -43,6 +43,8 @@ await mkdir(output, { recursive: true })
 const browser = await chromium.launch({ channel: 'chrome', headless: true })
 const context = await browser.newContext({
   viewport: { width: 375, height: 812 },
+  permissions: ['geolocation'],
+  geolocation: { longitude: 120.62, latitude: 31.32 },
   locale: 'zh-CN',
   reducedMotion: 'reduce'
 })
@@ -52,7 +54,7 @@ const owner = '11111111-1111-4111-8111-111111111111',
   searches = [],
   uploads = [],
   writes = []
-const author = { id: owner, nickname: '验收钓友', handle: 'DY000000000001', city: '苏州' }
+const author = { id: owner, nickname: '钓友100001', handle: 'DY000000000001', city: '苏州' }
 let uploadFail = true,
   uploadAuthFail = false,
   holdUploads = false,
@@ -64,10 +66,6 @@ await context.addInitScript(
     window.__postGeoFail = !location.href.includes('locationcase=')
     window.__postGeoDelay = location.href.includes('locationcase=late') ? 3000 : 0
     window.__postPlaceQueries = []
-    Object.defineProperty(navigator, 'permissions', {
-      configurable: true,
-      value: { query: async () => ({ state: 'granted' }) }
-    })
     const point = { getLng: () => 120.62345, getLat: () => 31.32789 }
     window.AMap = {
       Geolocation: class {
@@ -132,7 +130,7 @@ await context.route('**/*', async (route) => {
   const req = route.request(),
     url = new URL(req.url())
   if (url.origin === base || !url.protocol.startsWith('http')) return route.continue()
-  assert.equal(url.origin, 'https://tlfmfokyhahlpzmpliad.supabase.co')
+  assert.equal(url.origin, 'https://jupuypvmgjpnpntfetqv.supabase.co')
   const reply = (json, status = 200) =>
     route.fulfill({
       status,
@@ -223,7 +221,9 @@ await context.route('**/*', async (route) => {
   if (url.pathname === '/rest/v1/rpc/fishing_read') {
     if (body.action === 'profile') return reply({ profile: author, posts: [] })
     if (body.action === 'post') return reply({ post, comments: [] })
-    if (body.action === 'feed' || body.action === 'spots' || body.action === 'people')
+    if (body.action === 'feed')
+      return reply({ items: post && p.filter === 'recommended' ? [post] : [], next: null })
+    if (body.action === 'spots' || body.action === 'people')
       return reply({ items: [], next: null })
     if (body.action === 'library') return reply({ posts: [], trips: [], spots: [] })
     return reply([])
@@ -264,6 +264,13 @@ async function shot(name) {
     'page must not overflow'
   )
   await page.screenshot({ path: resolve(output, `${name}.png`) })
+}
+async function checkPublishedInFeed() {
+  await page.waitForURL(/#\/(?:pages\/home\/index)?\?tab=feed$/)
+  const card = page.locator('.post-card').filter({ hasText: post.body })
+  await card.getByText(post.body, { exact: true }).waitFor()
+  assert.equal(await card.locator('.name').innerText(), author.nickname)
+  assert.equal(await page.getByRole('link', { name: '钓友圈', exact: true }).getAttribute('aria-current'), 'page')
 }
 async function choice(label, names) {
   await button(`选择${label}`).click()
@@ -324,11 +331,12 @@ try {
   await page.getByText('尾数请输入 0–10000 的整数', { exact: true }).waitFor()
   assert.equal(await field('尾数').inputValue(), '-1e-1')
   await field('尾数').fill('0')
+  await page.locator('#count-error').waitFor({ state: 'hidden' })
   await field('今天的渔获').fill('本地接口验收：今天在水边记录。')
   await shot('catch-details-375')
   await button('分享心得').click()
   assert.equal(await button('选择鱼种').count(), 0)
-  assert.ok(await field('心得主题（选填）').isVisible())
+  await button('选择心得主题（选填）').waitFor({ state: 'visible' })
   assert.equal(await field('分享你的心得').inputValue(), '本地接口验收：今天在水边记录。')
   await button('晒渔获').click()
   assert.match(await button('选择小药').innerText(), /果酸、虾油/)
@@ -528,7 +536,8 @@ try {
   await page.emulateMedia({ colorScheme: 'light' })
   await setH5TextScale(page, 16)
   await button('保存并发布').click()
-  await page.waitForURL('**/pages/post/detail?id=*')
+  await checkPublishedInFeed()
+  await shot('published-catch-feed-375')
   assert.equal(writes.length, 1)
   const payload = writes[0].payload
   assert.equal(payload.location_label, '太湖')
@@ -539,18 +548,24 @@ try {
   assert.equal(payload.media.length, 6)
   assert.match(payload.occurred_at, /T\d{2}:\d{2}:00\+08:00$/)
   pass('publishing contract carries ordered media, selected time, multi-values and coarse location')
-  await page.goto(`${base}/?fixture-location=auto#/pages/post/compose?locationcase=auto`, {
+  await page.goto(`${base}/?locationcase=auto#/pages/home/index?tab=feed`, {
     waitUntil: 'domcontentloaded'
   })
+  await button('关注').click()
+  await button('记录鱼情').click()
   await page.waitForFunction(() =>
     document.querySelector('#post-location')?.textContent.includes('苏州市')
   )
   assert.match(await button('选择所在位置').innerText(), /工业园区/)
   assert.doesNotMatch(await button('选择所在位置').innerText(), /私密门牌/)
-  await page.evaluate(() => {
-    for (const key of Object.keys(localStorage))
-      if (key.includes('.draft.') && key.endsWith('.post')) localStorage.removeItem(key)
-  })
+  await button('分享心得').click()
+  await field('分享你的心得').fill('今天试了两种饵料，记录一下水边的观察。')
+  await button('保存并发布').click()
+  await checkPublishedInFeed()
+  assert.equal(writes.length, 2)
+  assert.equal(writes[1].payload.kind, 'experience')
+  await shot('published-experience-feed-375')
+  pass('new catches and experiences open the refreshed recommended feed from direct and in-app entry')
   await page.goto(`${base}/?fixture-location=late#/pages/post/compose?locationcase=late`, {
     waitUntil: 'domcontentloaded'
   })

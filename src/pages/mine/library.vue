@@ -1,62 +1,124 @@
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue'
-import { onLoad, onShow, onHide } from '@dcloudio/uni-app'
+import { onLoad, onShow, onHide, onReachBottom } from '@dcloudio/uni-app'
 import FishingShell from '@/components/FishingShell.vue'
 import FishingLoadingStatus from '@/components/FishingLoadingStatus.vue'
 import PostCard from '@/components/PostCard.vue'
 import SpotCard from '@/components/SpotCard.vue'
+import SpotCommentsSheet from '@/components/SpotCommentsSheet.vue'
 import FishFacts from '@/components/FishFacts.vue'
 import TripCatchList from '@/components/TripCatchList.vue'
 import FishingPhotos from '@/components/FishingPhotos.vue'
 import MobileAction from '@mobile-core/components/MobileAction.vue'
 import MobileConfirmDialog from '@mobile-core/components/MobileConfirmDialog.vue'
 import MobileLoadError from '@mobile-core/components/MobileLoadError.vue'
+import MobileListFooter from '@mobile-core/components/MobileListFooter.vue'
 import MobileEmptyState from '@/components/FishingEmptyState.vue'
 import { read, write } from '@/services/repository'
 import { useResource } from '@/composables/useResource'
 import { useMutation } from '@/composables/useMutation'
+import { isDemo } from '@/config'
 import { useAuthStore } from '@/stores/auth'
+import { useSpotCommunity } from '@/composables/useSpotCommunity'
+import { leadCommunityKey, savedSpotLeads } from '@/services/spot-community'
 import { prepareTripDraft, discardTripDraft } from '@/services/draft-handoff'
 import { editRoute } from '@/domain/content-edit'
-import type { Post, Spot, Trip } from '@/domain/models'
+import type { Page, Post, Spot, Trip } from '@/domain/models'
+import type { SpotLead } from '../../../supabase/functions/_shared/discovery-contract'
+const libraryTypes = ['trips', 'saved', 'posts', 'spots'] as const
+type LibraryType = (typeof libraryTypes)[number]
 const auth = useAuthStore(),
-  type = ref('trips'),
-  titles: Record<string, string> = {
+  type = ref<LibraryType>('trips'),
+  titles: Record<LibraryType, string> = {
     trips: '出钓日志',
     saved: '我的收藏',
     posts: '我的记录',
     spots: '我的钓位'
   },
-  title = computed(() => titles[type.value] || '我的记录'),
+  title = computed(() => titles[type.value]),
   mutation = useMutation()
-const { data, error, loading, load } = useResource(
-  async () => {
-    const category = type.value
-    if (category === 'posts') {
-      const [records, legacy] = await Promise.all([
-        read<{ posts: Post[]; spots: Spot[]; trips: Trip[] }>('library', { type: category }),
-        read<{ trips: Trip[] }>('library', { type: 'trips' })
-      ])
-      return { ...records, trips: legacy.trips }
+const emptyPage = <T,>(): Page<T> => ({ items: [], next: null })
+const initial = { posts: emptyPage<Post>(), spots: emptyPage<Spot>(), trips: emptyPage<Trip>(), leads: [] as SpotLead[] }
+const { data, error, loading, load } = useResource(async () => {
+  if (!auth.signedIn) return initial
+  const category = type.value
+  if (isDemo) {
+    const local = await read<{ posts: Post[]; spots: Spot[]; trips: Trip[] }>('library', { type: category })
+    return { posts: { ...initial.posts, items: local.posts }, spots: { ...initial.spots, items: local.spots },
+      trips: { ...initial.trips, items: local.trips }, leads: [] }
+  }
+  const [posts, spots, trips, leads] = await Promise.all([
+    category === 'posts' || category === 'saved' ? read<Page<Post>>('library_posts', { type: category }) : initial.posts,
+    category === 'spots' || category === 'saved' ? read<Page<Spot>>('library_spots', { type: category }) : initial.spots,
+    category === 'trips' || category === 'posts' ? read<Page<Trip>>('library_trips') : initial.trips,
+    category === 'saved' ? savedSpotLeads().catch(() => [] as SpotLead[]) : initial.leads
+  ])
+  return { posts, spots, trips, leads }
+}, initial)
+const more = useMutation()
+const hasMore = computed(() => Boolean(data.value.posts.next || data.value.spots.next || data.value.trips.next))
+const itemCount = computed(() => data.value.posts.items.length + data.value.spots.items.length +
+  data.value.trips.items.length + data.value.leads.length)
+async function loadMore() {
+  const previous = data.value
+  const category = type.value
+  const scope = auth.context
+  if (loading.value || error.value || !auth.signedIn || !hasMore.value) return
+  await more.run(async () => {
+    const append = async <T,>(action: string, page: Page<T>) => {
+      if (!page.next) return page
+      const next = await read<Page<T>>(action, { type: category, cursor: page.next })
+      const ids = new Set(page.items.map(item => (item as { id: string }).id))
+      return { items: [...page.items, ...next.items.filter(item => !ids.has((item as { id: string }).id))], next: next.next }
     }
-    return read<{ posts: Post[]; spots: Spot[]; trips: Trip[] }>('library', { type: category })
-  },
-  { posts: [], spots: [], trips: [] }
+    try {
+      const [posts, spots, trips] = await Promise.all([
+        append('library_posts', previous.posts), append('library_spots', previous.spots),
+        append('library_trips', previous.trips)
+      ])
+      if (data.value === previous && !loading.value && auth.context === scope && type.value === category)
+        data.value = { ...previous, posts, spots, trips }
+    } catch (cause) {
+      if (data.value === previous && auth.context === scope && type.value === category) throw cause
+    }
+  })
+}
+onReachBottom(() => { if (!more.error.value) void loadMore() })
+watch([type, () => auth.context], () => { more.error.value = '' })
+const { summaries, busy: communityBusy, apply: updateCommunity, react: reactToSpot,
+  openComments, commentsOpen, commentTarget } = useSpotCommunity(
+  computed(() => data.value.leads.map(leadCommunityKey))
 )
+const visibleLeads = computed(() => data.value.leads.flatMap(lead => {
+  const target = leadCommunityKey(lead)
+  const community = summaries.value[target]
+  if (community?.saved === false) return []
+  return [{ lead, target, community, spot: {
+    id: target, city: lead.city, name: lead.name, water_type: lead.waterType, observed_on: lead.sourceDate,
+    fishing_status: community?.status === 'prohibited' ? 'prohibited' as const : undefined
+  } }]
+}))
 onLoad((options) => {
-  type.value = options?.type || 'trips'
+  type.value = libraryTypes.find((kind) => kind === options?.type) ?? 'trips'
   void load()
 })
 onShow(() => void load())
 const empty = computed(() =>
   type.value === 'trips'
-    ? !data.value.trips.length
+    ? !data.value.trips.items.length
     : type.value === 'spots'
-      ? !data.value.spots.length
+      ? !data.value.spots.items.length
       : type.value === 'saved'
-        ? !data.value.posts.length && !data.value.spots.length
-        : !data.value.posts.length && !data.value.trips.length
+        ? !data.value.posts.items.length && !data.value.spots.items.length && !visibleLeads.value.length
+        : !data.value.posts.items.length && !data.value.trips.items.length
 )
+const libraryEmpty = {
+  trips: { title: '还没有出钓日志', description: '记下日期、渔获和心得，方便下次回看。', action: '记录鱼情', url: '/pages/post/compose' },
+  posts: { title: '还没有鱼情记录', description: '渔获和钓法心得都可以记在这里。', action: '记录鱼情', url: '/pages/post/compose' },
+  spots: { title: '还没有保存自己的钓位', description: '留下钓位位置和现场信息，下次可以直接找到。', action: '新增钓位', url: '/pages/spot/create' },
+  saved: { title: '还没有收藏', description: '收藏鱼情或钓位后，可以在这里回看。', action: '浏览钓友圈', url: '/pages/home/index' }
+}
+const emptyState = computed(() => libraryEmpty[type.value])
 async function react(post: Post, kind: 'like' | 'bookmark') {
   await mutation.run(async () => {
     await write('reaction', {
@@ -108,12 +170,21 @@ async function confirmDelete() {
 }
 </script>
 <template>
-  <FishingShell :title="title" back
-    ><view class="fishing-content stack"
-      ><MobileLoadError v-if="error" :message="error" @retry="load" />
+  <FishingShell :title="title" back>
+    <view v-if="!auth.signedIn" class="fishing-content">
+      <MobileEmptyState
+        icon="document"
+        title="登录后查看个人记录"
+        description="在这里查看收藏、出钓记录和自己保存的钓位。"
+      >
+        <MobileAction class="primary" @click="auth.requireLogin()">登录</MobileAction>
+      </MobileEmptyState>
+    </view>
+    <view v-else class="fishing-content stack">
+      <MobileLoadError v-if="error" :message="error" @retry="load" />
       <FishingLoadingStatus v-if="loading && empty" label="正在翻阅你的出钓记录…" />
       <template v-if="type === 'posts' || type === 'saved'"
-        ><view v-for="post in data.posts" :key="post.id" class="stack stack--tight"
+        ><view v-for="post in data.posts.items" :key="post.id" class="stack stack--tight"
           ><PostCard
             :post="post"
             @react="react(post, $event)"
@@ -128,9 +199,9 @@ async function confirmDelete() {
           </PostCard></view
         ></template
       >
-      <template v-if="type === 'trips' || (type === 'posts' && data.trips.length)"
-        ><view class="notice">以前的出钓日志仍仅自己可见。新的记录统一在“记录鱼情”里保存。</view
-        ><view v-for="trip in data.trips" :key="trip.id" class="panel stack"
+      <template v-if="type === 'trips' || (type === 'posts' && data.trips.items.length)"
+        ><view v-if="data.trips.items.length" class="notice">以前的出钓日志仍仅自己可见。新的记录统一在“记录鱼情”里保存。</view
+        ><view v-for="trip in data.trips.items" :key="trip.id" class="panel stack"
           ><text class="caption">{{ trip.occurred_on }} · 私人日志</text
           ><text class="heading">{{ trip.title }}</text
           ><text class="body">{{ trip.body }}</text
@@ -155,7 +226,7 @@ async function confirmDelete() {
         ></template
       >
       <template v-if="type === 'spots' || type === 'saved'"
-        ><view v-for="spot in data.spots" :key="spot.id" class="stack stack--tight"
+        ><view v-for="spot in data.spots.items" :key="spot.id" class="stack stack--tight"
           ><SpotCard :spot="spot" /><MobileAction
             v-if="type === 'spots'"
             class="text-action"
@@ -164,29 +235,42 @@ async function confirmDelete() {
           ></view
         ></template
       >
+      <template v-if="type === 'saved'">
+        <SpotCard v-for="card in visibleLeads" :key="card.target" :spot="card.spot" :lead="card.lead.source"
+          interactive
+          :source-address="card.lead.sourceAddress" :labels="card.lead.labels" :community="card.community"
+          :busy="communityBusy.has(card.target)" @react="kind => reactToSpot(card.target, kind)"
+          @comments="openComments(card.target, card.spot.name)" />
+        <SpotCommentsSheet v-model="commentsOpen" :target="commentTarget.id" :title="commentTarget.title"
+          @summary="updateCommunity" />
+      </template>
       <MobileEmptyState
         v-if="empty && !loading && !error"
         icon="document"
-        title="留给下一次好时光"
-        description="记录、发布或收藏后，就能在这里找到。"
+        :title="emptyState.title"
+        :description="emptyState.description"
         ><MobileAction
           class="secondary"
-          @click="uni.navigateTo({ url: '/pages/post/compose' })"
-          >记录鱼情</MobileAction
+          @click="type === 'saved' ? uni.reLaunch({ url: emptyState.url }) : uni.navigateTo({ url: emptyState.url })"
+          >{{ emptyState.action }}</MobileAction
         ></MobileEmptyState
       >
-      <text v-if="!empty && !loading" class="caption">当前显示最近 100 条记录。</text>
+      <MobileListFooter :loading="more.busy.value" :error="more.error.value"
+        :can-load-more="hasMore && !loading && !error" :finished="!hasMore && !loading && !error"
+        :count="itemCount" loading-label="正在加载更多记录…" @more="loadMore" />
       <text v-if="mutation.error.value" class="error" role="alert">{{
         mutation.error.value
-      }}</text> </view
-    ><MobileConfirmDialog
+      }}</text>
+    </view>
+    <MobileConfirmDialog
       v-model="deleteOpen"
       title="删除这条记录？"
       message="删除后不再显示，请确认你不再需要它。"
       confirm-text="删除记录"
       @confirm="confirmDelete"
       @cancel="pendingDelete = undefined"
-  /></FishingShell>
+    />
+  </FishingShell>
 </template>
 <style scoped>
 .publication-management {

@@ -1,12 +1,14 @@
 <script setup lang="ts">
 import { ref, watch } from 'vue'
-import { onLoad, onShow, onHide, onUnload } from '@dcloudio/uni-app'
+import { onLoad, onShow, onHide, onUnload, onReachBottom } from '@dcloudio/uni-app'
 import FishingShell from '@/components/FishingShell.vue'
 import FishingLoadingStatus from '@/components/FishingLoadingStatus.vue'
 import FishingEmptyState from '@/components/FishingEmptyState.vue'
 import MobileAction from '@mobile-core/components/MobileAction.vue'
 import MobileLoadError from '@mobile-core/components/MobileLoadError.vue'
+import MobileListFooter from '@mobile-core/components/MobileListFooter.vue'
 import { useAuthStore } from '@/stores/auth'
+import { isTransientRequestError } from '@/services/http'
 import { contentReports } from '@/services/content-reports'
 import { errorText, relativeTime } from '@/domain/rules'
 import {
@@ -22,7 +24,9 @@ const auth = useAuthStore(),
 const items = ref<ContentReport[]>([]),
   next = ref<ContentReportCursor | null>(null),
   loading = ref(false),
-  error = ref('')
+  loadingMore = ref(false),
+  error = ref(''),
+  moreError = ref('')
 let version = 0,
   visible = false
 function clear() {
@@ -30,13 +34,20 @@ function clear() {
   items.value = []
   next.value = null
   loading.value = false
+  loadingMore.value = false
   error.value = ''
+  moreError.value = ''
 }
+onReachBottom(() => {
+  if (!error.value && !moreError.value) void load(true)
+})
 async function load(more = false) {
   if (!visible || !auth.signedIn || loading.value || (more && !next.value)) return
   const current = ++version
   loading.value = true
+  loadingMore.value = more
   error.value = ''
+  moreError.value = ''
   try {
     const result = await contentReports<ContentReportPage>(review.value ? 'queue' : 'mine', {
       section: section.value,
@@ -50,11 +61,18 @@ async function load(more = false) {
     next.value = result.next
   } catch (e) {
     if (current !== version) return
+    if (more && isTransientRequestError(e)) {
+      moreError.value = errorText(e)
+      return
+    }
     items.value = []
     next.value = null
     error.value = errorText(e)
   } finally {
-    if (current === version) loading.value = false
+    if (current === version) {
+      loading.value = false
+      loadingMore.value = false
+    }
   }
 }
 function change(value: 'pending' | 'closed') {
@@ -154,9 +172,13 @@ onUnload(() => {
             </view>
           </view>
         </template>
-        <FishingLoadingStatus v-if="loading" label="正在读取举报记录…" />
+        <MobileListFooter :loading="loadingMore" :error="moreError"
+          :can-load-more="!!next && !loading && !error" :finished="!next && !loading && !error"
+          :count="items.length" loading-label="正在加载更多举报记录…"
+          error-title="更多举报记录暂未加载" @more="load(true)" />
+        <FishingLoadingStatus v-if="loading && !loadingMore" label="正在读取举报记录…" />
         <FishingEmptyState
-          v-else-if="!items.length && !error"
+          v-else-if="!items.length && !error && !next"
           icon="shield"
           :title="
             review
@@ -169,9 +191,6 @@ onUnload(() => {
             review ? '这里处理社区内容和钓位纠错。' : '发现问题，可在鱼情或钓位详情提交说明。'
           "
         />
-        <MobileAction v-if="next && !loading" class="secondary" @click="load(true)"
-          >继续查看</MobileAction
-        >
         <text class="caption">社区举报与水域线索上报相互独立，不代表已向政府部门报案。</text>
         <text v-if="items.some((item) => item.status !== 'pending')" class="caption"
           >处理结果记录当时的决定，不代表内容当前状态。</text

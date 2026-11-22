@@ -2,11 +2,12 @@
 # Uses only the existing Supabase CLI default credential, never enumerates credentials.
 # Default: read-only status. -Prepare: prebind the hook with all sending disabled.
 # -EnableLogin: enable phone + hook routing, requiring delivery to remain disabled.
+# -EnableDelivery / -DisableDelivery: toggle SMS delivery for mainland numbers.
 param([switch]$Prepare, [switch]$EnableLogin, [switch]$ConfigurePassword,
-  [switch]$EnableTestDelivery, [switch]$DisableTestDelivery)
+  [switch]$EnableDelivery, [Alias('DisableTestDelivery')][switch]$DisableDelivery)
 $ErrorActionPreference = 'Stop'
 Set-StrictMode -Version Latest
-$projectRef = 'tlfmfokyhahlpzmpliad'
+$projectRef = 'jupuypvmgjpnpntfetqv'
 $apiRoot = "https://api.supabase.com/v1/projects/$projectRef"
 $hookUri = "https://$projectRef.supabase.co/functions/v1/send-sms-hook"
 Add-Type -TypeDefinition @'
@@ -42,7 +43,6 @@ $authConfig = $null
 $hookSecret = $null
 $idempotencySecret = $null
 $newSecrets = @()
-$testRecipient = $null
 function Invoke-ProjectApi([string]$Path, [string]$Method = 'GET', [object]$Body = $null) {
   $requestOptions = @{ Uri = "$apiRoot$Path"; Method = $Method; Headers = $headers; TimeoutSec = 25; MaximumRedirection = 0 }
   if ($null -ne $Body) {
@@ -69,57 +69,36 @@ function Auth-SecretDigest([string]$Value) {
   finally { $hmac.Dispose() }
 }
 try {
-  if (@(@($Prepare, $EnableLogin, $ConfigurePassword, $EnableTestDelivery, $DisableTestDelivery) | Where-Object { $_ }).Count -gt 1) { throw 'Configuration operations must be separate.' }
+  if (@(@($Prepare, $EnableLogin, $ConfigurePassword, $EnableDelivery, $DisableDelivery) | Where-Object { $_ }).Count -gt 1) { throw 'Configuration operations must be separate.' }
   $token = [FishingSupabaseCredential]::ReadCliDefault()
   if ($token -notmatch '^sbp_(oauth_)?[a-f0-9]{40}$') { throw 'Supabase CLI default login not available. No changes made.' }
   $headers = @{ Authorization = "Bearer $token" }
   $authConfig = Invoke-ProjectApi '/config/auth'
   $stored = @(Invoke-ProjectApi '/secrets')
-  if ($DisableTestDelivery) {
+  if ($DisableDelivery) {
     $null = Invoke-ProjectApi '/secrets' 'POST' @(@{ name = 'SMS_DELIVERY_ENABLED'; value = 'false' })
     $stored = @(Invoke-ProjectApi '/secrets')
     if (@($stored | Where-Object { $_.name -eq 'SMS_DELIVERY_ENABLED' -and $_.value -eq (Secret-Digest 'false') }).Count -ne 1) {
       throw 'Could not confirm SMS delivery is disabled. Do not make further OTP requests.'
     }
   }
-  if ($EnableTestDelivery) {
+  if ($EnableDelivery) {
     if (-not $authConfig.external_phone_enabled -or -not $authConfig.hook_send_sms_enabled -or
         $authConfig.hook_send_sms_uri -ne $hookUri -or $authConfig.sms_autoconfirm -or
         [string]::IsNullOrEmpty($authConfig.hook_send_sms_secrets) -or
         $authConfig.sms_otp_length -ne 6 -or $authConfig.sms_otp_exp -ne 300 -or
-        $authConfig.sms_max_frequency -lt 60) { throw 'Auth configuration is not ready for the limited SMS test.' }
+        $authConfig.sms_max_frequency -lt 60) { throw 'Auth configuration is not ready for SMS delivery.' }
     foreach ($required in @('SEND_SMS_HOOK_SECRET', 'SMS_IDEMPOTENCY_SECRET', 'ALIYUN_PNVS_ACCESS_KEY_ID',
         'ALIYUN_PNVS_ACCESS_KEY_SECRET', 'ALIYUN_PNVS_SIGN_NAME', 'ALIYUN_PNVS_TEMPLATE_CODE',
         'ALIYUN_PNVS_SCHEME_NAME', 'SMS_OTP_EXPIRY_SECONDS', 'SMS_MIN_INTERVAL_SECONDS')) {
       if (@($stored | Where-Object name -eq $required).Count -ne 1) { throw 'Required server configuration is missing. Delivery remains unchanged.' }
-    }
-    if (@($stored | Where-Object { $_.name -eq 'SMS_DELIVERY_ENABLED' -and $_.value -eq (Secret-Digest 'false') }).Count -ne 1) {
-      throw 'Limited test requires delivery to start disabled. Refusing to extend an unknown sending window.'
-    }
-    # The recipient is not accepted on the process command line, written to disk, or printed.
-    $maskedInput = Read-Host 'Authorized test phone (hidden)' -AsSecureString
-    $inputPointer = [Runtime.InteropServices.Marshal]::SecureStringToBSTR($maskedInput)
-    try { $testRecipient = [Runtime.InteropServices.Marshal]::PtrToStringBSTR($inputPointer) }
-    finally { [Runtime.InteropServices.Marshal]::ZeroFreeBSTR($inputPointer); $maskedInput.Dispose() }
-    $testRecipient = $testRecipient.Trim() -replace '[\s-]', ''
-    if ($testRecipient -match '^1[3-9]\d{9}$') { $testRecipient = '+86' + $testRecipient }
-    if ($testRecipient -notmatch '^\+861[3-9]\d{9}$') { throw 'Invalid mainland test phone. No changes made.' }
-    $existingRecipients = @($stored | Where-Object name -eq 'SMS_ALLOWED_TEST_PHONES')
-    if ($existingRecipients.Count -gt 1 -or
-        ($existingRecipients.Count -eq 1 -and $existingRecipients[0].value -ne (Secret-Digest $testRecipient))) {
-      throw 'A different test-recipient configuration already exists. Refusing to overwrite it.'
-    }
-    $null = Invoke-ProjectApi '/secrets' 'POST' @(@{ name = 'SMS_ALLOWED_TEST_PHONES'; value = $testRecipient })
-    $stored = @(Invoke-ProjectApi '/secrets')
-    if (@($stored | Where-Object { $_.name -eq 'SMS_ALLOWED_TEST_PHONES' -and $_.value -eq (Secret-Digest $testRecipient) }).Count -ne 1) {
-      throw 'Test recipient readback mismatch. SMS remains disabled.'
     }
     $null = Invoke-ProjectApi '/secrets' 'POST' @(@{ name = 'SMS_DELIVERY_ENABLED'; value = 'true' })
     $stored = @(Invoke-ProjectApi '/secrets')
     if (@($stored | Where-Object { $_.name -eq 'SMS_DELIVERY_ENABLED' -and $_.value -eq (Secret-Digest 'true') }).Count -ne 1) {
       # Fail closed if activation cannot be confirmed.
       $null = Invoke-ProjectApi '/secrets' 'POST' @(@{ name = 'SMS_DELIVERY_ENABLED'; value = 'false' })
-      throw 'Could not confirm limited delivery activation. Sending disabled again.'
+      throw 'Could not confirm delivery activation. Sending disabled again.'
     }
   }
   if ($ConfigurePassword) {
@@ -227,10 +206,8 @@ try {
     IdempotencySecretConfigured = $secretNames -contains 'SMS_IDEMPOTENCY_SECRET'
     AliyunIdConfigured = $secretNames -contains 'ALIYUN_PNVS_ACCESS_KEY_ID'
     AliyunSecretConfigured = $secretNames -contains 'ALIYUN_PNVS_ACCESS_KEY_SECRET'
-    TestAllowlistConfigured = $secretNames -contains 'SMS_ALLOWED_TEST_PHONES'
-    TestRecipientMatches = -not [string]::IsNullOrEmpty($testRecipient) -and @($stored | Where-Object { $_.name -eq 'SMS_ALLOWED_TEST_PHONES' -and $_.value -eq (Secret-Digest $testRecipient) }).Count -eq 1
     SmsDispatchRequestsFromHelper = 0
   } | ConvertTo-Json -Compress
 } finally {
-  $token = $null; $headers = $null; $authConfig = $null; $hookSecret = $null; $idempotencySecret = $null; $newSecrets = @(); $stored = $null; $testRecipient = $null
+  $token = $null; $headers = $null; $authConfig = $null; $hookSecret = $null; $idempotencySecret = $null; $newSecrets = @(); $stored = $null
 }

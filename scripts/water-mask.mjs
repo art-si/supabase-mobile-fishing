@@ -20,7 +20,7 @@ function stitch(parts){
 function contains(point,ring){let inside=false;for(let i=0,j=ring.length-1;i<ring.length;j=i++){
  const a=ring[i],b=ring[j];if((a[1]>point[1])!==(b[1]>point[1])&&point[0]<(b[0]-a[0])*(point[1]-a[1])/(b[1]-a[1])+a[0])inside=!inside
 }return inside}
-function polygons(element){
+export function waterSurfacePolygons(element){
  if(element.type==='way')return element.geometry?.length>3&&same([element.geometry[0].lon,element.geometry[0].lat],[element.geometry.at(-1).lon,element.geometry.at(-1).lat])?[[element.geometry.map(({lon,lat})=>[lon,lat])]]:[]
  if(element.type!=='relation')return[]
  const members=element.members.filter(m=>m.type==='way'&&m.geometry)
@@ -50,7 +50,7 @@ export async function clipToWater(id,name,policyRing,identity){
  const names=[name,...(identity?.aliases||[])]
  const candidates=data.elements.filter(e=>[e.tags?.name,e.tags?.['name:zh'],e.tags?.alt_name].filter(Boolean).some(label=>label.split(';').some(v=>names.some(n=>v===n||v===n+'水库'))))
  if(!candidates.length)throw Error(`No matching water boundary for ${name}; available: ${data.elements.map(e=>e.tags?.name).filter(Boolean).join('、')}`)
- const shapes=candidates.flatMap(polygons)
+ const shapes=candidates.flatMap(waterSurfacePolygons)
  if(!shapes.length)throw Error('No complete water polygons')
  const mask=clipping.union(...shapes)
  const result=clipping.intersection([policyRing],mask)

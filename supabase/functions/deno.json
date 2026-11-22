@@ -1,5 +1,9 @@
 {
   "nodeModulesDir": "none",
   "lock": true,
+  "imports": {
+    "@mapbox/vector-tile": "npm:@mapbox/vector-tile@3.0.0",
+    "pbf": "npm:pbf@5.2.0"
+  },
   "compilerOptions": { "strict": true }
 }

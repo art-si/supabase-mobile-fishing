@@ -12,12 +12,12 @@ try {
   page.on('pageerror', (e) => errors.push(e.message))
   page.on('requestfailed', (request) => {
     const url = new URL(request.url())
-    if (url.hostname === 'tlfmfokyhahlpzmpliad.supabase.co')
+    if (url.hostname === 'jupuypvmgjpnpntfetqv.supabase.co')
       failures.push({ path: url.pathname, error: request.failure()?.errorText })
   })
   const [read] = await Promise.all([
     page.waitForResponse((r) =>
-      r.url().includes('tlfmfokyhahlpzmpliad.supabase.co/rest/v1/rpc/fishing_read')
+      r.url().includes('jupuypvmgjpnpntfetqv.supabase.co/rest/v1/rpc/fishing_read')
     ),
     page.goto(`${base}/#/pages/home/index`)
   ])

@@ -19,7 +19,7 @@ await context.route('**/*',route=>{
   return route.continue()
  }
  if(!url.protocol.startsWith('http'))return route.continue()
- if(url.origin!=='https://tlfmfokyhahlpzmpliad.supabase.co'){escaped.push(url.origin);return route.abort()}
+ if(url.origin!=='https://jupuypvmgjpnpntfetqv.supabase.co'){escaped.push(url.origin);return route.abort()}
  const reply=json=>route.fulfill({json,headers:{'access-control-allow-origin':'*','access-control-allow-headers':'*','access-control-allow-methods':'*'}})
  if(req.method()==='OPTIONS')return reply({})
  if(url.pathname==='/auth/v1/user')return reply({id:owner})

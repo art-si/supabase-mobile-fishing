@@ -107,20 +107,23 @@ export function auditMiniapp(files, sourceManifest, options = {}) {
       issues.push(`Illegal cross-package dependency: ${from} -> ${found}`)
   }
   for (const [path, bytes] of [...files].sort(([a], [b]) => a.localeCompare(b))) {
+    if (/(?:^|\/)water-index\/|\.osm\.pbf$/i.test(path))
+      issues.push(`Shoreline data must be served remotely: ${path}`)
     const owner = packageOwner(path, built.roots)
     packageSizes.set(owner, packageSizes.get(owner) + bytes.length)
     digest.update(path).update('\0').update(bytes).update('\0')
     if (path.endsWith('.js')) {
       const code = bytes.toString()
       // uni-mp-vite/pagesJson injects `if (!Math) { import(page) }` to emit page
-      // entries. Production minifies it to this exact unreachable anchor. Only
+      // entries. Production minifies it to this unreachable anchor, optionally
+      // projecting the exported namespace of a page. Only
       // declared page entries in this guard are exempt from runtime ownership;
       // still check their existence. An ordinary app.js require is NOT exempt.
       const anchors =
         path === 'app.js'
           ? [
               ...code.matchAll(
-                /(?:^|;)Math\|\|\((?:Promise\.resolve\(\)\.then\(\(\)=>require\("[^"]+"\)\),?)+\);/g
+                /(?:^|;)Math\|\|\((?:Promise\.resolve\(\)\.then\(\(\)=>require\("[^"]+"\)\)(?:\.then\(([a-zA-Z_$][\w$]*)=>\1\.[\w$]+_exports\))?,?)+\);/g
               )
             ]
           : []

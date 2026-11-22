@@ -2,11 +2,11 @@
 # Admin credentials stay in this PowerShell process; business requests use real user tokens.
 # The ignored journal records only exact test identities, never credentials or private bodies.
 [CmdletBinding()]
-param([ValidateSet('h5-amap','avatar','h5-spot-photos','video','all','core','social','report','orientation','photo-capacity','photo-guard','h5-large-photo','h5-media','h5-social','h5-chat-attachments','h5-realtime','h5-zones','h5-trip-catches','h5-comments','h5-comment-moderation','h5-notifications','h5-composition','h5-content-updates','h5-report','h5-report-manual')][string]$Suite='all', [string]$CleanupRun, [switch]$SessionsRevoked)
+param([ValidateSet('h5-amap','avatar','spot-discussion','h5-spot-photos','video','all','core','social','report','orientation','photo-capacity','photo-guard','h5-large-photo','h5-media','h5-social','h5-chat-attachments','h5-realtime','h5-zones','h5-trip-catches','h5-comments','h5-comment-moderation','h5-notifications','h5-composition','h5-content-updates','h5-report','h5-report-manual')][string]$Suite='all', [string]$CleanupRun, [switch]$SessionsRevoked)
 $ErrorActionPreference = 'Stop'
 $ProgressPreference = 'SilentlyContinue'
 $fishingRoot = Split-Path -Parent $PSScriptRoot
-$projectRef = 'tlfmfokyhahlpzmpliad'
+$projectRef = 'jupuypvmgjpnpntfetqv'
 $projectUrl = "https://$projectRef.supabase.co"
 $config = @{}
 Get-Content -LiteralPath (Join-Path $fishingRoot '.env.local') | ForEach-Object {
@@ -230,6 +230,39 @@ try {
     Check ($session.user.id -eq $account.id -and [bool]$account.token) "real user session: $($account.label)"
   }
   $a,$b,$outsider = $accounts
+  if ($Suite -eq 'spot-discussion') {
+    # The reserved city has no coordinates and cannot appear in any real city's results.
+    $city='QA'+$runId.Substring(0,8)
+    $name='discussion-'+$runId
+    $target='lead:'+$city+'|'+$name
+    $null=Require-Ok (Call-Api POST '/rest/v1/fishing_spot_leads' @{
+      city=$city; name=$name; card=@{city=$city;name=$name;labels=@{};source=@{}}
+    } -Admin) 'create isolated discussion target'
+    $first=[guid]::NewGuid().ToString()
+    $second=[guid]::NewGuid().ToString()
+    $photo=Upload $a (New-Photo $false) 'image/png'
+    $null=Success $b spot_community react @{target=$target;kind='like';enabled=$true}
+    $likers=Success $outsider read discussion_likes @{target=$target;cursor=$null}
+    Check ($likers.items.Count -eq 1 -and $likers.items[0].id -eq $b.id) 'actual like is returned to an authorized reader'
+    $null=Success $b spot_community react @{target=$target;kind='like';enabled=$false}
+    $likers=Success $outsider read discussion_likes @{target=$target;cursor=$null}
+    Check (@($likers.items).Count -eq 0) 'undoing the like also removes the actor from the preview'
+    $null=Success $a spot_community comment @{target=$target;id=$first;body='';media=@(@{id=$photo.id})}
+    $reply=@{target=$target;id=$second;body='收到图片';reply_to_id=$first}
+    $null=Success $b spot_community comment $reply
+    $null=Success $b spot_community comment $reply
+    $discussion=Success $outsider spot_community comments @{target=$target;cursor=$null}
+    $quoted=@($discussion.items | Where-Object id -eq $second)[0]
+    $parent=@($discussion.items | Where-Object id -eq $first)[0]
+    Check ($discussion.summary.comments -eq 2 -and $quoted.reply_to.id -eq $first -and $quoted.reply_to.body -eq '[图片]' -and $parent.media[0].id -eq $photo.id) 'two accounts persist an image-only comment, reply and duplicate retry'
+    $signed=Require-Ok (Sign-Photo $b $photo.path) 'sign the other account photo'
+    $download=Call-Api GET ('/storage/v1'+$signed.signedURL)
+    Check ($download.status -eq 200 -and $download.bytes.Length -gt 0 -and $download.mime -match 'image/') 'another reader opens the real sanitized image'
+    $null=Success $a spot_community delete_comment @{target=$target;id=$first}
+    $remainingDiscussion=Success $b spot_community comments @{target=$target;cursor=$null}
+    Check ($remainingDiscussion.summary.comments -eq 1 -and $remainingDiscussion.items[0].id -eq $second -and $remainingDiscussion.items[0].reply_to_id -eq $first -and !$remainingDiscussion.items[0].reply_to) 'deleting the original keeps the reply and removes the quote'
+    Check ((Sign-Photo $b $photo.path).status -ne 200) 'deleted comment photo cannot receive a new signature'
+  }
   if ($Suite -eq 'avatar') {
     $first=Upload $a (New-Photo $false) 'image/png'
     Check ((Sign-Photo $null $first.path).status -ne 200) 'unsaved avatar candidate stays private'
@@ -309,6 +342,12 @@ try {
       # standalone APIRequestContext does not inherit the browser's Windows proxy.
       $mapAnonymous = Call-Api POST '/functions/v1/amap' @{action='search';query='苏州金鸡湖';city='苏州';page=1}
       Check ($mapAnonymous.status -eq 401) 'Web Service proxy rejects requests without an authenticated session'
+      $riverShore = Require-Ok (Call-Api POST '/functions/v1/amap' @{action='shoreline';longitude=114.146146;latitude=30.447590;crs='WGS84'} $a.token) 'named river shoreline'
+      Check ($riverShore.crs -eq 'WGS84' -and $riverShore.water.distance -eq 0 -and $riverShore.water.polygon.Count -gt 0 -and $riverShore.water.name -match '通顺河|东荆河') 'Static picker reads the named river and its real geometry at the reported point'
+      $riverNames = Require-Ok (Call-Api POST '/functions/v1/amap' @{action='water-places';longitude=114.151786;latitude=30.445221;radius=2000} $a.token) 'named river places'
+      Check (@($riverNames.items | Where-Object { $_.name -eq '东荆河' -and $_.flowing }).Count -gt 0) 'Real AMap water lookup returns the on-map river name'
+      $pinPreview = Require-Ok (Call-Api POST '/functions/v1/amap' @{action='preview';longitude=114.151786;latitude=30.445221;hideMarker=$true} $a.token) 'map image for a prohibition pin'
+      Check ($pinPreview.precision -eq 'exact' -and $pinPreview.width -eq 640 -and $pinPreview.image -match '^data:image/') 'The hosted map returns an exact base image for the shared pin'
     }
     $conversationId=$null
     $cardFixtures=$null
@@ -501,6 +540,14 @@ try {
   Write-Host "CHECKS FAILED: $failure"
   Save-Journal 'checks-failed'
 } finally {
+  if ($Suite -eq 'spot-discussion') {
+    $fixturePath='/rest/v1/fishing_spot_leads?city=eq.QA'+$runId.Substring(0,8)+'&name=eq.discussion-'+$runId
+    try {
+      $null=Require-Ok (Call-Api DELETE $fixturePath -Admin) 'remove exact isolated discussion target'
+      $left=Require-Ok (Call-Api GET ($fixturePath+'&select=name') -Admin) 'verify isolated target removal'
+      Check (@($left).Count -eq 0) 'isolated target removed'
+    } catch { $failure=$_.Exception.Message }
+  }
   # Only accounts bearing BOTH this run's immutable server marker AND exact planned email.
   foreach ($account in $accounts) {
     try {

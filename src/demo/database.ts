@@ -1,9 +1,9 @@
 import { seed, type DemoData } from './seed'
-import { createId, safeSpot, optionalNumber } from '@/domain/rules'
-import { postCaption, compositionLimits } from '@/domain/composition'
+import { createId, safeSpot, optionalNumber, validCoordinates } from '@/domain/rules'
+import { compositionLimits } from '@/domain/composition'
 import { ApiError } from '@/services/http'
 import { serviceErrorMessage } from '@/domain/user-errors'
-import { REPORT_CONSENT, localReportTime, validateWaterReport, type WaterReportDraft } from '@/domain/water-report'
+import { localReportTime, validateWaterReport, type WaterReportDraft } from '@/domain/water-report'
 import { catchRecordsFromDraft, catchSummary, freshCatch } from '@/domain/trip-catches'
 import { catchNumber } from '@/domain/catch-measurements'
 import { distanceMeters } from '@mobile-core/coordinates'
@@ -12,7 +12,6 @@ import type {
   CatchRecord,
   Comment,
   Media,
-  Message,
   Payload,
   Post,
   PostDraft,
@@ -120,31 +119,6 @@ export function execute(
   const spotVisible = (s: Spot) =>
     s.author.id === user ||
     ((!s.status || s.status === 'published') && visible(s.author.id, s.audience))
-  const chatCard = (kind: string, target: string, viewer: string) => {
-    const item =
-      kind === 'post' ? d.posts.find((p) => p.id === target) : d.spots.find((s) => s.id === target)
-    if (
-      !item ||
-      (item.status && item.status !== 'published') ||
-      item.audience === 'private' ||
-      blocked(item.author.id, viewer) ||
-      (item.audience === 'friends' && item.author.id !== viewer && !friend(item.author.id, viewer))
-    )
-      return null
-    return {
-      id: item.id,
-      type: kind as 'post' | 'spot',
-      title: 'kind' in item ? postCaption(item as Post) : item.name,
-      detail:
-        'title' in item
-          ? [item.species, item.method].filter(Boolean).join(' · ')
-          : `${item.water_type} · ${item.precision === 'exact' ? '精确位置' : item.precision === 'area' ? '大致水域' : '位置未分享'}`
-    }
-  }
-  const chatProjection = (m: Message) =>
-    m.kind === 'post' || m.kind === 'spot'
-      ? { ...m, card: chatCard(m.kind, m.card?.id || '', user) }
-      : { ...m }
   const decoratePost = (p: Post) => ({
     ...p,
     content_update: updateInfo('post', p.id, p.author.id),
@@ -221,6 +195,13 @@ export function execute(
   let result: unknown
   if (kind === 'read') {
     switch (action) {
+      case 'discussion_likes': {
+        const post = d.posts.find(p => 'post:' + p.id === input.target && postVisible(p))
+        if (!post) throw new ApiError('内容不可见', 404, 'NOT_FOUND')
+        const people = d.profiles.filter(p => !blocked(p.id,user) && d.likes.includes(pair(p.id,post.id))
+          && (!input.cursor || p.id > String(input.cursor))).sort((a,b) => a.id.localeCompare(b.id))
+        return { items: people.slice(0,18), next: people.length > 18 ? people[17].id : null }
+      }
       case 'water_reports': {
         requireUser()
         const items = d.waterReports
@@ -316,72 +297,15 @@ export function execute(
           saved: d.spotBookmarks.includes(pair(user, s.id))
         }
       }
-      case 'people':
-        return d.profiles.filter(
-          (p) =>
-            p.id !== user &&
-            !blocked(p.id, user) &&
-            (p.nickname + p.handle + p.city).includes(String(input.query || ''))
-        )
       case 'profile': {
         const p = profile(id || user)
         if (!p) throw new Error('这位钓友暂不可见')
         return {
           profile: p,
           following: d.follows.includes(pair(user, p.id)),
-          friend: friend(user, p.id),
           blocked: d.blocks.includes(pair(user, p.id)),
           posts: posts().filter((v) => v.author.id === p.id)
         }
-      }
-      case 'social': {
-        requireUser()
-        return {
-          friends: d.profiles.filter((p) => p.id !== user && friend(user, p.id)),
-          requests: d.requests.filter(
-            (r) => (r.sender.id === user || r.recipient.id === user) && r.status === 'pending'
-          ),
-          conversations: d.conversations
-            .filter((c) => c.members.includes(user))
-            .map((c) => {
-              const messages = d.messages.filter((m) => m.conversation_id === c.id)
-              const peer = profile(c.members.find((m) => m !== user)!)
-              return {
-                id: c.id,
-                peer,
-                last_message: messages.at(-1)?.body || '开始交流鱼情',
-                last_at: messages.at(-1)?.created_at || '',
-                unread: messages.filter(
-                  (m) => m.sender_id !== user && m.sequence > (c.read[user] || 0)
-                ).length,
-                can_send: friend(user, peer.id)
-              }
-            })
-        }
-      }
-      case 'messages': {
-        requireUser()
-        const c = d.conversations.find((c) => c.id === id && c.members.includes(user))
-        if (!c) throw new Error('无权读取此会话')
-        const records = d.messages
-          .filter((m) => m.conversation_id === id)
-          .sort((a, b) => a.sequence - b.sequence)
-        const page =
-          'after' in input
-            ? records.filter((m) => m.sequence > Number(input.after)).slice(0, 100)
-            : records
-                .filter((m) => m.sequence < Number(input.before || Number.MAX_SAFE_INTEGER))
-                .slice(-100)
-        return page.map(chatProjection)
-      }
-      case 'message_content': {
-        requireUser()
-        if (!d.conversations.some((c) => c.id === id && c.members.includes(user)))
-          throw new Error('无权读取此会话')
-        const ids = Array.isArray(input.ids) ? input.ids.slice(0, 100) : []
-        return d.messages
-          .filter((m) => m.conversation_id === id && ids.includes(m.id))
-          .map(chatProjection)
       }
       case 'library': {
         requireUser()
@@ -411,13 +335,13 @@ export function execute(
   }
   switch (action) {
     case 'save_water_report': {
-      if (input.consent_version !== REPORT_CONSENT) throw new Error('请先确认私密保存说明')
       if (d.deletedWaterReports.includes(id)) throw new Error('内容不存在或你暂时无权查看')
       const signature = JSON.stringify(input),
         prior = d.waterReports.find((r) => r.id === id)
       if (prior && (prior.owner_id !== user || prior.signature !== signature))
         throw new Error('记录已变化，请重新读取')
       if (!prior) {
+        if (!validCoordinates(input.longitude, input.latitude)) throw new ApiError('请选择事发水域，获取经纬度', 400, 'INVALID_INPUT')
         const media = ((input.media || []) as Media[]).map(
           (m) => d.draftPhotos?.find((p) => p.owner === user && p.asset.id === m.id)?.asset
         )
@@ -440,7 +364,6 @@ export function execute(
       break
     }
     case 'update_water_report': {
-      if (input.consent_version !== REPORT_CONSENT) throw new Error('请先确认私密保存说明')
       const record = d.waterReports.find((r) => r.id === id && r.owner_id === user)
       if (!record || d.deletedWaterReports.includes(id)) throw new ApiError('内容不存在或你暂时无权查看', 404, 'NOT_FOUND')
       if (!input.request_id || !Number.isInteger(input.expected_revision) || Number(input.expected_revision) < 1)
@@ -462,7 +385,7 @@ export function execute(
         })
         const fields = { id, category: String(input.category || ''), province: String(input.province || '').trim(), city: String(input.city || '').trim(),
           district: String(input.district || '').trim(), location_label: String(input.location_label || '').trim(),
-          longitude: input.longitude === null ? null : Number(input.longitude), latitude: input.latitude === null ? null : Number(input.latitude),
+          longitude: typeof input.longitude === 'number' ? input.longitude : null, latitude: typeof input.latitude === 'number' ? input.latitude : null,
           description: String(input.description || '').trim(), media, observed_local: localReportTime(new Date(String(input.observed_at || ''))) } satisfies WaterReportDraft
         if (Object.keys(validateWaterReport(fields)).length) throw new ApiError('请检查上报内容', 400, 'INVALID_INPUT')
         const { observed_local: ignored, ...changes } = fields
@@ -790,132 +713,12 @@ export function execute(
       toggle(d.follows, pair(user, id), Boolean(input.enabled))
       result = true
       break
-    case 'friend_request': {
-      if (id === user || blocked(user, id)) throw new Error('暂时无法申请')
-      if (friend(user, id)) {
-        result = true
-        break
-      }
-      const existing = d.requests.find(
-        (r) =>
-          r.status === 'pending' &&
-          [r.sender.id, r.recipient.id].includes(user) &&
-          [r.sender.id, r.recipient.id].includes(id)
-      )
-      if (existing) {
-        result = existing
-        break
-      }
-      result = {
-        id: createId(),
-        sender: mine(),
-        recipient: profile(id),
-        note: String(input.note || ''),
-        status: 'pending',
-        created_at: new Date().toISOString()
-      }
-      d.requests.push(result as DemoData['requests'][number])
-      break
-    }
-    case 'friend_respond': {
-      const r = d.requests.find(
-        (r) => r.id === id && r.recipient.id === user && r.status === 'pending'
-      )
-      if (!r) throw new Error('申请状态已变化')
-      r.status = input.accept ? 'accepted' : 'rejected'
-      if (input.accept && !blocked(user, r.sender.id)) d.friendships.push([user, r.sender.id])
-      result = true
-      break
-    }
-    case 'unfriend':
-      d.friendships = d.friendships.filter((p) => !(p.includes(user) && p.includes(id)))
-      result = true
-      break
     case 'block': {
       toggle(d.blocks, pair(user, id), Boolean(input.enabled))
       if (input.enabled) {
         d.friendships = d.friendships.filter((p) => !(p.includes(user) && p.includes(id)))
         d.follows = d.follows.filter((p) => p !== pair(user, id) && p !== pair(id, user))
-        d.requests.forEach((r) => {
-          if (
-            [r.sender.id, r.recipient.id].includes(user) &&
-            [r.sender.id, r.recipient.id].includes(id)
-          )
-            r.status = 'cancelled'
-        })
       }
-      result = true
-      break
-    }
-    case 'conversation': {
-      if (!friend(user, id)) throw new Error('双方成为好友后才能聊天')
-      let c = d.conversations.find((c) => c.members.includes(user) && c.members.includes(id))
-      if (!c) {
-        c = { id: createId(), members: [user, id], read: {} }
-        d.conversations.push(c)
-      }
-      result = c.id
-      break
-    }
-    case 'send_message': {
-      const c = d.conversations.find(
-        (c) => c.id === String(input.conversation_id) && c.members.includes(user)
-      )
-      if (!c) throw new Error('无权读取此会话')
-      const old = d.messages.find(
-        (m) => m.client_id === String(input.client_id) && m.sender_id === user
-      )
-      if (old) {
-        if (old.conversation_id !== c.id) throw new Error('消息标识已被使用')
-        result = chatProjection(old)
-        break
-      }
-      if (!friend(user, c.members.find((m) => m !== user)!))
-        throw new Error('双方成为好友后才能发送消息')
-      const messageKind = String(input.kind || 'text') as NonNullable<Message['kind']>
-      let card: Message['card'], media: Media[] | undefined
-      if (messageKind === 'post' || messageKind === 'spot') {
-        if (c.members.some((viewer) => !chatCard(messageKind, String(input.reference_id), viewer)))
-          throw new Error('这条内容当前不能分享给对方')
-        card = chatCard(messageKind, String(input.reference_id), user)
-      } else if (messageKind === 'image') {
-        const pending = d.draftPhotos?.find(
-          (p) => p.owner === user && p.asset.id === input.media_id
-        )
-        if (!pending) throw new Error('照片不可用，请重新选择')
-        media = [pending.asset]
-        d.draftPhotos = d.draftPhotos!.filter((p) => p !== pending)
-      } else if (messageKind !== 'text' || !String(input.body || '').trim())
-        throw new Error('消息内容为空')
-      result = {
-        id: createId(),
-        conversation_id: c.id,
-        sender_id: user,
-        client_id: String(input.client_id),
-        sequence:
-          Math.max(
-            0,
-            ...d.messages.filter((m) => m.conversation_id === c.id).map((m) => m.sequence)
-          ) + 1,
-        kind: messageKind,
-        body:
-          messageKind === 'text'
-            ? String(input.body).trim()
-            : messageKind === 'image'
-              ? '[图片]'
-              : messageKind === 'post'
-                ? '[鱼情]'
-                : '[钓位]',
-        ...(card ? { card } : {}),
-        ...(media ? { media } : {}),
-        created_at: new Date().toISOString()
-      }
-      d.messages.push(result as DemoData['messages'][number])
-      break
-    }
-    case 'read_conversation': {
-      const c = d.conversations.find((c) => c.id === id && c.members.includes(user))
-      if (c) c.read[user] = Math.max(c.read[user] || 0, Number(input.sequence))
       result = true
       break
     }

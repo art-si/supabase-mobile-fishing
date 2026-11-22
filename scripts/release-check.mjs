@@ -14,11 +14,11 @@ try {
 } catch {
   failures.push('微信本地包体检查未完成，请先运行 pnpm build:mp-weixin')
 }
-const projectUrl = (env.VITE_SUPABASE_URL || 'https://tlfmfokyhahlpzmpliad.supabase.co').replace(
+const projectUrl = (env.VITE_SUPABASE_URL || 'https://jupuypvmgjpnpntfetqv.supabase.co').replace(
   /\/$/,
   ''
 )
-if (projectUrl !== 'https://tlfmfokyhahlpzmpliad.supabase.co')
+if (projectUrl !== 'https://jupuypvmgjpnpntfetqv.supabase.co')
   failures.push('Supabase URL 不是已确认的目标项目')
 if (env.VITE_DATA_MODE === 'demo') failures.push('生产构建不能使用 demo 数据')
 for (const name of ['VITE_SUPABASE_KEY', 'VITE_AMAP_KEY', 'VITE_AMAP_SERVICE_HOST'])
@@ -28,7 +28,7 @@ if (env.VITE_AMAP_SERVICE_HOST) {
     const proxy = new URL(env.VITE_AMAP_SERVICE_HOST)
     if (
       proxy.protocol !== 'https:' ||
-      !proxy.pathname.endsWith('/_AMapService') ||
+      proxy.pathname !== '/_AMapService' ||
       proxy.search ||
       proxy.hash ||
       proxy.username ||

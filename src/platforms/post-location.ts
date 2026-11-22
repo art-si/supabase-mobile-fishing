@@ -2,25 +2,22 @@ import { isDemo } from '@/config'
 import { validCoordinates } from '@/domain/rules'
 import type { MapPlace, SelectedPlace } from '@/domain/map'
 import { searchMapPlaces } from '@/services/amap'
+import { locateWaterPlace } from './water-location'
+import { describeReportLocation } from './report-location'
 // #ifdef H5
-import { locate, reverseAreaName, reverseGeocode, searchPlacePage } from './amap'
+import { searchPlacePage } from './amap'
 // #endif
 
-let supportsLocation = false
-// #ifdef H5
-supportsLocation = true
-// #endif
-export const canCapturePostLocation = supportsLocation && !isDemo
+export const canCapturePostLocation = !isDemo
 
 export async function capturePostLocation(options: { detailedLabel?: boolean } = {}): Promise<SelectedPlace> {
-  // #ifdef H5
   if (canCapturePostLocation) {
-    const { point, accuracyM } = await locate()
-    if (!validCoordinates(point[0], point[1])) throw new Error('MAP_LOCATION_UNAVAILABLE')
-    const name = options.detailedLabel ? await reverseGeocode(point).catch(() => reverseAreaName(point)) : await reverseAreaName(point)
-    return { longitude: point[0], latitude: point[1], name, crs: 'GCJ-02', created_at: Date.now(), ...(Number.isFinite(accuracyM) ? { accuracyM } : {}) }
+    const water = await locateWaterPlace()
+    if (options.detailedLabel) return water
+    const { city, district } = await describeReportLocation([water.longitude, water.latitude])
+    const name = [...new Set([city, district].filter(Boolean))].join(' · ')
+    return { ...water, name }
   }
-  // #endif
   throw new Error('MAP_LOCATION_UNAVAILABLE')
 }
 

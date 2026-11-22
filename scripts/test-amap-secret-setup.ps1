@@ -11,12 +11,12 @@ $inputPath = Join-Path $fixture '.env.amap-web-service.local'
 $linkedPath = Join-Path $fixture 'supabase/.temp/project-ref'
 $callsPath = Join-Path $fixture 'calls.jsonl'
 $fakeKey = '0123456789abcdef0123456789abcdef'
-[IO.File]::WriteAllText($linkedPath, 'tlfmfokyhahlpzmpliad')
+[IO.File]::WriteAllText($linkedPath, 'jupuypvmgjpnpntfetqv')
 $mock = @'
 function Invoke-FishingPrivateCli {
   param([string[]]$Arguments)
   $root = Split-Path -Parent $PSScriptRoot
-  if ($Arguments[-1] -ne 'tlfmfokyhahlpzmpliad' -and $Arguments[-3] -ne 'tlfmfokyhahlpzmpliad') { throw 'Wrong fixture project' }
+  if ($Arguments[-1] -ne 'jupuypvmgjpnpntfetqv' -and $Arguments[-3] -ne 'jupuypvmgjpnpntfetqv') { throw 'Wrong fixture project' }
   $operation = $Arguments[1]
   if ($operation -eq 'set') {
     $file = $Arguments[3]
@@ -80,7 +80,7 @@ foreach ($invalid in @("AMAP_WEB_SERVICE_KEY=$fakeKey`nOTHER_SETTING=unexpected"
 [IO.File]::WriteAllText($linkedPath, 'another-project')
 $result = Run $true
 Check ($result.code -ne 0 -and [IO.File]::ReadAllLines($callsPath).Count -eq $beforeCalls) 'wrong project is rejected before transport'
-[IO.File]::WriteAllText($linkedPath, 'tlfmfokyhahlpzmpliad')
+[IO.File]::WriteAllText($linkedPath, 'jupuypvmgjpnpntfetqv')
 [IO.File]::WriteAllText((Join-Path $fixture 'mismatch'), '')
 $result = Run $true
 Check ($result.code -ne 0 -and [IO.File]::ReadAllLines($callsPath).Count -eq $beforeCalls + 2 -and !(($result.out + $result.err).Contains($fakeKey))) 'digest mismatch fails safely without repeating the write or exposing the key'

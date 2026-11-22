@@ -4,9 +4,10 @@ import { readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
 import { runInNewContext } from 'node:vm'
 import ts from 'typescript'
+import { resolveMobileProRoot } from '../scripts/mobile-pro.mjs'
 
 function nativePicker() {
-  const file = resolve(process.env.MOBILE_PRO_ROOT || '../supabase-mobile-pro', 'packages/mobile-core/src/media-choose.ts')
+  const file = resolve(resolveMobileProRoot(), 'packages/mobile-core/src/media-choose.ts')
   // Match the actual non-H5 branch; this is an API contract, not a native device test.
   const source = readFileSync(file, 'utf8').replace(/\/\/ #ifdef H5[\s\S]*?\/\/ #endif/g, '')
   const exports: any = {}, calls: any[] = []

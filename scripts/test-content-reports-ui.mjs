@@ -114,7 +114,7 @@ async function setup(user) {
     const request = route.request(),
       url = new URL(request.url())
     if (url.origin === base || !url.protocol.startsWith('http')) return route.continue()
-    if (url.origin !== 'https://tlfmfokyhahlpzmpliad.supabase.co') {
+    if (url.origin !== 'https://jupuypvmgjpnpntfetqv.supabase.co') {
       escaped.push(url.origin)
       return route.abort()
     }
@@ -329,7 +329,7 @@ try {
   await visible(p, '照片暂不可用')
   assert.equal(await button(p, '不处理内容并结案').isDisabled(), true)
   photoAvailable = true
-  await button(p, '重新读取照片').click()
+  await button(p, '重新读取附件').click()
   await p.waitForFunction(() =>
     [...document.querySelectorAll('[role="button"]')].some(
       (n) =>

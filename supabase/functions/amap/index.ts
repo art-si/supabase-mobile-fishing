@@ -1,5 +1,6 @@
 import { authenticate, settings } from '../_shared/http.ts'
 import { createMapHandler, MapError } from './handler.ts'
+import { lookupTileWater } from '../_shared/water-tiles.ts'
 
 async function rpc(token: string, name: string, body: unknown) {
   const { url, anonKey } = settings()
@@ -24,6 +25,7 @@ async function rpc(token: string, name: string, body: unknown) {
 Deno.serve(
   createMapHandler({
     authenticate,
+    shoreline: lookupTileWater,
     apiKey: () => Deno.env.get('AMAP_WEB_SERVICE_KEY') || '',
     reserve: async (caller) => {
       const result = await rpc(caller.token, 'fishing_map_ticket', {})

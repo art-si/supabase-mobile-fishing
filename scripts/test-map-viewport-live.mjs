@@ -22,7 +22,7 @@ const reads = [],
   failures = []
 page.on('requestfailed', (request) => {
   const url = new URL(request.url())
-  if (url.hostname === 'tlfmfokyhahlpzmpliad.supabase.co')
+  if (url.hostname === 'jupuypvmgjpnpntfetqv.supabase.co')
     failures.push({
       path: url.pathname,
       error: request.failure()?.errorText?.replace(/https?:\/\/\S+/g, '[URL]')

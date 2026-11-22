@@ -1,7 +1,6 @@
 import type { Media } from './models'
 import { createId, validCoordinates, validDate } from './rules'
 
-export const REPORT_CONSENT = '2026-11-19-water-v1'
 export const reportCategories = [
   { id: 'electric', name: '疑似电鱼' },
   { id: 'net', name: '疑似违规网捕' },
@@ -118,8 +117,8 @@ export function validateWaterReport(d: WaterReportDraft, now = Date.now()) {
   if (d.district.length > 40) errors.district = '区县名称不能超过40字'
   if (!d.location_label.trim() || d.location_label.length > 200)
     errors.location_label = '请说明水域名称、岸段或附近标志物'
-  if ((d.longitude !== null || d.latitude !== null) && !validCoordinates(d.longitude, d.latitude))
-    errors.location = '位置无效，请重新选点或清除位置后手填地址'
+  if (!validCoordinates(d.longitude, d.latitude))
+    errors.location = '请选择事发水域，获取经纬度'
   const time = reportTimestamp(d.observed_local)
   if (!time || Date.parse(time) > now + 300000)
     errors.observed_local = '请填写有效的事发时间，不能晚于当前时间'
@@ -133,8 +132,7 @@ export function waterReportPayload(d: WaterReportDraft) {
   return {
     ...fields,
     observed_at: reportTimestamp(observed_local),
-    media: media.map(({ id }) => ({ id })),
-    consent_version: REPORT_CONSENT
+    media: media.map(({ id }) => ({ id }))
   }
 }
 export function reportMaterial(r: WaterReport) {

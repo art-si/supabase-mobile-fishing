@@ -15,7 +15,7 @@ import MobileMultiChoice from '@mobile-core/components/MobileMultiChoice.vue'
 import MobileComboField from '@mobile-core/components/MobileComboField.vue'
 import MobileDateTimeField from '@mobile-core/components/MobileDateTimeField.vue'
 import MobileIcon from '@mobile-core/components/MobileIcon.vue'
-import { canLocateSpot, locateSpot, describeSpotLocation } from '@/platforms/spot-location'
+import { canLocateSpot, locateSpot, describeSpotWater } from '@/platforms/spot-location'
 import { spotEntryName, canSaveSpotPoint } from '@/domain/spot-entry'
 import type { SelectedPlace } from '@/domain/map'
 import { fishSpeciesOptions } from '@/domain/fishing-presets'
@@ -34,10 +34,10 @@ import { pickMap, consumeSelection } from '@/platforms/map-navigation'
 import { useAuthStore } from '@/stores/auth'
 import { useMutation } from '@/composables/useMutation'
 import { write } from '@/services/repository'
-import { ApiError } from '@/services/http'
 import { isDemo } from '@/config'
 import type { Spot, SpotDraft, Media } from '@/domain/models'
 import { useDraftOwner } from '@/composables/useDraftOwner'
+import { leadSourceName, shareSources } from '../../../supabase/functions/_shared/discovery-contract'
 const auth = useAuthStore(),
   draft = ref(freshSpot()),
   requestId = ref(''),
@@ -50,6 +50,11 @@ const locating = ref(false),
   locationError = ref(''),
   detailsOpen = ref(false)
 const exactPoint = computed(() => canSaveSpotPoint(draft.value, locationResolved.value))
+const sourceHint = computed(() => {
+  const platforms = [...new Set(shareSources(draft.value.description || '').map(leadSourceName))]
+  return platforms.length ? `保存后可查看${platforms.join('、')}原文。`
+    : '可粘贴自己发布或获作者授权的抖音、今日头条、B 站作品链接。'
+})
 let locationVersion = 0
 function invalidateLocation() {
   locationVersion++
@@ -221,7 +226,7 @@ function select() {
   if (!available.value) return
   try {
     invalidateLocation()
-    requestId.value = pickMap()
+    requestId.value = pickMap('water')
   } catch (e) {
     error.value = errorText(e)
   }
@@ -238,11 +243,6 @@ async function initializeLocation() {
 }
 function resolveStoredLocation() {
   if (!validCoordinates(draft.value.longitude, draft.value.latitude)) return
-  if (draft.value.location_label && draft.value.city) {
-    locationLabel.value = draft.value.location_label
-    locationResolved.value = true
-    return
-  }
   const place = {
     longitude: draft.value.longitude!,
     latitude: draft.value.latitude!,
@@ -251,7 +251,7 @@ function resolveStoredLocation() {
     crs: 'GCJ-02' as const,
     created_at: Date.now()
   }
-  return resolvePoint(() => describeSpotLocation(place), editor.editing.value && !!draft.value.city)
+  return resolvePoint(() => describeSpotWater(place), editor.editing.value)
 }
 async function resolvePoint(
   load: () => Promise<{ longitude: number; latitude: number; city: string; label: string }>,
@@ -273,10 +273,16 @@ async function resolvePoint(
   try {
     const place = await load()
     if (!current()) return
+    if (preserveDraft && (Math.abs(draft.value.longitude! - place.longitude) > .00001 ||
+        Math.abs(draft.value.latitude! - place.latitude) > .00001)) {
+      locationLabel.value = ''
+      locationError.value = '原钓位坐标在岸上，请在水域地图确认新位置。'
+      return
+    }
     if (!place.city.trim() || !validCoordinates(place.longitude, place.latitude))
       throw new Error('未能识别这个地点，请重新选点。')
     locationLabel.value = place.label === '已选位置' ? '' : place.label
-    if (!preserveDraft) {
+    if (!preserveDraft || !draft.value.city) {
       draft.value.longitude = place.longitude
       draft.value.latitude = place.latitude
       draft.value.city = place.city
@@ -285,10 +291,10 @@ async function resolvePoint(
     }
     locationResolved.value = true
   } catch {
-    if (current())
-      locationError.value = canLocateSpot
-        ? '暂时未能确认位置和城市，请重试定位或在高德地图上选点。'
-        : '请在高德中搜索并选择地点，城市会随所选地点填入。'
+    if (current()) {
+      locationLabel.value = ''
+      locationError.value = '附近水域或所在城市暂未确认，请重试或在水域地图选点。'
+    }
   } finally {
     if (current()) locating.value = false
   }
@@ -300,12 +306,13 @@ async function locateCurrentPoint() {
 async function applySelectedPlace(place: SelectedPlace) {
   if (!available.value || !validCoordinates(place.longitude, place.latitude)) return
   // Clear the previous city immediately; a failed or delayed lookup cannot pair it with this new point.
-  draft.value.longitude = place.longitude
-  draft.value.latitude = place.latitude
+  draft.value.longitude = place.kind === 'water' ? place.longitude : null
+  draft.value.latitude = place.kind === 'water' ? place.latitude : null
   draft.value.city = ''
+  draft.value.location_label = ''
   draft.value.precision = 'exact'
-  locationLabel.value = place.name === '已选位置' ? '' : place.name
-  await resolvePoint(() => describeSpotLocation(place))
+  locationLabel.value = place.kind === 'water' ? place.name : ''
+  await resolvePoint(() => describeSpotWater(place))
 }
 async function submit() {
   if (editor.editing.value && !editor.dirty.value) return
@@ -324,16 +331,8 @@ async function submit() {
     draft.value.name = spotEntryName(draft.value.name, locationLabel.value)
     if (!editor.editing.value) draft.value.fishing_status = 'allowed'
     if (!draft.value.location_label) draft.value.location_label = locationLabel.value.slice(0, 240)
-    try {
-      if (editor.editing.value) await editor.save()
-      else await write<{ id: string }>('save_spot', editFields('spot', draft.value))
-    } catch (e) {
-      if (editor.editing.value && e instanceof ApiError && e.code === 'EDIT_CONFLICT') {
-        await loadEdit(true)
-        return
-      }
-      throw e
-    }
+    if (editor.editing.value) await editor.save()
+    else await write<{ id: string }>('save_spot', editFields('spot', draft.value))
     saved = true
     if (!editor.editing.value) uni.removeStorageSync(draftKey())
     uni.reLaunch({ url: '/pages/home/index?tab=spots' })
@@ -349,7 +348,7 @@ async function submit() {
         :loading="editor.loading.value"
         :ready="editor.ready.value"
         :error="editor.error.value"
-        :conflict="false"
+        :conflict="editor.conflict.value"
         :restored="false"
         :publication="editor.publication.value"
         :update="editor.contentUpdate.value"
@@ -363,8 +362,8 @@ async function submit() {
             <view class="stack stack--tight spot-entry__address" aria-live="polite">
               <text class="name">{{
                 locating
-                  ? '正在确认位置…'
-                  : locationLabel || (exactPoint ? '已保存的位置' : '确认钓位位置')
+                  ? '正在确认水域…'
+                  : locationLabel || '选择钓位水域'
               }}</text>
               <text v-if="exactPoint" class="caption">{{ draft.city }}</text>
               <text v-else-if="editor.editing.value && draft.precision !== 'exact'" class="caption"
@@ -372,14 +371,14 @@ async function submit() {
               >
               <text v-else class="caption">{{
                 canLocateSpot
-                  ? '定位当前地点，也可以在地图上选择钓位。'
-                  : '在高德中搜索并选择钓位，城市会自动填入。'
+                  ? '定位附近水域，也可以在地图上点选水面。'
+                  : '在水域地图中选择钓位。'
               }}</text>
             </view>
           </view>
           <view class="mobile-action-group">
             <MobileAction class="secondary" :disabled="busy" @click="select">{{
-              exactPoint ? '更换地图位置' : '高德地图选点'
+              exactPoint ? '更换水域' : '水域地图选点'
             }}</MobileAction>
             <MobileAction
               v-if="canLocateSpot"
@@ -397,7 +396,7 @@ async function submit() {
             field="spot-name"
             label="钓位名称（选填）"
             :maxlength="60"
-            placeholder="留空使用所选地点名称"
+            hint="留空时使用所选地点的名称。"
           />
           <MobileField field="water-type" label="水域类型"
             ><MobileSelect
@@ -419,15 +418,9 @@ async function submit() {
               :disabled="busy"
               @update:model-value="draft.fishing_status = $event as 'allowed' | 'prohibited'"
             />
-            <!-- #ifdef H5 -->
-            <MobileAction
-              v-if="draft.fishing_status === 'prohibited' && !editor.dirty.value"
-              class="text-action spot-entry__fence-link"
-              :disabled="busy"
-              @click="uni.navigateTo({ url: `/pages/map/index?markSpot=${draft.id}` })"
-              >在地图圈定禁钓范围</MobileAction
-            >
-            <!-- #endif -->
+            <text v-if="draft.fishing_status === 'prohibited' && draft.audience === 'public' && draft.precision === 'exact'" class="caption">
+              保存后会在水域地图的这个位置显示禁钓图钉。
+            </text>
           </view>
         </view>
         <view class="panel stack">
@@ -471,6 +464,7 @@ async function submit() {
               :maxlength="1000"
               multiline
               placeholder="水情、钓法、环境和安全提醒"
+              :hint="sourceHint"
             />
             <view class="stack stack--tight">
               <view class="row row--between row--wrap"
@@ -519,7 +513,7 @@ async function submit() {
               field="spot-audience"
               label="钓位分享范围"
               placeholder="选择分享范围"
-              :options="audienceOptions"
+              :options="audienceOptions(draft.audience)"
           /></MobileField>
           <text class="caption">{{
             draft.audience === 'public'
@@ -556,14 +550,6 @@ async function submit() {
   </FishingShell>
 </template>
 <style scoped>
-.spot-entry__fence-link.mobile-action {
-  background: transparent;
-}
-.spot-entry :deep(.primary[disabled]) {
-  background: var(--inset);
-  color: var(--reed);
-  opacity: 1;
-}
 .spot-entry__place {
   display: flex;
   align-items: flex-start;

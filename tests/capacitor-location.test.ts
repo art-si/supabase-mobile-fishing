@@ -4,10 +4,9 @@ import { readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
 import { runInNewContext } from 'node:vm'
 import ts from 'typescript'
-const core = resolve(
-  process.env.MOBILE_PRO_ROOT || '../supabase-mobile-pro',
-  'packages/mobile-core/src'
-)
+import { resolveMobileProRoot } from '../scripts/mobile-pro.mjs'
+
+const core = resolve(resolveMobileProRoot(), 'packages/mobile-core/src')
 function module(name: string, deps: Record<string, any> = {}) {
   const exports: any = {}
   runInNewContext(

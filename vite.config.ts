@@ -1,10 +1,11 @@
 import { defineConfig, loadEnv, type ModuleNode } from 'vite'
-import uniPlugin from '@dcloudio/vite-plugin-uni'
-import { applicationRoot, loadMobilePro } from './scripts/mobile-pro.mjs'
+import { loadMobilePro } from 'supabase-mobile-pro/scripts/consumer.mjs'
 import { readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
 import { FISHING_SKINS, SKIN_STORAGE_KEY } from './src/domain/appearance'
 import { amapProxy } from './scripts/amap-proxy'
+
+const applicationRoot = import.meta.dirname
 
 export default defineConfig(async ({ mode }) => {
   const env = loadEnv(mode, applicationRoot, 'VITE_')
@@ -19,8 +20,8 @@ export default defineConfig(async ({ mode }) => {
     if (role !== 'anon')
       throw new Error('客户端只能使用 publishable / anon key，不能使用服务器密钥。')
   }
-  const { createMobileViteConfig } = await loadMobilePro()
-  const mobileConfig = createMobileViteConfig(applicationRoot, uniPlugin)
+  const { createMobileViteConfig } = await loadMobilePro(import.meta.dirname)
+  const mobileConfig = createMobileViteConfig(import.meta.dirname)
   const serverEnv = loadEnv(mode, applicationRoot, 'AMAP_')
   mobileConfig.plugins.push(
     amapProxy(env.VITE_AMAP_KEY || '', serverEnv.AMAP_SECURITY_JS_CODE || '')

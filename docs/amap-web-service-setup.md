@@ -1,6 +1,6 @@
 # 高德 Web 服务 Key 接入
 
-2026-11-20。目标 Supabase 项目仅为 `tlfmfokyhahlpzmpliad`。
+2026-11-21。当前 Supabase 项目为 `jupuypvmgjpnpntfetqv`。
 
 用户提供的“钓友集服务端”Web 服务 Key 已写入 `AMAP_WEB_SERVICE_KEY`，远端摘要回读一致；真实地点搜索、静态图、缩放和天气已通过 H5 联调。微信／原生设备验收另行进行。
 

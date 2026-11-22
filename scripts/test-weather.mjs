@@ -18,7 +18,7 @@ await context.routeWebSocket(/supabase\.co/, (socket) => socket.close())
 await context.route('**/*', async (route) => {
   const url = new URL(route.request().url())
   if (url.origin === base) return route.continue()
-  if (url.origin !== 'https://tlfmfokyhahlpzmpliad.supabase.co') {
+  if (url.origin !== 'https://jupuypvmgjpnpntfetqv.supabase.co') {
     unexpected.push(url.origin)
     return route.abort()
   }

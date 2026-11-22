@@ -4,7 +4,7 @@ $mapEnv = @{}
 Get-Content -LiteralPath (Join-Path $fishingRoot '.env.local') | ForEach-Object {
   if ($_ -match '^([A-Z_]+)=(.*)$') { $mapEnv[$matches[1]] = $matches[2].Trim() }
 }
-$projectUrl = 'https://tlfmfokyhahlpzmpliad.supabase.co'
+$projectUrl = 'https://jupuypvmgjpnpntfetqv.supabase.co'
 if ($mapEnv.VITE_SUPABASE_URL -ne $projectUrl -or !$mapEnv.VITE_SUPABASE_KEY.StartsWith('sb_publishable_')) {
   throw 'Refusing unconfirmed project or non-public frontend credential'
 }

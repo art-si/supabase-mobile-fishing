@@ -25,7 +25,7 @@ await context.route('**/*', async route => {
   const req = route.request(), url = new URL(req.url())
   if (url.origin === base || !url.protocol.startsWith('http')) return route.continue()
   const reply = (json, status = 200) => route.fulfill({ status, json, headers: { 'access-control-allow-origin': '*', 'access-control-allow-headers': '*', 'access-control-allow-methods': '*' } })
-  if (url.origin !== 'https://tlfmfokyhahlpzmpliad.supabase.co') { escaped.push(url.origin); return route.abort() }
+  if (url.origin !== 'https://jupuypvmgjpnpntfetqv.supabase.co') { escaped.push(url.origin); return route.abort() }
   if (req.method() === 'OPTIONS') return reply({})
   if (url.pathname === '/auth/v1/user') return reply({ id: owner })
   if (url.pathname.endsWith('fishing_read')) {

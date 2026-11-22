@@ -3,6 +3,8 @@ import { sessionRequest } from './session'
 import { ApiError } from './http'
 import { serviceErrorMessage } from '@/domain/user-errors'
 import type { MapPlace, MapPreviewTarget } from '@/domain/map'
+import type { MapPoint, WaterHit } from '@/domain/water-geometry'
+import type { WaterPlace } from '../../supabase/functions/_shared/water-places'
 
 export interface StaticPreview {
   image: string
@@ -23,6 +25,20 @@ export function searchMapPlaces(query: string, city: string, page = 1) {
     city: city.trim(),
     page
   })
+}
+export function lookupMapRegion(longitude: number, latitude: number) {
+  return call<{ province: string; city: string; district: string; adcode: string; citycode: string }>({
+    action: 'region', longitude, latitude
+  })
+}
+export async function searchMapWaterPlaces([longitude, latitude]: MapPoint, radius: number) {
+  const result = await call<{ items: WaterPlace[] }>({ action: 'water-places', longitude, latitude, radius })
+  return result.items
+}
+
+export async function lookupMapShoreline([longitude, latitude]: MapPoint) {
+  const result = await call<{ water: WaterHit | null }>({ action: 'shoreline', longitude, latitude, crs: 'WGS84' })
+  return result.water
 }
 export async function getStaticPreview(target: MapPreviewTarget, zoom: number) {
   const result = await call<StaticPreview>({ action: 'preview', ...target, zoom })

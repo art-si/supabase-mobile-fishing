@@ -26,7 +26,11 @@ await context.route('**/*', (route) => {
   external.push(`${route.request().method()} ${url.origin}${url.pathname}`)
   return route.abort()
 })
-await context.addInitScript(()=>Object.defineProperty(navigator,'permissions',{value:{query:async()=>({state:'denied'})}}))
+await context.addInitScript(()=>{
+ Object.defineProperty(navigator,'permissions',{value:{query:async()=>({state:'granted'})}})
+ Object.defineProperty(navigator,'geolocation',{value:{getCurrentPosition(done){done({coords:{longitude:119.18,latitude:31.1,accuracy:12}})}}})
+ window.AMap={Geolocation:class{getCurrentPosition(done){done('error',{})}}}
+})
 const page = await context.newPage()
 page.setDefaultTimeout(15000)
 page.on('pageerror', (error) => errors.push(error.message))
@@ -103,7 +107,8 @@ try {
  await page.reload({waitUntil:'domcontentloaded'});await page.locator('textarea[aria-label="现场情况"]').waitFor()
  await selectRegion('郎溪县')
  await page.locator('textarea[aria-label="现场情况"]').fill('隔离验收的私人草稿')
- await button('先查看官方举报渠道').click();await page.getByText('郎溪县农业农村局',{exact:true}).waitFor()
+ await page.evaluate(async()=>{let c=document.querySelector('.fishing-content').__vueParentComponent;while(c&&!c.setupState.applySelectedPlace)c=c.parent;await c.setupState.applySelectedPlace({name:'隔离水域',longitude:119.18,latitude:31.1},{province:'安徽省',city:'宣城市',district:'郎溪县'})})
+ await button('举报联系方式').click();await page.getByText('郎溪县农业农村局',{exact:true}).waitFor()
  assert.match(await page.locator('#report-region').getAttribute('aria-describedby'),/report-region-required/)
  await page.waitForFunction(()=>{const v=localStorage.getItem('dyj.live.draft.11111111-1111-4111-8111-111111111111.water-report');return v&&JSON.parse(v).data.district==='郎溪县'})
  await page.evaluate(()=>localStorage.removeItem('dyj.auth.v1'))

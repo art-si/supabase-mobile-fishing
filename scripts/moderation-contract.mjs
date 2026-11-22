@@ -49,6 +49,7 @@ export async function moderationContract({
     title: '待审钓位（接口测试）',
     media: []
   }
+  const hideReason = '请补充水域开放与禁钓说明'
   let allowed = false,
     photoAvailable = false,
     failDecision = true,
@@ -59,7 +60,7 @@ export async function moderationContract({
     const request = route.request(),
       url = new URL(request.url())
     if (url.origin === base || !url.protocol.startsWith('http')) return route.continue()
-    if (url.origin !== 'https://tlfmfokyhahlpzmpliad.supabase.co') {
+    if (url.origin !== 'https://jupuypvmgjpnpntfetqv.supabase.co') {
       escaped.push(url.href)
       return route.abort()
     }
@@ -74,14 +75,6 @@ export async function moderationContract({
         }
       })
     if (request.method() === 'OPTIONS') return reply({})
-    if (url.pathname === '/auth/v1/otp') return reply({})
-    if (url.pathname === '/auth/v1/verify')
-      return reply({
-        access_token: 'review-fixture-token',
-        refresh_token: 'review-fixture-refresh',
-        expires_at: Date.now() / 1000 + 3600,
-        user: { id: reviewer }
-      })
     if (url.pathname.startsWith('/storage/v1/object/sign/')) {
       if (request.method() === 'POST')
         return photoAvailable
@@ -101,12 +94,13 @@ export async function moderationContract({
       })
     }
     const body = request.postDataJSON()
-    if (url.pathname === '/rest/v1/rpc/fishing_read')
+    const token = request.headers().authorization
+    if (url.pathname === '/rest/v1/rpc/fishing_read' && body.action === 'post') {
+      if (post.status === 'hidden' && token !== 'Bearer review-author-token')
+        return reply({ message: 'NOT_FOUND' }, 404)
       return reply({
         post: {
           ...post,
-          author: { ...author, id: reviewer },
-          status: 'rejected',
           kind: 'catch',
           media: [],
           species: '',
@@ -122,15 +116,20 @@ export async function moderationContract({
         },
         comments: []
       })
+    }
+    if (url.pathname === '/rest/v1/rpc/fishing_read') return reply({ items: [], next: null })
     if (url.pathname !== '/rest/v1/rpc/fishing_moderation') {
       escaped.push(url.pathname)
       return route.abort()
     }
-    assert.equal(request.headers().authorization, 'Bearer review-fixture-token')
+    if (body.action === 'own_status') {
+      assert.equal(token, 'Bearer review-author-token')
+      assert.equal(body.payload.id, post.id)
+      return reply({ status: 'hidden', reason: hideReason })
+    }
+    assert.equal(token, 'Bearer review-fixture-token')
     calls.push(body)
     if (body.action === 'access') return reply({ allowed })
-    if (body.action === 'own_status')
-      return reply({ status: 'rejected', reason: '请补充水域开放与禁钓说明' })
     if (!allowed) return reply({ message: 'FORBIDDEN', code: 'P0001' }, 400)
     if (body.action === 'queue')
       return reply({
@@ -158,20 +157,31 @@ export async function moderationContract({
     escaped.push(body.action)
     return route.abort()
   })
+  async function openAs(id, accessToken, route) {
+    await page.evaluate(({ id, accessToken }) => {
+      localStorage.setItem('dyj.auth.v1', JSON.stringify({
+        type: 'object',
+        data: {
+          access_token: accessToken,
+          refresh_token: `${accessToken}-refresh`,
+          expires_at: Math.floor(Date.now() / 1000) + 3600,
+          user: { id }
+        }
+      }))
+    }, { id, accessToken })
+    await page.goto('about:blank')
+    await go(route)
+  }
   await go('/pages/settings/index')
   assert.equal(await page.getByRole('button', { name: /内容审核/ }).count(), 0)
   await go('/pages/moderation/index')
   await visible('仅审核员可访问')
   assert.equal(calls.length, 0)
   await page.getByRole('button', { name: '登录', exact: true }).click()
-  await fill('手机号码', '13800138000')
-  await page.locator('[aria-label="同意用户协议与隐私说明"]').click()
-  await page.getByRole('button', { name: '获取验证码', exact: true }).click()
-  await page.getByText(/^验证码已发送/).waitFor()
-  await fill('短信验证码', '123456')
-  await page.getByRole('button', { name: '登录 / 注册', exact: true }).click()
+  await visible('手机号登录')
+  await openAs(reviewer, 'review-fixture-token', '/pages/moderation/index')
   await visible('你没有执行此操作的权限')
-  pass('guest gate and unauthorized member review denial work (fixture Auth, no real SMS)')
+  pass('guest gate and review denial for ordinary members work without sending SMS')
   await go('/pages/settings/index')
   await page.reload()
   await page.waitForFunction(() => document.body.innerText.includes('主题皮肤'))
@@ -180,8 +190,11 @@ export async function moderationContract({
   await page.reload()
   await page.getByRole('button', { name: /内容审核/ }).click()
   await visible(post.title)
-  await page.getByRole('button', { name: '继续查看', exact: true }).click()
+  const viewport = page.viewportSize()
+  await page.setViewportSize({ width: viewport.width, height: 275 })
+  await page.evaluate(() => window.scrollTo(0, document.documentElement.scrollHeight))
   await visible(spot.title)
+  await page.setViewportSize(viewport)
   await screenshot('moderation-queue-375.png')
   pass('server capability reveals settings entry and cursor pagination works')
   await page.getByRole('button', { name: `审核：${post.title}`, exact: true }).click()
@@ -190,7 +203,7 @@ export async function moderationContract({
   assert.equal(await page.getByRole('button', { name: '通过审核', exact: true }).isDisabled(), true)
   pass('unreadable review photos prevent approval')
   photoAvailable = true
-  await page.getByRole('button', { name: '重新读取照片', exact: true }).click()
+  await page.getByRole('button', { name: '重新读取附件', exact: true }).click()
   await page.waitForFunction(() => document.querySelector('[aria-label*="查看大图"]'))
   const approve = page.getByRole('button', { name: '通过审核', exact: true })
   await page.waitForFunction(() =>
@@ -213,6 +226,7 @@ export async function moderationContract({
   )
   assert.equal(calls.filter((c) => c.action === 'decide').length, 0)
   await fill('处理说明', '请补充水域开放与禁钓说明')
+  await page.getByText('请说明原因，作者会看到这段说明', { exact: true }).waitFor({ state: 'hidden' })
   await page.getByRole('button', { name: '确认退回内容', exact: true }).click()
   await visible('服务暂时不可用，请稍后重试')
   assert.equal(
@@ -245,9 +259,18 @@ export async function moderationContract({
   await page.setViewportSize({ width: 768, height: 450 })
   await overflow('review detail landscape')
   await screenshot('moderation-detail-landscape.png')
-  await go(`/pages/post/detail?id=${post.id}`)
-  await visible('请补充水域开放与禁钓说明')
-  pass('author detail shows the private review explanation')
+  await page.getByRole('button', { name: '隐藏内容', exact: true }).click()
+  await fill('处理说明', hideReason)
+  await page.getByRole('button', { name: '确认隐藏内容', exact: true }).click()
+  await visible('已隐藏内容，结果已记录。')
+  assert.equal(post.status, 'hidden')
+  await openAs(author.id, 'review-author-token', `/pages/post/detail?id=${post.id}`)
+  await visible(hideReason)
+  await screenshot('moderation-author-notice-landscape.png')
+  pass('hiding a published post gives the author a private explanation')
+  await openAs(reviewer, 'review-fixture-token', `/pages/post/detail?id=${post.id}`)
+  await visible('内容不存在或你暂时无权查看')
+  assert.equal(await page.getByText(hideReason, { exact: true }).count(), 0)
   await go('/pages/moderation/index')
   await visible(post.title)
   allowed = false

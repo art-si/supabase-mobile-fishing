@@ -25,19 +25,21 @@ test('empty automatic defaults refresh, explicit incident drafts and edit timest
   assert.equal(draft.location_label,record.location_label)
   assert.ok(!('created_at' in draft) && !('status' in draft))
 })
-test('report validates observed facts, real date and optional paired coordinates', () => {
+test('report validates observed facts, real date and required water coordinates', () => {
   const draft = {
     ...freshWaterReport(),
     province: '湖北省',
     city: '黄石市',
     location_label: '测试水域',
+    longitude: 114.95, latitude: 30.21,
     description: '看到疑似电鱼工具',
     observed_local: '2026-11-19 10:00'
   }
   assert.deepEqual(validateWaterReport(draft, Date.parse('2026-11-20')), {})
   assert.equal(reportTimestamp('2026-02-30 10:00'), null)
   assert.equal(reportTimestamp('2026-11-19 25:30'), null)
-  assert.ok(validateWaterReport({ ...draft, latitude: 30 }, Date.parse('2026-11-20')).location)
+  for (const point of [{longitude:null,latitude:null},{latitude:null},{longitude:null},{latitude:91},{longitude:181}])
+    assert.ok(validateWaterReport({ ...draft, ...point }, Date.parse('2026-11-20')).location)
   assert.ok(
     validateWaterReport({ ...draft, observed_local: '2030-11-19 10:00' }, Date.parse('2026-11-20'))
       .observed_local
@@ -49,6 +51,7 @@ test('report payload has no delivery claim or attachment URLs; copy explicitly o
   draft.media = [{ id: 'photo', path: 'private.jpg', url: 'secret', width: 40, height: 40 }]
   const payload = waterReportPayload(draft)
   assert.deepEqual(payload.media, [{ id: 'photo' }])
+  assert.ok(!('consent_version' in payload))
   assert.ok(!('status' in payload) && !('recipient' in payload))
   const text = reportMaterial({
     ...draft,
@@ -75,7 +78,7 @@ test('nationwide fallback never claims a guessed local recipient; county matchin
     )
   )
   assert.deepEqual(matchingReportChannels('香港特别行政区', '', '', now), [])
-  assert.deepEqual(matchingReportChannels('湖北省', '黄石市', '', Date.parse('2027-11-19')), [])
+  assert.ok(matchingReportChannels('湖北省', '黄石市', '', Date.parse('2027-11-19')).some(c=>c.id==='national-fishery'))
 })
 test('every actionable channel has a dated official source; none pretends to be an API', () => {
   assert.equal(new Set(REPORT_CHANNELS.map((c) => c.id)).size, REPORT_CHANNELS.length)

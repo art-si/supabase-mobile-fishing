@@ -1,18 +1,24 @@
 import { cors, json } from '../_shared/http.ts'
 import { normalizeAmapWeather, validAdcode } from '../_shared/weather.ts'
+import { naturalPlaceType, waterPlace, type WaterPlace } from '../_shared/water-places.ts'
+import type { MapPoint, WaterHit } from '../_shared/water-geometry.ts'
 
 type Caller = { id: string; token: string }
 type Point = { longitude: number; latitude: number }
 type Input =
   | { action: 'search'; query: string; city: string; page: number }
+  | { action: 'region'; point: Point }
+  | { action: 'water-places'; point: Point; radius: number }
+  | { action: 'shoreline'; point: Point }
   | { action: 'weather'; adcode: string }
-  | { action: 'preview'; spotId?: string; point?: Point; zoom: number; radiusM?: number }
+  | { action: 'preview'; spotId?: string; point?: Point; zoom: number; radiusM?: number; hideMarker: boolean }
 export interface Dependencies {
   authenticate: (request: Request) => Promise<Caller | null>
   reserve: (caller: Caller) => Promise<void>
   readSpot: (caller: Caller, id: string) => Promise<Record<string, unknown>>
   apiKey: () => string
   fetch: typeof fetch
+  shoreline: (point: MapPoint, radius: number) => Promise<WaterHit | undefined>
 }
 export class MapError extends Error {
   constructor(
@@ -67,6 +73,26 @@ async function input(request: Request): Promise<Input> {
   } catch {
     throw new MapError('INVALID_INPUT')
   }
+  if (body.action === 'region') {
+    if (Object.keys(body).some(k => !['action', 'longitude', 'latitude'].includes(k)) ||
+        !coordinates(body.longitude, body.latitude)) throw new MapError('INVALID_INPUT')
+    return { action: 'region', point: { longitude: body.longitude, latitude: body.latitude as number } }
+  }
+  if (body.action === 'shoreline' || body.action === 'water-places') {
+    const shoreline = body.action === 'shoreline'
+    const keys = ['action', 'longitude', 'latitude', shoreline ? 'crs' : 'radius']
+    if (Object.keys(body).some(key => !keys.includes(key)) || !coordinates(body.longitude, body.latitude) ||
+        body.longitude < 72 || body.longitude > 137 || Number(body.latitude) < 3 || Number(body.latitude) > 55)
+      throw new MapError('INVALID_INPUT')
+    const point = { longitude: body.longitude, latitude: body.latitude as number }
+    if (shoreline) {
+      if (body.crs !== 'WGS84') throw new MapError('INVALID_INPUT')
+      return { action: 'shoreline', point }
+    }
+    if (typeof body.radius !== 'number' || !Number.isInteger(body.radius) || body.radius < 1 || body.radius > 2000)
+      throw new MapError('INVALID_INPUT')
+    return { action: 'water-places', point, radius: body.radius }
+  }
   if (body.action === 'weather') {
     if (
       Object.keys(body).some((k) => !['action', 'adcode'].includes(k)) ||
@@ -94,8 +120,9 @@ async function input(request: Request): Promise<Input> {
   }
   if (
     body.action !== 'preview' ||
+    ('hideMarker' in body && typeof body.hideMarker !== 'boolean') ||
     Object.keys(body).some(
-      (k) => !['action', 'spotId', 'longitude', 'latitude', 'zoom', 'radiusM'].includes(k)
+      (k) => !['action', 'spotId', 'longitude', 'latitude', 'zoom', 'radiusM', 'hideMarker'].includes(k)
     )
   )
     throw new MapError('INVALID_INPUT')
@@ -108,7 +135,7 @@ async function input(request: Request): Promise<Input> {
   ) {
     if ('longitude' in body || 'latitude' in body || 'radiusM' in body)
       throw new MapError('INVALID_INPUT')
-    return { action: 'preview', spotId: body.spotId, zoom: Number(zoom) }
+    return { action: 'preview', spotId: body.spotId, zoom: Number(zoom), hideMarker: body.hideMarker === true }
   }
   if ('spotId' in body || !coordinates(body.longitude, body.latitude))
     throw new MapError('INVALID_INPUT')
@@ -123,6 +150,7 @@ async function input(request: Request): Promise<Input> {
     throw new MapError('INVALID_INPUT')
   return {
     action: 'preview',
+    hideMarker: body.hideMarker === true,
     point: { longitude: body.longitude, latitude: body.latitude as number },
     zoom: Number(zoom),
     ...(body.radiusM !== undefined ? { radiusM: Number(body.radiusM) } : {})
@@ -150,6 +178,11 @@ export function createMapHandler(deps: Dependencies) {
       const caller = await deps.authenticate(request)
       if (!caller) return json({ error: 'NOT_AUTHENTICATED' }, 401)
       const data = await input(request)
+      if (data.action === 'shoreline') {
+        await deps.reserve(caller)
+        const water = await deps.shoreline([data.point.longitude, data.point.latitude], 2000)
+        return json({ water: water ?? null, crs: 'WGS84' })
+      }
       const key = deps.apiKey().trim()
       if (!key) throw new MapError('MAP_NOT_CONFIGURED', 503)
       let point: Point | undefined,
@@ -182,12 +215,24 @@ export function createMapHandler(deps: Dependencies) {
       const url = new URL(
         data.action === 'search'
           ? 'https://restapi.amap.com/v3/place/text'
+          : data.action === 'water-places' ? 'https://restapi.amap.com/v3/place/around'
           : data.action === 'weather'
             ? 'https://restapi.amap.com/v3/weather/weatherInfo'
-            : 'https://restapi.amap.com/v3/staticmap'
+            : data.action === 'region' ? 'https://restapi.amap.com/v3/geocode/regeo' : 'https://restapi.amap.com/v3/staticmap'
       )
       url.searchParams.set('key', key)
-      if (data.action === 'weather') {
+      if (data.action === 'water-places') {
+        url.searchParams.set('location', [data.point.longitude.toFixed(6), data.point.latitude.toFixed(6)].join(','))
+        url.searchParams.set('types', naturalPlaceType)
+        url.searchParams.set('radius', String(data.radius))
+        url.searchParams.set('sortrule', 'distance')
+        url.searchParams.set('offset', '25')
+        url.searchParams.set('extensions', 'base')
+      } else if (data.action === 'region') {
+        url.searchParams.set('location', [data.point.longitude.toFixed(6), data.point.latitude.toFixed(6)].join(','))
+        url.searchParams.set('extensions', 'base')
+        url.searchParams.set('output', 'JSON')
+      } else if (data.action === 'weather') {
         url.searchParams.set('city', data.adcode)
         url.searchParams.set('extensions', 'base')
         url.searchParams.set('output', 'JSON')
@@ -222,7 +267,7 @@ export function createMapHandler(deps: Dependencies) {
         url.searchParams.set('size', '640*360')
         url.searchParams.set('scale', '1')
         // An area preview is not an exact fishing-point pin.
-        if (precision === 'exact') url.searchParams.set('markers', `mid,0x0f766e,A:${location}`)
+        if (precision === 'exact' && !data.hideMarker) url.searchParams.set('markers', `mid,0x0f766e,A:${location}`)
       }
       const response = await deps.fetch(url, {
         signal: AbortSignal.timeout(8000),
@@ -230,6 +275,32 @@ export function createMapHandler(deps: Dependencies) {
       })
       if (!response.ok) throw new MapError('MAP_PROVIDER_FAILED', 502)
       const bytes = await limitedBytes(response, 512 * 1024)
+      if (data.action === 'water-places') {
+        const raw = new TextDecoder().decode(bytes)
+        if (raw.includes(key)) throw new MapError('MAP_RESPONSE_INVALID', 502)
+        const body = JSON.parse(raw)
+        if (body.status !== '1') throw providerError(body.infocode)
+        if (!Array.isArray(body.pois)) throw new MapError('MAP_RESPONSE_INVALID', 502)
+        const items: WaterPlace[] = []
+        for (const poi of body.pois.slice(0, 25)) {
+          const location = text(poi.location).split(',')
+          if (location.length !== 2 || location.some(part => !part.trim())) continue
+          const place = waterPlace(poi.name, poi.type, Number(location[0]), Number(location[1]))
+          if (place) items.push(place)
+        }
+        return json({ items })
+      }
+      if (data.action === 'region') {
+        const raw = new TextDecoder().decode(bytes)
+        if (raw.includes(key)) throw new MapError('MAP_RESPONSE_INVALID', 502)
+        const body = JSON.parse(raw)
+        if (body.status !== '1') throw providerError(body.infocode)
+        const address = body.regeocode?.addressComponent
+        if (!text(address?.province, 40) || !validAdcode(address?.adcode)) throw new MapError('MAP_RESPONSE_INVALID', 502)
+        return json({ province: text(address.province, 40), city: text(address.city, 40),
+          district: text(address.district, 40), adcode: address.adcode,
+          citycode: typeof address.citycode === 'string' && /^0[1-9]\d{1,2}$/.test(address.citycode) ? address.citycode : '' })
+      }
       if (data.action === 'weather') {
         const raw = new TextDecoder().decode(bytes)
         if (raw.includes(key)) throw new MapError('MAP_RESPONSE_INVALID', 502)

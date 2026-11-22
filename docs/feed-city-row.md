@@ -1,5 +1,7 @@
 # 首页同城行
 
+游客进入「同城」时，支持定位的 H5 和 App 会在尚未手动选城时尝试识别当前城市，随后读取该城市的公开鱼情。识别失败可手动选城，迟到的定位结果不会覆盖手选。找钓位和水域地图浏览无需定位，距用户的远近排序由已登录用户主动启用。
+
 2026-11-20。仅调整 `FeedView.vue` 的同城行模板和局部样式：定位图标、城市名和下拉箭头成为无底色的紧凑动作，说明移至右侧；保留 48px 点击区、键盘焦点和原有公共城市弹层。窄屏、大字和长城市名允许自然换行，没有修改默认定位、城市存储或 Feed 查询逻辑，也没有修改共享组件。
 
 采用 Apple `layout.md › Visual hierarchy / Adaptability` 的对齐、相关信息分组和大字重排，`buttons.md › Best practices` 的可识别操作及完整触区，`accessibility.md › Vision` 的 200% 文字；颜色沿用已有语义色。UI UX `compact inline control wrap` 查询中的 Compact Control Semantics 用于保留按钮语义、可访问名称、键盘操作和明显焦点。

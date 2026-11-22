@@ -5,20 +5,43 @@ import MobileAction from '@mobile-core/components/MobileAction.vue'
 import { activateActionKey, preventActionKey } from '@mobile-core/action-keyboard'
 import MobileConfirmDialog from '@mobile-core/components/MobileConfirmDialog.vue'
 import MobileLoadError from '@mobile-core/components/MobileLoadError.vue'
+import MobileListFooter from '@mobile-core/components/MobileListFooter.vue'
 import FishingPhotos from './FishingPhotos.vue'
+import FishingLoadingStatus from './FishingLoadingStatus.vue'
 import { useResource } from '@/composables/useResource'
 import { useMutation } from '@/composables/useMutation'
 import { useAuthStore } from '@/stores/auth'
 import { read, write } from '@/services/repository'
 import { reportCategories, localReportTime, type WaterReport } from '@/domain/water-report'
+import type { Page } from '@/domain/models'
 
 defineOptions({ options: { styleIsolation: 'apply-shared' } })
 const emit=defineEmits<{open:[report:WaterReport];edit:[report:WaterReport];create:[];busy:[value:boolean]}>()
 const auth=useAuthStore(), mutation=useMutation(), confirm=ref(false),target=ref<WaterReport|null>(null)
 const storageNotice=ref('')
-const {data,error,loading,load}=useResource(async()=>auth.userId?read<{items:WaterReport[]}>('water_reports'):{items:[]},{items:[]} as {items:WaterReport[]})
+const empty: Page<WaterReport> = { items: [], next: null }
+const { data, error, loading, load } = useResource(
+  async () => auth.userId ? read<Page<WaterReport>>('water_reports', { cursor: null }) : empty,
+  empty
+)
+const more = useMutation()
+async function loadMore() {
+  const previous = data.value, scope = auth.context
+  if (!previous.next || loading.value || mutation.busy.value || error.value) return
+  await more.run(async () => {
+    try {
+      const page = await read<Page<WaterReport>>('water_reports', { cursor: previous.next })
+      if (data.value !== previous || auth.context !== scope || loading.value) return
+      const ids = new Set(previous.items.map(item => item.id))
+      data.value = { items: [...previous.items, ...page.items.filter(item => !ids.has(item.id))], next: page.next }
+    } catch (cause) {
+      if (data.value === previous && auth.context === scope) throw cause
+    }
+  })
+}
+defineExpose({ reachBottom: () => { if (!more.error.value) void loadMore() } })
 onMounted(()=>void load())
-watch(()=>auth.context,()=>{confirm.value=false;target.value=null})
+watch(()=>auth.context,()=>{confirm.value=false;target.value=null;more.error.value=''})
 watch(mutation.busy,value=>emit('busy',value))
 onHide(()=>{confirm.value=false;target.value=null})
 onBeforeUnmount(()=>{confirm.value=false;target.value=null;emit('busy',false)})
@@ -47,7 +70,7 @@ async function remove(){
     </template>
     <template v-else>
       <MobileLoadError v-if="error" :message="error" @retry="load" />
-      <text v-if="loading" class="caption" role="status">正在读取上报记录…</text>
+      <FishingLoadingStatus v-if="loading && !data.items.length" label="正在读取上报记录…" />
       <view v-for="item in data.items" :key="item.id" class="panel stack report-records__item">
         <button class="mobile-action report-records__content" role="button" :tabindex="mutation.busy.value ? -1 : 0" :aria-disabled="mutation.busy.value || undefined" hover-class="mobile-action--pressed" aria-label="查看详情" :disabled="mutation.busy.value" @click="emit('open',item)" @keydown="preventActionKey" @keyup="activateActionKey($event, () => { if (!mutation.busy.value) emit('open',item) })">
           <text class="name">{{ reportCategories.find(category=>category.id===item.category)?.name }}</text>
@@ -65,7 +88,11 @@ async function remove(){
         <text class="notice">还没有保存的上报记录。</text>
         <MobileAction class="secondary" @click="emit('create')">记录水域线索</MobileAction>
       </template>
-      <text v-if="data.items.length" class="caption">显示最近 100 条。删除不会撤回已通过外部渠道发送的材料。</text>
+      <MobileListFooter :loading="more.busy.value" :error="more.error.value"
+        :can-load-more="!!data.next && !loading && !error && !mutation.busy.value"
+        :finished="!data.next && !loading && !error" :count="data.items.length"
+        loading-label="正在加载更多上报记录…" @more="loadMore" />
+      <text v-if="data.items.length" class="caption">删除不会撤回已通过外部渠道发送的材料。</text>
       <text v-if="mutation.error.value" class="error" role="alert">{{ mutation.error.value }}</text>
       <text v-if="storageNotice" class="notice" role="status">{{ storageNotice }}</text>
     </template>

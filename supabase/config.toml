@@ -419,6 +419,7 @@ verify_jwt = false
 
 [functions.amap]
 verify_jwt = true
+import_map = "./functions/deno.json"
 
 # Public basemap/POI SDK proxy only. JSONP cannot carry a Supabase JWT.
 # Exact origin/route/key allowlists + durable project quota; no fishing/private data.
@@ -435,3 +436,15 @@ verify_jwt = false
 # Service-only scheduled worker; a short-lived HMAC is verified before any backend call.
 [functions.media-cleanup]
 verify_jwt = false
+
+[functions.spot-discovery]
+verify_jwt = true
+
+[functions.spot-source-import]
+verify_jwt = true
+
+[functions.social-accounts]
+verify_jwt = true
+
+[functions.water-fence-draft]
+verify_jwt = true

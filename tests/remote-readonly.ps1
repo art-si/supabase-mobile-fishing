@@ -5,7 +5,7 @@ $fishingEnv = @{}
 Get-Content -LiteralPath (Join-Path $fishingRoot '.env.local') | ForEach-Object {
   if ($_ -match '^([A-Z_]+)=(.*)$') { $fishingEnv[$matches[1]] = $matches[2] }
 }
-if ($fishingEnv.VITE_SUPABASE_URL -ne 'https://tlfmfokyhahlpzmpliad.supabase.co') {
+if ($fishingEnv.VITE_SUPABASE_URL -ne 'https://jupuypvmgjpnpntfetqv.supabase.co') {
   throw 'Refusing to test an unconfirmed project'
 }
 if (!$fishingEnv.VITE_SUPABASE_KEY.StartsWith('sb_publishable_')) {

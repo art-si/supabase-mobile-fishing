@@ -18,7 +18,7 @@ import { contentUpdatesFlow } from './content-updates-flow.mjs'
 import { spotPhotosFlow } from './spot-photos-flow.mjs'
 import { amapWebServiceFlow } from './amap-web-service-flow.mjs'
 
-const project = 'https://tlfmfokyhahlpzmpliad.supabase.co'
+const project = 'https://jupuypvmgjpnpntfetqv.supabase.co'
 const base = process.env.FISHING_H5_URL || 'http://127.0.0.1:5179'
 assert.ok(
   /^http:\/\/127\.0\.0\.1:(5178|5179|5181)$/.test(base),
@@ -69,6 +69,9 @@ async function accountPage(label) {
   const context = await browser.newContext({
     viewport: { width: 375, height: 812 },
     locale: 'zh-CN',
+    ...(data.suite.startsWith('h5-report') || data.suite === 'h5-amap' ? {
+      permissions: ['geolocation'], geolocation: { longitude: 114.19, latitude: 30.51 }
+    } : {}),
     reducedMotion: 'reduce'
   })
   await context.addInitScript(
@@ -244,6 +247,8 @@ async function largePhoto() {
     'H5 optimized photo post remains private'
   )
   phase = 'large-photo-detail'
+  await page.waitForURL(/#\/(?:pages\/home\/index)?\?tab=feed$/)
+  await go(page, `/pages/post/detail?id=${post.id}`)
   await button(page, '编辑这条鱼情').waitFor()
   phase = 'large-photo-render'
   await shot('large-photo-detail-dark-320')
@@ -351,6 +356,8 @@ async function media() {
     post.audience === 'private' && post.media.length === 2,
     'H5 saved post is private and owns both uploaded photos'
   )
+  await page.waitForURL(/#\/(?:pages\/home\/index)?\?tab=feed$/)
+  await go(page, `/pages/post/detail?id=${post.id}`)
   await button(page, '编辑这条鱼情').waitFor()
   const images = page.locator('.photo-action img')
   await images.first().waitFor()
@@ -483,40 +490,38 @@ async function waterReport() {
   const manual = data.suite === 'h5-report-manual'
   phase = 'report-edit'
   await go(page, '/pages/water-report/index')
-  await button(page, '事发省级地区').click()
-  await field(page, '搜索事发省级地区的选项').fill('江苏')
-  await button(page, '江苏省').click()
-  await field(page, '事发城市').fill('苏州市')
+  await page.locator('#report-region').click()
+  const region = page.getByRole('dialog', { name: '选择事发地区', exact: true })
+  await region.locator('input[aria-label="搜索地区"]').fill('汉阳区')
+  await region.getByRole('button', { name: '选择汉阳区', exact: true }).click()
   await field(page, '现场情况').fill(
     '系统验收虚构线索，并非真实事件，不向任何机关发送，测试后删除。'
   )
   if (manual) {
     phase = 'report-manual-location'
-    await field(page, '具体水域与位置').fill('合成验收地点：苏州某水域，无真实事发坐标')
-    check(
-      true,
-      'H5 report accepts a manually described location without requesting device position'
-    )
+    await field(page, '具体水域与位置').fill('手动填写的测试水域')
+    const writes = () => network.filter(r => r.path.endsWith('/fishing_write')).length
+    const before = writes()
+    await button(page, '上报').click()
+    await page.getByText('请选择事发水域，获取经纬度', { exact: true }).waitFor()
+    check(writes() === before, 'H5 requires a selected water coordinate before saving a report')
+    return
   } else {
     phase = 'report-amap-selection'
-    await button(page, '高德定位／选点').click()
-    const search = field(page, '搜索高德地点')
+    await button(page, '水域地图选点').click()
+    const search = page.locator('input[name="map-search"]')
     await search.waitFor()
     await page.waitForFunction(
       () => window.AMap && !document.body.innerText.includes('正在加载高德地图')
     )
-    await search.fill('苏州金鸡湖')
-    await field(page, '搜索高德地点').press('Enter')
+    await search.fill('北太子湖')
+    await search.press('Enter')
     await page.getByRole('option').first().waitFor({ timeout: 30000 })
     await page.getByRole('option').first().click()
-    if (!(await button(page, '确认这个位置').isEnabled())) {
-      await page.getByRole('option').first().waitFor({ timeout: 30000 })
-      await page.getByRole('option').first().click()
-    }
-    await button(page, '确认这个位置').click()
+    await button(page, '确认这处水域').click()
     await page.getByText(/^已选位置：/).waitFor()
     check(
-      (await field(page, '具体水域与位置').inputValue()).includes('金鸡湖'),
+      (await field(page, '具体水域与位置').inputValue()).includes('北太子湖'),
       'H5 report receives a real AMap search selection through normal navigation'
     )
     check(
@@ -525,10 +530,10 @@ async function waterReport() {
       'H5 report preserves entered material while choosing a map location'
     )
   }
-  phase = 'report-consent'
-  const before = network.filter((r) => r.path === '/functions/v1/media-upload').length
+  phase = 'report-attachment'
+  const uploaded = page.waitForResponse(r => r.url() === `${project}/functions/v1/media-upload` && r.request().method() === 'POST')
   const chooser = page.waitForEvent('filechooser')
-  await button(page, '从相册选择').click()
+  await button(page, '添加图片 / 视频').click()
   await (
     await chooser
   ).setFiles({
@@ -536,31 +541,22 @@ async function waterReport() {
     mimeType: 'image/png',
     buffer: Buffer.from(data.photo, 'base64')
   })
-  await page.getByText('现场照片 1/6', { exact: true }).waitFor()
-  await button(page, '私密保存，选择官方渠道').click()
-  await page.getByText('请先确认私密保存说明', { exact: true }).waitFor()
-  check(
-    network.filter((r) => r.path === '/functions/v1/media-upload').length === before,
-    'H5 report photo selection and missing consent perform no cloud upload'
-  )
-  await page.getByRole('checkbox').click()
+  check((await uploaded).ok(), 'H5 uploads a selected report image directly')
   phase = 'report-save'
   const saved = replyFor(page, 'save_water_report')
-  await button(page, '私密保存，选择官方渠道').click()
+  await button(page, '上报').click()
   const response = await saved
   check(response.status() === 200, 'H5 report saves through the real user RPC')
   const report = await response.json()
   check(
     report.status === 'saved' &&
       report.media.length === 1 &&
-      (manual
-        ? report.longitude === null && report.latitude === null
-        : Number.isFinite(report.longitude) && Number.isFinite(report.latitude)),
-    manual
-      ? 'H5 report privately stores owned evidence without inventing coordinates'
-      : 'H5 report privately stores the selected coordinates and owned evidence'
+      Number.isFinite(report.longitude) && Number.isFinite(report.latitude),
+    'H5 report privately stores the selected coordinates and owned evidence'
   )
-  await page.getByText('已私密保存 · 尚未发送', { exact: true }).waitFor()
+  await page.getByText('到官方渠道完成上报', { exact: true }).waitFor()
+  const agencies=page.getByRole('dialog',{name:'选择举报机构',exact:true})
+  await agencies.waitFor()
   check(true, 'H5 report explicitly distinguishes private storage from official delivery')
   await shot('report-saved-375')
   await page.setViewportSize({ width: 320, height: 812 })
@@ -569,7 +565,7 @@ async function waterReport() {
   await fits('H5 real private report fits dark 320 with 150 percent text')
   await shot('report-large-text-dark-320')
   phase = 'report-confirmations'
-  await button(page, '复制文字材料').click()
+  await agencies.getByRole('button',{name:'复制文字材料',exact:true}).click()
   const copy = page.getByRole('dialog', { name: '复制私密材料？' })
   await copy.waitFor()
   check(
@@ -579,6 +575,9 @@ async function waterReport() {
   await shot('report-copy-confirm-dark-320', page, false)
   await copy.getByRole('button', { name: '取消', exact: true }).click()
   await copy.waitFor({ state: 'hidden' })
+  await agencies.getByRole('button',{name:'关闭机构选择',exact:true}).click()
+  await agencies.waitFor({state:'hidden'})
+  await button(page,'举报联系方式').click()
   const phone = page.getByRole('button', { name: /^拨打/ }).first()
   await phone.click()
   const dial = page.getByRole('dialog', { name: '打开拨号？' })
@@ -595,20 +594,20 @@ async function waterReport() {
     'H5 other account cannot open private report material'
   )
   phase = 'report-delete'
-  await button(page, '我的线索材料').click()
-  await button(page, '查看材料与渠道').waitFor()
+  await button(page, '返回上报记录').click()
+  await button(page, '查看详情').waitFor()
   await button(page, '删除材料').click()
   await page.getByRole('alertdialog').getByRole('button', { name: '取消', exact: true }).click()
   // The closing popup briefly contains a second button with the same label.
   // Wait for dismissal before testing the next independent user action.
   await page.getByRole('alertdialog').waitFor({ state: 'hidden' })
-  await button(page, '查看材料与渠道').waitFor()
+  await button(page, '查看详情').waitFor()
   check(true, 'H5 cancelling report deletion preserves the history entry')
   await button(page, '删除材料').click()
   const removed = replyFor(page, 'delete_water_report')
   await page.getByRole('alertdialog').getByRole('button', { name: '删除材料', exact: true }).click()
   check((await removed).status() === 200, 'H5 confirmed report deletion reaches the real service')
-  await page.getByText('还没有保存的线索材料。', { exact: true }).waitFor()
+  await page.getByText('还没有保存的上报记录。', { exact: true }).waitFor()
   check(true, 'H5 deleted report disappears from private history')
 }
 try {

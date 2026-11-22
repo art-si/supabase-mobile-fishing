@@ -13,11 +13,10 @@ function template(path: string) {
   return result.descriptor.template.content
 }
 
-test('fishing and messaging surfaces describe user actions, not integration diagnostics', () => {
+test('fishing and reporting surfaces describe user actions without integration diagnostics', () => {
   const paths = [
-    'components/MessagesView.vue',
-    'pages/chat/index.vue',
-    'components/ReportChannels.vue',
+    'pages/notifications/index.vue',
+    'pages/water-report/ReportChannels.vue',
     'pages/water-report/index.vue',
     'pages/spot/create.vue'
   ]
@@ -31,28 +30,22 @@ test('fishing and messaging surfaces describe user actions, not integration diag
     assert.doesNotMatch(channel.instructions, /AppID|直跳|接口|配置|接入/)
 })
 
-test('report consent retains overseas storage, privacy link and non-delivery disclosure', () => {
+test('report offers direct attachment and save actions and keeps storage details in privacy settings', () => {
   const content = template('pages/water-report/index.vue')
-  assert.match(content, /中国大陆境外的德国法兰克福/)
-  assert.match(content, /材料不进入社区/)
-  assert.match(content, /不会自动发给任何外部单位/)
-  assert.match(content, /查看隐私说明/)
-  assert.match(content, /\/pages\/settings\/legal\?type=privacy/)
-  assert.match(content, /role="checkbox"/)
-  assert.match(content, /:aria-checked="consent"/)
-  assert.match(content, /我确认将体验材料保存在本机/)
-  assert.match(content, /我确认将文字、所选坐标、图片和视频私密保存到钓友集云端/)
+  assert.match(content, /添加图片 \/ 视频/)
+  assert.match(content, /'上报'/)
+  assert.doesNotMatch(content, /role="checkbox"|清除坐标|查看隐私说明/)
+  assert.match(readFileSync(new URL('../src/domain/legal.ts',import.meta.url),'utf8'), /中国大陆境外的爱尔兰/)
 })
 
-test('copy cleanup preserves experience-only and communication limitations', () => {
-  assert.match(template('pages/chat/index.vue'), /本机体验会话，不会发送给真实用户/)
-  assert.match(template('components/MessagesView.vue'), /暂不提供离线提醒/)
-  const channels = template('components/ReportChannels.vue')
+test('copy cleanup preserves experience-only and notification limitations', () => {
+  assert.match(template('pages/notifications/index.vue'), /这些开关只影响站内通知/)
+  const channels = template('pages/water-report/ReportChannels.vue')
   assert.match(channels, /本机体验只展示渠道，不拨号、不发送材料/)
   assert.match(channels, /打开自己的邮箱确认发送/)
   assert.match(channels, /图片和视频需在邮件中添加/)
-  assert.match(channels, /是否受理以官方答复为准/)
-  const channelSource = readFileSync(new URL('../src/components/ReportChannels.vue', import.meta.url), 'utf8')
+  assert.match(channels, /举报联系方式/)
+  const channelSource = readFileSync(new URL('../src/pages/water-report/ReportChannels.vue', import.meta.url), 'utf8')
   assert.match(channelSource, /本应用无法确认邮件是否发出/)
   assert.match(channelSource, /材料不会自动传过去/)
   assert.match(channels, /信息核对：/)
@@ -64,7 +57,7 @@ test('settings and legal pages do not expose integration diagnostics or supplier
   const settings = readFileSync(new URL('../src/pages/settings/index.vue', import.meta.url), 'utf8')
   assert.doesNotMatch(
     settings,
-    /Supabase|接入状态|公开\s*Key|tlfmfokyhahlpzmpliad|wx9f631f76bb1543e0|开发预览版|showServices/
+    /Supabase|接入状态|公开\s*Key|jupuypvmgjpnpntfetqv|wx9f631f76bb1543e0|开发预览版|showServices/
   )
   assert.match(settings, /联系与反馈/)
   const legal = readFileSync(new URL('../src/pages/settings/legal.vue', import.meta.url), 'utf8')

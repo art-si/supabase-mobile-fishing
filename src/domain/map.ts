@@ -1,4 +1,5 @@
 import { validCoordinates } from './rules'
+import type { MapPoint } from '@mobile-core/map'
 export interface MapPlace {
   id: string
   name: string
@@ -7,6 +8,7 @@ export interface MapPlace {
   latitude: number
   crs: 'GCJ-02'
   adcode?: string
+  source?: 'share'
 }
 export interface SelectedPlace {
   longitude: number
@@ -17,10 +19,25 @@ export interface SelectedPlace {
   created_at: number
   accuracyM?: number
   adcode?: string
+  kind?: 'water'
 }
-export type MapPreviewTarget =
+export function waterSelection([longitude, latitude]: MapPoint, name: string, nameUnavailable = false): SelectedPlace {
+  return {
+    longitude,
+    latitude,
+    name: name.trim().slice(0, 120) || (nameUnavailable ? '水域名称待确认' : '未命名水域'),
+    kind: 'water',
+    crs: 'GCJ-02',
+    created_at: Date.now()
+  }
+}
+export function formatMapCoordinates(longitude: number, latitude: number) {
+  return `经度 ${longitude.toFixed(6)}，纬度 ${latitude.toFixed(6)}`
+}
+export type MapPreviewTarget = (
   | { spotId: string }
   | { longitude: number; latitude: number; radiusM?: number }
+) & { hideMarker?: true }
 export function validSelection(value: unknown, now = Date.now()): value is SelectedPlace {
   if (!value || typeof value !== 'object') return false
   const p = value as SelectedPlace

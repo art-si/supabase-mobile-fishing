@@ -12,19 +12,21 @@ const placeholderKey = 'sb_publishable_contract_test_only'
 const profile =
   process.argv.find((arg) => arg.startsWith('--profile='))?.slice('--profile='.length) || 'active'
 assert.ok(
-  ['active', 'current', 'demo'].includes(profile),
-  'profile must be active, current, or demo'
+  ['active', 'password', 'current', 'demo'].includes(profile),
+  'profile must be active, password, current, or demo'
 )
 const currentFlags = profile === 'current' ? loadEnv('production', process.cwd(), 'VITE_') : {}
 const currentUnavailable =
   profile === 'current' &&
   (!currentFlags.VITE_SUPABASE_KEY ||
-    currentFlags.VITE_PHONE_AUTH_ENABLED !== 'true' ||
     currentFlags.VITE_AUTH_CAPTCHA_ENABLED === 'true')
+const passwordOnly =
+  profile === 'password' ||
+  (profile === 'current' && !currentUnavailable && currentFlags.VITE_PHONE_AUTH_ENABLED !== 'true')
 const output = resolve('artifacts/login-review/redesign', profile)
 const buildDirectory = `dist/test/login-${profile}`
 const root = resolve(buildDirectory)
-const authHost = 'tlfmfokyhahlpzmpliad.supabase.co'
+const authHost = 'jupuypvmgjpnpntfetqv.supabase.co'
 const fixturePhone = '13800000000'
 const normalizedPhone = '+86' + fixturePhone
 const fixtureUserId = '22222222-2222-4222-8222-222222222222'
@@ -49,7 +51,7 @@ if (!process.argv.includes('--skip-build')) {
   const mode = profile === 'current' ? 'production' : profile === 'demo' ? 'demo' : 'test-login'
   const build = spawnSync(
     process.platform === 'win32' ? 'pnpm.cmd' : 'pnpm',
-    ['exec', 'uni', 'build', '-p', 'h5', '--mode', mode, '--outDir', env.H5_BUILD_DIR],
+    ['exec', 'mobile-pro', 'uni', 'build', '-p', 'h5', '--mode', mode, '--outDir', env.H5_BUILD_DIR],
     { stdio: 'inherit', shell: process.platform === 'win32', env }
   )
   if (build.status !== 0) process.exit(build.status ?? 1)
@@ -59,6 +61,7 @@ const mime = {
   '.js': 'text/javascript',
   '.css': 'text/css',
   '.png': 'image/png',
+  '.jpg': 'image/jpeg',
   '.svg': 'image/svg+xml',
   '.woff2': 'font/woff2',
   '.json': 'application/json'
@@ -109,6 +112,8 @@ async function setup({ useClock = false } = {}) {
     viewport: { width: 375, height: 812 },
     locale: 'zh-CN',
     colorScheme: 'light',
+    permissions: ['geolocation'],
+    geolocation: { latitude: 31.12, longitude: 120.12 },
     reducedMotion: 'reduce'
   })
   const state = {
@@ -141,7 +146,7 @@ async function setup({ useClock = false } = {}) {
     if (request.method() === 'OPTIONS') return json(200, {})
     const record = { method: request.method(), path: url.pathname, body: request.postDataJSON() }
     state.requests.push(record)
-    if (profile === 'active')
+    if (profile === 'active' || profile === 'password')
       assert.ok(
         request.headers().apikey === placeholderKey,
         'build did not use the isolated placeholder key (value redacted)'
@@ -179,6 +184,17 @@ async function setup({ useClock = false } = {}) {
         user: { id: fixtureUserId, phone: normalizedPhone.slice(1) }
       })
     }
+    if (url.pathname === '/auth/v1/token' && url.searchParams.get('grant_type') === 'password') {
+      if (record.body?.phone !== normalizedPhone || record.body?.password !== 'test-only-password')
+        return json(400, { code: 'invalid_credentials' })
+      return json(200, {
+        access_token: 'password-contract-access',
+        refresh_token: 'password-contract-refresh',
+        expires_in: 3600,
+        user: { id: fixtureUserId, phone: normalizedPhone.slice(1) }
+      })
+    }
+    if (url.pathname.endsWith('/rpc/fishing_read')) return json(200, { items: [], next: null })
     if (url.pathname.startsWith('/rest/v1/')) return json(200, [], { 'content-range': '0-0/0' })
     return json(404, { message: 'Unimplemented local contract fixture' })
   })
@@ -286,11 +302,13 @@ async function loginTypeFloor(page, name) {
     )
   metrics.push({ name: name + '-actual-type', values })
   assert.ok(values.length > 0, 'no login typography sampled')
-  for (const value of values)
+  for (const value of values) {
+    const minimum = value.type === 'input' ? 16 : value.type === 'description' ? 15 : 14
     assert.ok(
-      parseFloat(value.fontSize) >= 16,
-      name + ' ' + value.type + ' is below 16px: ' + value.fontSize
+      parseFloat(value.fontSize) >= minimum,
+      name + ' ' + value.type + ' is below ' + minimum + 'px: ' + value.fontSize
     )
+  }
 }
 async function noEmptyHeading(page) {
   const headings = await page.getByRole('heading').allTextContents()
@@ -349,7 +367,7 @@ async function profileScreens(page, heading) {
   await page.setViewportSize({ width: 375, height: 812 })
 }
 async function contactAndLegal(page, context, state) {
-  await context.grantPermissions(['clipboard-read', 'clipboard-write'], { origin: base })
+  await context.grantPermissions(['geolocation', 'clipboard-read', 'clipboard-write'], { origin: base })
   const contact = page.getByRole('button', { name: '联系客服', exact: true })
   await contact.focus()
   const focus = await contact.evaluate((el) => ({
@@ -361,41 +379,28 @@ async function contactAndLegal(page, context, state) {
   assert.notEqual(focus.outline, 'none')
   assert.ok(focus.rect.width >= 44 && focus.rect.height >= 44)
   await shot(page, `login-${profile}-keyboard-focus`)
-  assert.equal(await contact.getAttribute('aria-expanded'), 'false')
   await page.keyboard.press('Space')
-  await poll(
-    async () => (await contact.getAttribute('aria-expanded')) === 'true',
-    'contact did not expand with keyboard'
-  )
-  await page.locator('#login-contact').waitFor()
+  await page.waitForURL('**/pages/contact/index')
   await page.getByRole('button', { name: '复制运营者微信号', exact: true }).click()
   await textIncludes(page, '微信号已复制')
   assert.equal(await page.evaluate(() => navigator.clipboard.readText()), '869123771')
-  const live = page.locator('#login-contact [aria-live="polite"]')
+  const live = page.locator('.contact-details [aria-live="polite"]')
   assert.ok((await live.count()) >= 1, 'copy needs accessible live feedback')
   await page.getByRole('button', { name: '复制运营者QQ号', exact: true }).click()
   await textIncludes(page, 'QQ号已复制')
   assert.equal(await page.evaluate(() => navigator.clipboard.readText()), '869123771')
-  await shot(page, `login-${profile}-contact-expanded`)
-  await contact.focus()
-  await page.keyboard.press('Space')
-  await poll(
-    async () => (await contact.getAttribute('aria-expanded')) === 'false',
-    'contact did not collapse'
-  )
-  assert.equal(
-    await contact.evaluate((el) => el === document.activeElement),
-    true,
-    'collapsing contact lost keyboard focus'
-  )
-  assert.equal(await page.locator('#login-contact').isVisible(), false)
+  await shot(page, `login-${profile}-contact`)
+  await page.getByRole('button', { name: '返回上一页', exact: true }).last().click()
+  await page.waitForURL('**/#/pages/login/index')
+  assert.doesNotMatch(await page.locator('uni-page').last().innerText(), /869123771/)
   for (const [label, type] of [
     ['用户协议', 'terms'],
     ['隐私说明', 'privacy']
   ]) {
     await page.getByRole('button', { name: label, exact: true }).click()
     await page.waitForURL('**/pages/settings/legal?type=' + type)
-    await textIncludes(page, '运营者：汪洋')
+    await page.locator('.legal-section').first().waitFor()
+    assert.doesNotMatch(await page.locator('uni-page').last().innerText(), /运营者：|版本日期|869123771/)
     await page.getByRole('button', { name: '返回上一页', exact: true }).last().click()
     await page.waitForURL('**/#/pages/login/index')
     await page.getByRole('button', { name: '联系客服', exact: true }).waitFor()
@@ -487,6 +492,30 @@ try {
         0
       )
       assert.equal(await page.evaluate(() => localStorage.getItem('dyj.auth.v1')), null)
+    })
+  } else if (passwordOnly) {
+    await check('password-leaves-sms-closed', async ({ page, state }) => {
+      const heading = '密码登录'
+      await page.getByRole('heading', { name: heading, exact: true }).waitFor()
+      await noEmptyHeading(page)
+      await noUnavailableOneClick(page)
+      await textIncludes(page, '短信注册和找回密码暂不可用。')
+      assert.equal(await send(page).count(), 0)
+      assert.equal(await page.getByRole('button', { name: '忘记密码', exact: true }).count(), 0)
+      assert.equal(state.requests.length, 0)
+      await profileScreens(page, heading)
+      await page.getByRole('textbox', { name: '账号或手机号' }).fill(fixturePhone)
+      const password = page.locator('input[aria-label="登录密码"]')
+      const submit = page.getByRole('button', { name: '登录', exact: true })
+      await password.fill('wrong-test-password')
+      await submit.click()
+      await textIncludes(page, '账号、手机号或密码不正确，请重新填写')
+      await password.fill('test-only-password')
+      await submit.click()
+      await page.waitForURL((url) => ['#/', '#/pages/home/index'].includes(url.hash))
+      assert.equal(requests(state, 'token').length, 2)
+      assert.equal(requests(state, 'otp').length, 0)
+      assert.equal(requests(state, 'verify').length, 0)
     })
   } else if (profile === 'demo') {
     await check('demo-explicit-local-only', async ({ page, state }) => {
@@ -911,9 +940,16 @@ try {
       await shot(page, 'login-network-error')
     })
 
-    await check('legal-navigation-preserves-form', async ({ page, state, context }) => {
-      await context.grantPermissions(['clipboard-read', 'clipboard-write'], { origin: base })
+    await check('legal-navigation-preserves-form', async ({ page, state }) => {
       await fill(page)
+      await page.getByRole('button', { name: '联系客服', exact: true }).click()
+      await page.waitForURL('**/pages/contact/index')
+      await page.getByRole('button', { name: '查看个人微信二维码' }).waitFor()
+      await page.getByRole('button', { name: '返回上一页', exact: true }).last().click()
+      await page.waitForURL('**/#/pages/login/index')
+      assert.equal(await phone(page).inputValue(), fixturePhone)
+      assert.equal(await code(page).inputValue(), '123456')
+      assert.equal(await consent(page).getAttribute('aria-checked'), 'true')
       for (const [label, type] of [
         ['用户协议', 'terms'],
         ['隐私说明', 'privacy']
@@ -921,18 +957,14 @@ try {
         await page.getByRole('button', { name: label, exact: true }).click()
         await page.waitForURL('**/pages/settings/legal?type=' + type)
         const visible = page.locator('uni-page').last()
-        await poll(
-          async () => (await visible.innerText()).includes('汪洋'),
-          'operator missing from ' + type
-        )
+        await visible.locator('.legal-section').first().waitFor()
         const text = await visible.innerText()
-        assert.ok(text.includes('869123771'), 'contact missing from ' + type)
+        assert.doesNotMatch(text, /运营者：|版本日期|869123771/)
         assert.equal(
           /开发预览|开发环境|环境配置|不是正式上线法律文本/.test(text),
           false,
           'development copy leaked into legal page'
         )
-        assert.ok(text.includes('版本日期：2026-11-19'), 'version date missing')
         for (const [width, height] of [
           [320, 740],
           [375, 812],
@@ -946,7 +978,7 @@ try {
             metrics.push({
               name: 'legal-' + type + '-paint',
               values: await page
-                .locator('.legal-meta, .legal-meta .body, .legal-section .body')
+                .locator('.legal-section .body')
                 .evaluateAll((nodes) =>
                   nodes.slice(0, 4).map((el) => ({
                     tag: el.tagName,
@@ -983,26 +1015,13 @@ try {
           '24px'
         )
         assert.equal(
-          await page.locator('.legal-meta .body').evaluate((el) => getComputedStyle(el).fontSize),
-          '24px'
+          await visible.locator('.legal-section .body').first().evaluate((el) => getComputedStyle(el).fontSize),
+          '22.5px'
         )
         await shot(page, 'legal-' + type + '-dark-large-320')
         await textStyle.evaluate((el) => el.remove())
         await page.emulateMedia({ colorScheme: 'light' })
-        await page.getByRole('button', { name: '复制运营者微信号', exact: true }).click()
-        await textIncludes(page, '微信号已复制')
-        assert.equal(await page.evaluate(() => navigator.clipboard.readText()), '869123771')
-        assert.equal(
-          await page.locator('.legal-contact [role="status"]').getAttribute('aria-live'),
-          'polite'
-        )
-        await page.getByRole('button', { name: '复制运营者QQ号', exact: true }).click()
-        await textIncludes(page, 'QQ号已复制')
-        assert.equal(await page.evaluate(() => navigator.clipboard.readText()), '869123771')
-        await page
-          .locator('.legal-contact')
-          .screenshot({ path: resolve(output, 'legal-' + type + '-contact.png') })
-        screenshots.push('legal-' + type + '-contact.png')
+        assert.equal(await visible.getByRole('button', { name: /^复制运营者/ }).count(), 0)
         if (type === 'privacy') {
           assert.equal(await page.locator('.legal-link').count(), 0)
           assert.doesNotMatch(

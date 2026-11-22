@@ -1,6 +1,6 @@
 // Hosted Web Service acceptance through the actual static-map page.
 // Uses only the ordinary temporary session supplied by the shared harness.
-// No GPS, mocks, business writes, key access, SMS or external submission.
+// The browser supplies the entry location. Map search, images and weather use the live provider.
 import { setH5TextScale } from './h5-text-scale.mjs'
 
 export async function amapWebServiceFlow({ page, project, button, field, go, shot, fits, check, setPhase }) {

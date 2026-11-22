@@ -4,11 +4,9 @@ import { readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
 import { runInNewContext } from 'node:vm'
 import ts from 'typescript'
+import { resolveMobileProRoot } from '../scripts/mobile-pro.mjs'
 
-const core = resolve(
-  process.env.MOBILE_PRO_ROOT || '../supabase-mobile-pro',
-  'packages/mobile-core/src/image-prepare.ts'
-)
+const core = resolve(resolveMobileProRoot(), 'packages/mobile-core/src/image-prepare.ts')
 const source = ts.transpileModule(readFileSync(core, 'utf8'), {
   compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 }
 }).outputText

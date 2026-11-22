@@ -34,7 +34,7 @@ export async function commentMediaChecks({db,as,rpc,read,write,check,rejects,bas
     await rejects(()=>write(author,'comment',{id:randomUUID(),post_id:post,body:'',media:[{id:image.id}]}),/FORBIDDEN/,'comment cannot reuse an asset already attached to another comment')
     await rejects(()=>write(author,'save_post',{...base,id:randomUUID(),media:[{id:image.id}]}),/FORBIDDEN|check constraint/,'post publishing cannot steal a comment image')
     await rejects(()=>write(author,'update_profile',{avatar_id:image.id}),/AVATAR_UNAVAILABLE/,'profile avatar cannot steal comment evidence')
-    await rejects(()=>write(author,'save_water_report',{id:randomUUID(),category:'electric',province:'湖北省',city:'黄石市',district:'阳新县',location_label:'隔离测试',longitude:null,latitude:null,description:'测试不得引用评论附件',observed_at:'2026-11-19T00:00:00Z',consent_version:'2026-11-19-water-v1',media:[{id:image.id}]}),/FORBIDDEN/,'private report cannot take a comment attachment')
+    await rejects(()=>write(author,'save_water_report',{id:randomUUID(),category:'electric',province:'湖北省',city:'黄石市',district:'阳新县',location_label:'隔离测试',longitude:115.22,latitude:29.84,description:'测试不得引用评论附件',observed_at:'2026-11-19T00:00:00Z',media:[{id:image.id}]}),/FORBIDDEN/,'private report cannot take a comment attachment')
     const item=await review('item',{id,type:'comment'})
     check(item.media.length===2 && item.media[0].id===video.id,'comment review resolves original current attachments inside existing governance')
     await review('decide',{id,type:'comment',revision:item.revision,decision:'hidden',reason:'隔离媒体治理检查',request_id:randomUUID()})

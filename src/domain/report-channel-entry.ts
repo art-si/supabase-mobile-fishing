@@ -16,3 +16,38 @@ export function reportEntryHelp(channel:ReportChannel,platform:'h5'|'weixin'){
  if(channel.kind==='website'&&platform==='weixin')return '复制链接后在浏览器打开官网，材料需在官方页面提交。'
  return ''
 }
+
+export type AgencyAction =
+  | { kind: 'phone'; label: string; number: string }
+  | { kind: 'entry' | 'email' | 'copy-email'; label: string; detail: string }
+
+export interface ReportAgencyOption { channel: ReportChannel; actions: AgencyAction[] }
+
+/** Input is already filtered for the incident, validity dates and jurisdiction. */
+export function reportAgencyOptions(channels: readonly ReportChannel[], platform: 'h5' | 'weixin') {
+  const options: ReportAgencyOption[] = []
+  for (const channel of channels) {
+    const referral = channel.id === 'local-12345' && Boolean(channel.city)
+    if (channel.topic === 'general' && !channel.province && !referral) continue
+    const entry = reportChannelEntry(channel, platform)
+    const actions: AgencyAction[] = []
+    if (entry.action === 'phone') {
+      const label = channel.phoneHours ? `拨打电话（${channel.phoneHours}）` : '拨打电话'
+      actions.push({ kind: 'phone', label, number: entry.value })
+    } else if (channel.kind === 'website' || entry.action === 'mini-program') {
+      const label = entry.action === 'website' ? '打开官方填报页' : entry.label
+      actions.push({ kind: 'entry', label, detail: entry.action === 'copy' ? '在浏览器填写' : '' })
+    }
+    if (channel.additionalPhone) {
+      actions.push({ kind: 'phone', label: channel.additionalPhone.label, number: channel.additionalPhone.number })
+    }
+    if (channel.email) {
+      actions.push(platform === 'h5'
+        ? { kind: 'email', label: '写举报邮件', detail: channel.email }
+        : { kind: 'copy-email', label: '复制举报邮箱', detail: channel.email })
+    }
+    if (actions.length) options.push({ channel, actions })
+  }
+  // Put referrals after agencies that accept this type of incident themselves.
+  return options.sort((a, b) => Number(a.channel.id === 'local-12345') - Number(b.channel.id === 'local-12345'))
+}

@@ -3,8 +3,20 @@ packages:
 allowBuilds:
   '@parcel/watcher': true
   esbuild: true
-  vue-demi: true
   core-js: false
   core-js-pure: false
 minimumReleaseAgeExclude:
   - mediabunny@1.66.2
+# Expose Pro packages that application code and Uni resolve by name.
+publicHoistPattern:
+  - '@capacitor/*'
+  - '@dcloudio/*'
+  - '@vue/compiler-sfc'
+  - '@vue/tsconfig'
+  - '@wot-ui/ui'
+  - 'pinia'
+  - 'playwright'
+  - 'sass'
+  - 'typescript'
+  - 'vite'
+  - 'vue'

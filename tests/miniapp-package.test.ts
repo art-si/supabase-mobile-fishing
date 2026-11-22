@@ -1,10 +1,11 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 import { readFileSync, readdirSync } from 'node:fs'
-import { resolve } from 'node:path'
+import { dirname, resolve } from 'node:path'
 import { compileString } from 'sass'
 import { createHash } from 'node:crypto'
 import { auditMiniapp, packageOwner, pageManifest } from '../scripts/miniapp-package.mjs'
+import { resolveMobileProRoot } from '../scripts/mobile-pro.mjs'
 
 const root = resolve(import.meta.dirname, '..')
 const source = JSON.parse(readFileSync(resolve(root, 'src/pages.json'), 'utf8'))
@@ -12,19 +13,19 @@ const retainedRoutes = [
   'home/index',
   'login/index',
   'account/security',
+  'account/connections',
   'account/password',
   'account/phone',
   'post/detail',
   'post/compose',
   'spot/detail',
   'spot/create',
+  'spot/discover',
   'map/index',
   'map/search',
   'map/marks',
   'map/bridge',
-  'chat/index',
   'notifications/index',
-  'people/index',
   'people/detail',
   'mine/library',
   'mine/profile',
@@ -41,15 +42,20 @@ const retainedRoutes = [
 test('subpackage registration preserves existing URLs and registers every page once', () => {
   const manifest = pageManifest(source)
   for (const route of retainedRoutes) assert.ok(manifest.routes.includes(route), route)
-  const pages = readdirSync(resolve(root, 'src/pages'), { recursive: true, withFileTypes: true })
+  const src = resolve(root, 'src')
+  const routeFiles = new Set(manifest.routes.map(route => resolve(src, route + '.vue')))
+  // A registered screen can import a component which imports another component in pages/.
+  const reachableFiles = new Set(routeFiles)
+  for (const file of reachableFiles) {
+    for (const [, specifier] of readFileSync(file, 'utf8').matchAll(/\bfrom\s+['"](\.{1,2}\/[^'"]+\.vue)['"]/g)) {
+      reachableFiles.add(resolve(dirname(file), specifier))
+    }
+  }
+  const pages = readdirSync(resolve(src, 'pages'), { recursive: true, withFileTypes: true })
     .filter((entry) => entry.isFile() && entry.name.endsWith('.vue'))
-    .map((entry) =>
-      resolve(entry.parentPath, entry.name)
-        .slice(resolve(root, 'src').length + 1)
-        .replaceAll('\\', '/')
-        .replace(/\.vue$/, '')
-    )
-  assert.deepEqual([...manifest.routes].sort(), pages.sort())
+    .map((entry) => resolve(entry.parentPath, entry.name))
+    .filter((file) => routeFiles.has(file) || !reachableFiles.has(file))
+  assert.deepEqual([...routeFiles].sort(), pages.sort())
   assert.equal(manifest.main[0], 'pages/home/index')
   for (const route of ['pages/login/index', 'pages/settings/legal'])
     assert.ok(manifest.main.includes(route), 'login and agreements need no subpackage download')
@@ -132,6 +138,15 @@ test('package audit counts raw bytes and resolves main dependencies from a subpa
   assert.equal(auditMiniapp(files, fixtureManifest, { totalBudget: 1 }).passed, false)
 })
 
+test('package audit rejects shoreline assets even when the package is under budget', () => {
+  const files = fixture()
+  files.set('static/web/water-index/manifest.json', Buffer.from('{}'))
+  files.set('static/china-latest.osm.pbf', Buffer.from('test'))
+  const result = auditMiniapp(files, fixtureManifest)
+  assert.equal(result.passed, false)
+  assert.equal(result.issues.filter((issue: string) => issue.startsWith('Shoreline data')).length, 2)
+})
+
 test('package audit rejects main-to-subpackage and sibling-subpackage dependencies', () => {
   for (const [path, content] of [
     ['pages/home/index.js', 'require("../map/index.js")'],
@@ -156,6 +171,11 @@ test('only Uni compiler unreachable page anchors are exempt from runtime ownersh
   const anchored = auditMiniapp(files, fixtureManifest)
   assert.equal(anchored.passed, true)
   assert.equal(anchored.compilerPageAnchors, 1)
+  files.set(
+    'app.js',
+    Buffer.from('Math||(Promise.resolve().then(()=>require("./pages/map/index.js")).then(e=>e.cGFnZXMvbWFwL2luZGV4LnZ1ZQ_exports));')
+  )
+  assert.equal(auditMiniapp(files, fixtureManifest).passed, true)
   files.set(
     'app.js',
     Buffer.from(
@@ -208,10 +228,7 @@ test('package audit rejects missing components, artifacts, unsupported refs and 
 function css(argument = '') {
   return compileString(`@use 'global.scss' as mobile; @include mobile.apply('tms'${argument});`, {
     loadPaths: [
-      resolve(
-        process.env.MOBILE_PRO_ROOT || resolve(root, '../supabase-mobile-pro'),
-        'packages/mobile-core/src/styles'
-      ),
+      resolve(resolveMobileProRoot(), 'packages/mobile-core/src/styles'),
       resolve(root, 'node_modules')
     ],
     logger: { warn() {}, debug() {} },

@@ -2,7 +2,7 @@
 
 ## 已确认
 
-- Supabase：`tlfmfokyhahlpzmpliad`，URL `https://tlfmfokyhahlpzmpliad.supabase.co`。
+- Supabase：`jupuypvmgjpnpntfetqv`，URL `https://jupuypvmgjpnpntfetqv.supabase.co`。
 - 微信：`wx9f631f76bb1543e0`，个人主体。
 - App 标识暂定 `com.diaoyouji.fishing`，开通认证、签名前确认最终值。
 
@@ -10,7 +10,7 @@
 
 复制 `.env.example` 到忽略提交的 `.env.local`。客户端仅放 publishable/anon key、高德 Web JS 公开 Key、安全代理 URL 和非敏感开关。Vite 会拒绝 Supabase service_role／secret key。
 
-`VITE_PHONE_AUTH_ENABLED` 只在短信、风控和正式协议完成后启用。`VITE_AUTH_CAPTCHA_ENABLED` 当前仅失败保护，CAPTCHA 平台适配尚未实现。`VITE_OPERATOR_PHONE_ENABLED` 需真实原生插件与身份桥接后启用。
+`VITE_PHONE_AUTH_ENABLED` 控制短信验证码、注册和短信找回密码。已有账号的密码入口使用正式认证服务，可独立使用。`VITE_AUTH_CAPTCHA_ENABLED` 当前仅失败保护，CAPTCHA 平台适配尚未实现。`VITE_OPERATOR_PHONE_ENABLED` 需真实原生插件与身份桥接后启用。
 
 个人小程序不使用 `VITE_MAP_WEB_ORIGIN` 或 web-view。高德 Web 服务 Key 仅放 Edge Secret `AMAP_WEB_SERVICE_KEY`。微信手机号授权在代码中禁用，不是通过环境开关即可开启。
 
@@ -18,9 +18,11 @@
 
 用户数据相关 Edge 使用 Supabase 自带服务端环境变量，同时保留网关 JWT 与函数内 Auth 用户验证。公开地图 SDK 代理的独立防护见高德章节。上传必须经服务端重编码进入私有 bucket；客户端没有 Storage 写入策略。`fishing_private` 不能加入 Data API 的 exposed schemas。
 
-## Supabase 部署（已完成基础接入，真实用户流程待联调）
+## Supabase 部署
 
-1. 项目限定 MCP 已验证为 `tlfmfokyhahlpzmpliad`。无需再次提交密码或 Token。
+2026-11-21 已将 52 条数据库迁移、10 个 Edge Function、私有媒体和 Auth 迁入当前项目。以下第 2、3 步记录最初建库时的状态。
+
+1. 已使用本机 Supabase CLI 核对目标项目 `jupuypvmgjpnpntfetqv`。使用项目级 MCP 时先核对它连接的项目。
 2. 部署前确认项目无业务表、迁移、函数或 Auth 用户，Postgres 17.12；不存在业务 Auth trigger 冲突。
 3. 已执行 foundation、amap_quota、internal_privileges、moderation_workflow、author_content、water_reports 六条迁移。CLI 创建文件，版本依次为 `20261119043740`、`20261119043745`、`20261119045623`、`20261119054049`、`20261119065526`、`20261119072928`，与远端回读一致。已应用文件不要改写，需要修改时新建迁移。CLI db 命令串行执行，避免临时 login role 凭证轮换冲突。未灌入示例数据，未创建收费分支。
 4. 生成类型并复核安全建议；配置短信 provider 或 Send SMS Hook、频控和测试号码，验收注册／登录／刷新／退出／防刷。
@@ -59,7 +61,7 @@
 
 现场材料包括省市县、文字地点、时间、可选 GCJ-02 坐标、描述和最多6张照片。H5/App 复用高德定位选点；个人微信使用高德地点搜索和静态预览，缺 Key 时仍可手填地点。拍照／选图先留本机，只有用户同意私密云端保存后才上传；上传经服务端重编码去除定位元数据，请用户自行保留原片，应用不是取证鉴定或原片保全服务。普通局域网 HTTP 不能保证相机／定位权限可用。
 
-照片与坐标默认仅作者可访问；删除会清除应用描述、地点和坐标，删除媒体索引并收回新签名权限。已删除索引对应的对象进入[私有清理队列](media-cleanup.md)，由每5分钟的任务通过 Storage API 清理并重试；未提交草稿不被扫描删除。未建立索引的上传孤儿、历史遗留对象、备份及已下载副本不在此清理范围内；已签发 URL 最长60秒。云端主要存储于德国法兰克福，界面单独告知；正式公开使用前需要评估数据跨境、敏感个人信息和保留策略，不能只勾选同意就视为合规完成。
+照片与坐标默认仅作者可访问；删除会清除应用描述、地点和坐标，删除媒体索引并收回新签名权限。已删除索引对应的对象进入[私有清理队列](media-cleanup.md)，由每5分钟的任务通过 Storage API 清理并重试；未提交草稿不被扫描删除。未建立索引的上传孤儿、历史遗留对象、备份及已下载副本不在此清理范围内；已签发 URL 最长60秒。云端主要存储于爱尔兰，界面单独告知；正式公开使用前需要评估数据跨境、敏感个人信息和保留策略，不能只勾选同意就视为合规完成。
 
 **目录共38条：全国公共3条，地方35条。不是全国地方或每个水库的完整名录。** 游客可直接选择事发省市县，按区县、城市、省优先，再回退全国公共渠道。切换省或城市会清空下级筛选；游客筛选只在页面内存中，不恢复账号的私密草稿。仅使用明确核验的别名（例如湘西州／湘西自治州），不模糊匹配邻近城市，不把“长沙县”作为城市字段里的“长沙市”，也不根据高德附近 POI 猜测主管机构。港澳台暂无已核验条目，不自动匹配内地部门。
 
@@ -97,13 +99,13 @@ H5/Capacitor 使用高德 JS API 与 `_AMapService` 服务器代理。代理限�
 
 2026-11-19 已复用相邻 `supabase-mobile-pro/modules/supabase-mobile-tms-driver/.env.local` 的 JS Key 和配对安全码。`node scripts/reuse-amap.mjs` 只迁移高德字段，不修改短信或登录配置，不回写 Pro。公开 Key 在 `VITE_AMAP_KEY`；安全码改名为**非 VITE** 的 `AMAP_SECURITY_JS_CODE`，仅供开发服务器读取。`.env.local` 忽略提交且禁止通过 Vite HTTP 读取。
 
-云端 `amap-js` 已部署，代理地址为 `https://tlfmfokyhahlpzmpliad.supabase.co/functions/v1/amap-js/_AMapService`。`node scripts/configure-amap-cloud.mjs` 只上传 `AMAP_JS_KEY`、`AMAP_SECURITY_JS_CODE`、`AMAP_JS_ALLOWED_ORIGINS` 三项，随后更新公开代理 URL，清理该次临时密钥文件。不会配置 Auth、短信或原小程序 `amap` 函数。
+云端 `amap-js` 已部署，服务器转发目标为 `https://jupuypvmgjpnpntfetqv.supabase.co/functions/v1/amap-js/_AMapService`。高德 JS API 只接受一级路径 `/_AMapService`。部署时将站点的 `/_AMapService/*` 反向代理到上述目标并保留后缀与查询参数，然后将 `VITE_AMAP_SERVICE_HOST` 设为 `https://地图代理域名/_AMapService`。`node scripts/configure-amap-cloud.mjs` 上传高德服务端环境配置并清理临时文件。
 
 这是游客可用的 JS SDK 代理（JSONP 无法携带 Supabase 用户 JWT），**不查询帖子、钓位或私密数据**；原 `amap`、`media-upload`、`account-delete` 的 JWT 校验没有关闭。允许列表限定到本机／当前局域网的 5178、5179、5181 端口，以及 Capacitor 的 `https://localhost`、`capacitor://localhost`。来源头不能代替身份认证，非浏览器可伪造；因此另有固定高德接口／Key 校验、8秒上游超时、1MiB响应限制和数据库原子总限额（每分钟60、UTC每日1000次）。`fishing_js_map_ticket` 仅服务端可执行，计数器不保存 IP、地点或查询词；平台及高德的访问日志仍可能含 URL 参数，应纳入隐私及保留策略。上线正式域名或电脑 IP 改变后，需更新**精确来源列表**，不能改成 `*`。
 
-备用 `/_AMapService` 同源代理仅由 Vite 开发／预览服务器提供，内存限额重启会重置，不用于正式发布；发行检查拒绝相对代理地址。H5 和 Capacitor 构建使用已部署的绝对 HTTPS 代理。正式地图测试命令 `node scripts/test-amap-live.mjs`（可通过 `FISHING_H5_URL` 指定已启动服务）真实请求公开地点，不登录、不发短信、不上传私人位置。`node tests/amap-js-quota.mjs` 验证服务端额度权限，`node scripts/check-amap-bundle.mjs` 扫描三份构建产物是否混入安全码。
+Vite 开发服务器固定使用同源 `/_AMapService`，预览可用相同路径。正式发行检查要求配置绝对 HTTPS 地址和一级路由。地图测试命令 `node scripts/test-amap-live.mjs` 可通过 `FISHING_H5_URL` 指定已启动服务，使用测试坐标和真实公开地点搜索。`node tests/amap-js-quota.mjs` 验证服务端额度权限，`node scripts/check-amap-bundle.mjs` 扫描构建产物。
 
-本机 `.env.development.local` 单独设 `VITE_AMAP_SERVICE_HOST=/_AMapService`，让 5179 开发预览通过电脑转发，避免开发时反复经过远端线路；不修改生产环境。实测 Supabase 线路偶有连接关闭／超时，云端功能成功验证不代表国内网络稳定性已验收，正式部署还需进行目标网络测试。`pwsh -NoProfile -File scripts/test-amap-cloud.ps1` 检查云端拒绝非法来源、Key、接口、方法及匿名访问权限，不发短信、不调用上游。复用 Pro 的 Key 也会共用高德账户配额和限制，应在上线前核对商用授权与限额。
+`pwsh -NoProfile -File scripts/test-amap-cloud.ps1` 检查云端入口拒绝非法来源、Key、接口和方法及匿名访问权限。正式上线前需在目标网络核对端到端转发、商用授权和共用配额。
 
 **Web 服务 Key 已接入（2026-11-20）。** 用户在已有高德应用中新增“钓友集服务端”Key，已安全写入目标项目的 `AMAP_WEB_SERVICE_KEY` 并核对摘要。真实登录后的搜索联想、静态地图解码／缩放及天气查询通过 27 项检查；`amap` v16 同时修复地点查询缺少区县编码的问题。JS 平台 Key 与 Web 服务 Key 继续按各自用途使用，不能互换。申请、部署和证据见[高德 Web 服务接入](amap-web-service-setup.md)；微信／原生真机仍需验收。
 
@@ -121,7 +123,7 @@ H5/Capacitor 使用高德 JS API 与 `_AMapService` 服务器代理。代理限�
 
 ## 隔离的真实远端业务验收
 
-Windows PowerShell 7、本机已登录 Supabase CLI 且可访问指定项目时，运行以下命令。它们会创建独立临时测试账号、写入少量测试内容／图片，最后清理；不是只读检查，不要放进普通构建或持续部署。仅允许已确认的 `tlfmfokyhahlpzmpliad`，不调用短信、邮件或举报接收单位。
+Windows PowerShell 7、本机已登录 Supabase CLI 且可访问指定项目时，运行以下命令。它们会创建独立临时测试账号、写入少量测试内容／图片，最后清理；不是只读检查，不要放进普通构建或持续部署。仅允许已确认的 `jupuypvmgjpnpntfetqv`，不调用短信、邮件或举报接收单位。
 
 ```powershell
 pwsh -NoProfile -File scripts/test-hosted-business.ps1 -Suite core

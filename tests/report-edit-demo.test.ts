@@ -29,9 +29,12 @@ test('demo report edits preserve identity and media order, reject stale/cross-ow
   const owner = seedModule.me.id, other = seedModule.chen.id, assetA={id:rules.createId(),path:'image-a.png',kind:'image',width:40,height:40}, assetB={id:rules.createId(),path:'video-b.mp4',kind:'video',width:80,height:40,duration:3}
   exports.rememberDemoPhoto(owner,assetA); exports.rememberDemoPhoto(owner,assetB)
   const draft={...water.freshWaterReport(),province:'湖北省',city:'黄石市',district:'阳新县',location_label:'隔离测试水域',description:'仅作本机流程测试的记录',media:[assetA,assetB]} as water.WaterReportDraft
+  assert.throws(()=>exports.execute('write','save_water_report',water.waterReportPayload(draft),owner),/经纬度/)
+  Object.assign(draft,{longitude:115.22,latitude:29.84})
   const saved=exports.execute('write','save_water_report',water.waterReportPayload(draft),owner)
   const edit=updateWaterReportPayload({...draft,description:'编辑后的本机流程测试记录',media:[assetB,assetA]},saved.revision,rules.createId())
   assert.throws(()=>exports.execute('write','update_water_report',edit,other),/内容不存在/)
+  assert.throws(()=>exports.execute('write','update_water_report',{...edit,latitude:null},owner))
   const result=exports.execute('write','update_water_report',edit,owner)
   assert.equal(result.id,saved.id);assert.equal(result.created_at,saved.created_at);assert.equal(result.revision,2)
   assert.equal(result.media.map((m:any)=>m.id).join(','),`${assetB.id},${assetA.id}`)

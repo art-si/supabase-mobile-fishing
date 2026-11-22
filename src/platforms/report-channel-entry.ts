@@ -1,22 +1,12 @@
 import type { ReportEntry } from '@/domain/report-channel-entry'
-// #ifdef H5
-import { Capacitor } from '@capacitor/core'
-import { Browser } from '@capacitor/browser'
-// #endif
+import { openExternalPage } from './open-external-page'
 export let reportEntryPlatform:'h5'|'weixin'='weixin'
  // #ifdef H5
  reportEntryPlatform='h5'
  // #endif
 export async function openReportWebsite(url:string){
  if(!/^https:\/\//.test(url))throw new Error('请核对官方入口')
- // #ifdef H5
- if(Capacitor.isNativePlatform())await Browser.open({url})
- else window.open(url,'_blank','noopener,noreferrer')
- return
- // #endif
- // #ifndef H5
- await new Promise<void>((resolve,reject)=>uni.setClipboardData({data:url,showToast:false,success:()=>resolve(),fail:reject}))
- // #endif
+ await openExternalPage(url)
 }
 export async function openReportMiniProgram(entry:ReportEntry){
  // #ifdef MP-WEIXIN

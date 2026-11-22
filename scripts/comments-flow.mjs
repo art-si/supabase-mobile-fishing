@@ -25,7 +25,7 @@ export async function commentsFlow({
   setPhase('comments-create-private')
   await go(page, '/pages/post/compose')
   await field(page, '标题').fill('评论回复隔离验收（随后清理）')
-  await field(page, '鱼情与心得').fill('仅自己可见的临时验收内容，不是真实鱼情。')
+  await field(page, '今天的渔获').fill('仅自己可见的临时验收内容，不是真实鱼情。')
   await button(page, '分享范围').click()
   await button(page, '仅自己').click()
   const saving = replyFor(page, 'save_post')
@@ -34,7 +34,7 @@ export async function commentsFlow({
   assert.equal(saved.status(), 200)
   const post = await saved.json(),
     publicKey = (await saved.request().allHeaders()).apikey
-  await page.waitForURL((url) => url.hash.startsWith('#/pages/post/detail'))
+  await page.waitForURL(/#\/(?:pages\/home\/index)?\?tab=feed$/)
   async function api(label, path, payload) {
     const token = data.accounts.find((a) => a.label === label)?.session.access_token
     return page.evaluate(
@@ -242,12 +242,12 @@ export async function commentsFlow({
       200
     )
   await page.reload()
-  await button(page, '加载更多评论').waitFor()
+  await page.locator('.post-comments__item').first().waitFor()
   check(
     (await page.locator('.post-comments__item').count()) === 30,
     'H5 first comment page is bounded'
   )
-  await button(page, '加载更多评论').click()
+  await page.evaluate(() => window.scrollTo(0, document.documentElement.scrollHeight))
   await page.waitForFunction(() => document.querySelectorAll('.post-comments__item').length === 33)
   check(
     !(await button(page, '加载更多评论').count()),
@@ -273,7 +273,7 @@ export async function commentsFlow({
       (await button(page, '发表回复').isDisabled()),
     'H5 returning preserves reply draft without silently changing its target'
   )
-  await button(page, '加载更多评论').click()
+  await page.evaluate(() => window.scrollTo(0, document.documentElement.scrollHeight))
   await page.getByText('回复对象待确认', { exact: true }).waitFor({ state: 'hidden' })
   check(
     await button(page, '发表回复').isEnabled(),

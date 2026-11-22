@@ -79,11 +79,6 @@ export function useContentEdit<D extends PostDraft | SpotDraft>(options: {
     },
     { deep: true }
   )
-  watch(conflict, async (value) => {
-    if (!value) return
-    await nextTick()
-    uni.pageScrollTo({ scrollTop: 0, duration: 0 })
-  })
   async function load(discard = false) {
     const current = ++generation,
       scope = sessionScope.value
@@ -150,6 +145,8 @@ export function useContentEdit<D extends PostDraft | SpotDraft>(options: {
     ready.value = false
     loading.value = false
     saving.value = false
+    conflict.value = false
+    restored.value = false
     error.value = ''
     pending = undefined
     publication.value = undefined
@@ -180,7 +177,6 @@ export function useContentEdit<D extends PostDraft | SpotDraft>(options: {
       return result
     } catch (e) {
       if (
-        !options.latest &&
         scope === sessionScope.value &&
         e instanceof ApiError &&
         e.code === 'EDIT_CONFLICT'

@@ -1,7 +1,7 @@
 import {test}from'node:test'
 import assert from'node:assert/strict'
 import{REPORT_CHANNELS,matchingReportChannels}from'../src/domain/report-channels'
-import{reportChannelEntry,reportChannelType,reportEntryHelp}from'../src/domain/report-channel-entry'
+import{reportAgencyOptions,reportChannelEntry,reportChannelType,reportEntryHelp}from'../src/domain/report-channel-entry'
 test('official mini programs remain distinct from public accounts and match the actual jurisdiction',()=>{
  const now=Date.parse('2026-11-20T12:00:00+08:00')
  const mini=REPORT_CHANNELS.find(c=>c.id==='jiangsu-wechat')!,account=REPORT_CHANNELS.find(c=>c.id==='national-wechat')!
@@ -15,6 +15,25 @@ test('official mini programs remain distinct from public accounts and match the 
  assert.ok(!matchingReportChannels('浙江省','宁波市','',now).some(c=>c.id===mini.id))
  assert.ok(matchingReportChannels('广西壮族自治区','桂林市','七星区',now).some(c=>c.id==='guilin-lijiang-mini'))
  assert.ok(!matchingReportChannels('广西壮族自治区','南宁市','',now).some(c=>c.id==='guilin-lijiang-mini'))
+})
+test('the agency picker offers scoped destinations with an actionable method on this platform', () => {
+ const now=Date.parse('2026-11-22T12:00:00+08:00')
+ const caidian=matchingReportChannels('湖北省','武汉市','蔡甸区',now,{category:'electric',areaCode:'027'})
+ const h5=reportAgencyOptions(caidian,'h5'), mp=reportAgencyOptions(caidian,'weixin')
+ assert.equal(h5[0].channel.id,'caidian-fishery')
+ assert.deepEqual(h5[0].actions.filter(a=>a.kind==='phone').map(a=>a.number),['027-84995835','027-84993165'])
+ assert.equal(h5.at(-1)?.channel.value,'027-12345')
+ assert.ok(h5.find(r=>r.channel.id==='changjiang-police')?.actions.some(a=>a.kind==='email'))
+ assert.ok(mp.find(r=>r.channel.id==='changjiang-police')?.actions.some(a=>a.kind==='copy-email'))
+ assert.ok(!h5.some(r=>['national-wechat','national-procuratorate-web','environment-report'].includes(r.channel.id)))
+ const national=matchingReportChannels('浙江省','宁波市','江北区',now,{category:'other'})
+ for(const platform of ['h5','weixin'] as const){
+  const options=reportAgencyOptions(national,platform)
+  assert.deepEqual(options.map(r=>r.channel.id),['water-supervision','environment-report'])
+  assert.ok(options.every(r=>r.actions.some(a=>a.label===(platform==='h5'?'打开官方填报页':'复制官网链接'))))
+  assert.ok(options[0].actions.some(a=>a.kind==='phone'&&a.number==='12314'))
+ }
+ assert.deepEqual(reportAgencyOptions(matchingReportChannels('香港特别行政区','','',now),'h5'),[])
 })
 test('web entries open only their official website and unsupported mini direct launches fall back to names',()=>{
  const web=REPORT_CHANNELS.find(c=>c.id==='national-procuratorate-web')!,mini=REPORT_CHANNELS.find(c=>c.id==='jiangsu-wechat')!

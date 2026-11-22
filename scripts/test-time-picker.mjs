@@ -14,7 +14,7 @@ await context.addInitScript(() => localStorage.setItem('dyj.auth.v1', JSON.strin
   expires_at: Date.now() / 1000 + 3600, user: { id: '11111111-1111-4111-8111-111111111111' }
 } })))
 await context.routeWebSocket(/supabase\.co/, (socket) => socket.close())
-await context.route('https://tlfmfokyhahlpzmpliad.supabase.co/**', (route) => route.fulfill({
+await context.route('https://jupuypvmgjpnpntfetqv.supabase.co/**', (route) => route.fulfill({
   headers: { 'access-control-allow-origin': '*', 'access-control-allow-headers': '*' },
   json: { items: [], profile: { nickname: '隔离界面验收' } }
 }))

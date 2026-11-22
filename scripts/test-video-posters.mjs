@@ -12,7 +12,7 @@ const video=await readFile('tests/fixtures/flower-cc0.mp4'),image=await readFile
 const fixtureServer=createServer((_request,response)=>{response.writeHead(200,{'content-type':'video/mp4'});response.end(video)})
 await new Promise(resolve=>fixtureServer.listen(0,'127.0.0.1',resolve))
 const corsOrigin=`http://127.0.0.1:${fixtureServer.address().port}`
-const owner='11111111-1111-4111-8111-111111111111', origin='https://tlfmfokyhahlpzmpliad.supabase.co'
+const owner='11111111-1111-4111-8111-111111111111', origin='https://jupuypvmgjpnpntfetqv.supabase.co'
 const post={id:'22222222-2222-4222-8222-222222222222',author:{id:owner,nickname:'封面验收',city:'苏州'},title:'今天的渔获',body:'图片与视频保持相同排布，点击查看完整内容。',kind:'catch',audience:'public',status:'published',created_at:new Date().toISOString(),like_count:0,comment_count:0,media:[{id:'image-poster-check',kind:'image',path:`${owner}/image.png`,width:800,height:800},{id:'video-poster-check',kind:'video',path:`${owner}/video.mp4`,width:960,height:540,duration:5}]}
 const browser=await chromium.launch({channel:'chrome',headless:true}),context=await browser.newContext({viewport:{width:375,height:812},locale:'zh-CN',reducedMotion:'reduce'})
 const checks=[],errors=[],escaped=[],requests=[]
@@ -46,7 +46,8 @@ const page=await context.newPage();page.on('pageerror',error=>errors.push(error.
 async function hasPoster(){await page.waitForFunction(()=>Array.from(document.querySelectorAll('.mobile-media-gallery__image img')).some(node=>(node.getAttribute('src')||'').startsWith('data:image/jpeg')),{},{timeout:18000})}
 try{
  const started=Date.now();await page.goto(`${base}/#/pages/mine/library?type=posts`)
- await page.getByText('正在加载视频封面…',{exact:true}).waitFor()
+ await page.getByRole('button',{name:/播放视频，第2项/}).waitFor()
+ assert.equal(await page.getByText('正在加载视频封面…',{exact:true}).isVisible(),false)
  await page.screenshot({path:`${output}/slow-loading-375.png`,fullPage:true})
  await hasPoster();assert.ok(Date.now()-started>4300)
  checks.push('4500 ms real MP4 HTTP response becomes a genuine decoded frame, exceeding previous 3 s cutoff')
@@ -87,12 +88,15 @@ try{
  });assert.ok(isolation.good);assert.equal(isolation.other.length,0,'other account has no cached frame');assert.equal(isolation.cleared.length,0,'cleared account has no cached frame')
  checks.push('another account cannot read a cached frame; clearing account scope removes cached covers')
  await page.setViewportSize({width:375,height:812});await page.emulateMedia({colorScheme:'light'});await setH5TextScale(page,16)
- mode='broken';await page.reload();await page.getByRole('button',{name:'重新加载封面',exact:true}).waitFor();await page.screenshot({path:`${output}/retry-failed-cover-375.png`,fullPage:true})
+ mode='broken';await page.reload();await page.locator('.mobile-media-gallery__recovery').waitFor({state:'attached'})
+ assert.equal(await page.getByText('封面暂未加载，可点击播放',{exact:true}).isVisible(),false)
+ assert.equal(await page.getByRole('button',{name:'重新加载封面',exact:true}).count(),0)
+ await page.screenshot({path:`${output}/failed-cover-placeholder-375.png`,fullPage:true})
  assert.equal(await page.getByRole('button',{name:/播放视频，第2项/}).count(),1)
- mode='normal';await page.getByRole('button',{name:'重新加载封面',exact:true}).click();await hasPoster();assert.equal(await page.getByText('封面暂未加载，可点击播放',{exact:true}).count(),0)
- checks.push('failed cover keeps play accessible; retry renews signed URL and displays real frame')
- await page.getByRole('button',{name:/播放视频，第2项/}).click();await page.waitForFunction(()=>document.querySelector('dialog[open] video')?.currentTime>.2);await page.screenshot({path:`${output}/real-video-preview.png`});await page.getByRole('button',{name:'关闭视频预览',exact:true}).click()
- mode='cancel';await page.reload();await page.getByText('正在加载视频封面…',{exact:true}).waitFor();await page.evaluate(()=>location.hash='/pages/mine/index');await page.waitForTimeout(100)
+ mode='normal';await page.getByRole('button',{name:/播放视频，第2项/}).click();await page.waitForFunction(()=>document.querySelector('dialog[open] video')?.currentTime>.2);await page.screenshot({path:`${output}/real-video-preview.png`});await page.getByRole('button',{name:'关闭视频预览',exact:true}).click()
+ checks.push('failed cover leaves a playable media tile with no cover message or retry row')
+ await page.reload();await hasPoster()
+ mode='cancel';await page.reload();await page.locator('.mobile-media-gallery__status').waitFor({state:'attached'});await page.evaluate(()=>location.hash='/pages/settings/index');await page.waitForTimeout(100)
  assert.ok(await page.evaluate(()=>window.posterVideos.every(v=>!v.getAttribute('src'))))
  checks.push('leaving the page while a video cover is loading cancels and releases the decode')
  assert.deepEqual(errors,[]);assert.deepEqual(escaped,[])

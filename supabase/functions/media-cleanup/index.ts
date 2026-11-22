@@ -5,7 +5,7 @@ Deno.serve(
   createMediaCleanupHandler({
     service,
     secret: () =>
-      settings().url === 'https://tlfmfokyhahlpzmpliad.supabase.co'
+      settings().url === 'https://jupuypvmgjpnpntfetqv.supabase.co'
         ? Deno.env.get('MEDIA_CLEANUP_HMAC_KEY') || ''
         : ''
   })

@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict'
+import { setH5TextScale } from './h5-text-scale.mjs'
 
 // UI contract fixtures. Database authorization is tested separately against PostgreSQL.
 export async function authorContract({
@@ -27,13 +28,15 @@ export async function authorContract({
     author,
     title: '芦苇湾的清晨',
     body: '接口测试记录：风小，近岸见口。',
-    kind: 'experience',
+    kind: 'catch',
     species: '鲫鱼',
     method: '台钓',
     bait: '蚯蚓',
     weight_kg: 0,
     occurred_on: '2026-11-18',
-    location_label: '苏州',
+    location_label: '苏州市',
+    location_longitude: 120.12,
+    location_latitude: 31.12,
     audience: 'public',
     status: 'published',
     review_revision: 1,
@@ -48,7 +51,7 @@ export async function authorContract({
     id: 'b1111111-1111-4111-8111-111111111111',
     author,
     name: '芦苇岸边',
-    city: '苏州',
+    city: '苏州市',
     water_type: '自然水域',
     species: '鲫鱼',
     description: '接口测试钓位',
@@ -56,7 +59,8 @@ export async function authorContract({
     access_note: '私人入口',
     observed_on: '2026-11-18',
     audience: 'public',
-    precision: 'area',
+    precision: 'exact',
+    location_label: '苏州市 · 仅用于接口验收的钓位',
     longitude: 120.123456,
     latitude: 31.123456,
     status: 'published',
@@ -90,7 +94,7 @@ export async function authorContract({
     const req = route.request(),
       url = new URL(req.url())
     if (url.origin === base || !url.protocol.startsWith('http')) return route.continue()
-    if (url.origin !== 'https://tlfmfokyhahlpzmpliad.supabase.co') {
+    if (url.origin !== 'https://jupuypvmgjpnpntfetqv.supabase.co') {
       escaped.push(url.href)
       return route.abort()
     }
@@ -164,7 +168,7 @@ export async function authorContract({
         Object.assign(item, p)
         item.weight_kg = p.weight === '' ? null : Number(p.weight)
         if (p.type === 'trip') item.count = p.count === '' ? null : Number(p.count)
-        else item.status = p.audience === 'private' ? 'published' : 'pending'
+        else item.status = 'published'
       }
       if (p.type === 'trip') item.revision = p.revision + 1
       else item.review_revision = p.revision + 1
@@ -211,18 +215,19 @@ export async function authorContract({
   )
   await go('/pages/post/compose')
   await fill('标题', '独立的新鱼情草稿')
-  await fill('鱼情与心得', '新记录草稿不应被编辑覆盖')
+  await fill('今天的渔获', '新记录草稿不应被编辑覆盖')
   await go(`/pages/post/detail?id=${post.id}`)
   await button('编辑这条鱼情').click()
-  await button('提交修改审核').waitFor()
+  await button('保存并重新发布').waitFor()
   assert.equal(await field('标题').inputValue(), post.title)
+  if (!(await field('总重量（kg）').isVisible())) await button('鱼情详情').click()
   assert.equal(await field('总重量（kg）').inputValue(), '0')
-  await fill('鱼情与心得', '补充：上午更适合轻口钓法。')
-  await button('提交修改审核').click()
+  await fill('今天的渔获', '补充：上午更适合轻口钓法。')
+  await button('保存并重新发布').click()
   await waitCalls(1)
   await page.locator('.error[role="alert"]').waitFor()
-  assert.equal(await field('鱼情与心得').inputValue(), '补充：上午更适合轻口钓法。')
-  await button('提交修改审核').click()
+  assert.equal(await field('今天的渔获').inputValue(), '补充：上午更适合轻口钓法。')
+  await button('保存并重新发布').click()
   await page.waitForURL((u) => u.hash.startsWith('#/pages/post/detail'))
   assert.equal(
     writes('update_content')[0].payload.request_id,
@@ -230,8 +235,8 @@ export async function authorContract({
   )
   assert.equal(post.review_revision, 2)
   assert.equal(post.like_count, 3)
-  assert.equal(post.status, 'pending')
-  pass('author edit retries the same command, keeps interactions, and resubmits shared content')
+  assert.equal(post.status, 'published')
+  pass('author edit retries the same command, keeps interactions, and republishes shared content')
   await go('/pages/post/compose')
   assert.equal(await field('标题').inputValue(), '独立的新鱼情草稿')
   pass('editing an existing post never replaces the independent new-post draft')
@@ -260,13 +265,15 @@ export async function authorContract({
   await page.setViewportSize({ width: 320, height: 700 })
   await page.emulateMedia({ colorScheme: 'dark' })
   await go(`/pages/spot/create?id=${spot.id}`)
-  await button('提交修改审核').waitFor()
-  await fill('钓位名称', '本机尚未保存的钓位名')
-  await button('提交修改审核').click()
+  const spotName = '钓位名称（选填）'
+  await button('保存修改').waitFor()
+  await fill(spotName, '本机尚未保存的钓位名')
+  await button('保存修改').click()
   await visible('这条记录已有新版本')
-  assert.ok(await button('提交修改审核').isDisabled())
-  assert.equal(await field('钓位名称').inputValue(), '本机尚未保存的钓位名')
-  await page.evaluate(() => (document.documentElement.style.fontSize = '20px'))
+  assert.ok(await button('保存修改').isDisabled())
+  assert.equal(await field(spotName).inputValue(), '本机尚未保存的钓位名')
+  await page.waitForFunction(() => document.activeElement?.id === 'content-edit-conflict')
+  await setH5TextScale(page, 32)
   await overflow('edit conflict / 320px dark / enlarged text')
   await screenshot('author-conflict-dark-320.png')
   await button('重新读取新版本').click()
@@ -276,33 +283,44 @@ export async function authorContract({
     await page.evaluate(() => document.activeElement?.textContent?.trim()),
     '保留当前修改'
   )
-  await screenshot('author-reload-confirm-dark-320.png')
+  const buttons = await dialog.getByRole('button').evaluateAll((actions) =>
+    actions.map((action) => {
+      const { x, y, height } = action.getBoundingClientRect()
+      return { x, y, height }
+    })
+  )
+  assert.equal(buttons[0].x, buttons[1].x)
+  assert.ok(buttons[1].y >= buttons[0].y + buttons[0].height)
+  await screenshot('author-reload-confirm-dark-320.png', false)
   await button('保留当前修改').click()
-  assert.equal(await field('钓位名称').inputValue(), '本机尚未保存的钓位名')
-  // Full reload must preserve the old expected revision instead of silently upgrading it.
-  await page.reload()
-  await visible('这条记录已有新版本')
-  assert.equal(await field('钓位名称').inputValue(), '本机尚未保存的钓位名')
+  await dialog.waitFor({ state: 'hidden' })
+  assert.equal(await field(spotName).inputValue(), '本机尚未保存的钓位名')
   await button('重新读取新版本').click()
   await button('读取新版本').click()
   await page.waitForFunction(
-    () => document.querySelector('input[aria-label="钓位名称"]')?.value === '另一台设备更新的钓位'
+    (label) => document.querySelector(`input[aria-label="${label}"]`)?.value === '另一台设备更新的钓位',
+    spotName
   )
-  await fill('钓位名称', '核实后的岸边入口')
-  await button('提交修改审核').click()
-  await page.waitForURL((u) => u.hash.startsWith('#/pages/spot/detail'))
+  await fill(spotName, '核实后的岸边入口')
+  await button('保存修改').click()
+  await page.waitForURL((u) => new URLSearchParams(u.hash.split('?')[1]).get('tab') === 'spots')
   assert.equal(spot.review_revision, 3)
-  pass(
-    'stale edits survive reload; cancel preserves input; confirmed refresh uses the new revision'
-  )
+  await go(`/pages/spot/create?id=${spot.id}`)
+  await fill(spotName, '退出页面后应读取最新记录')
+  await page.reload()
+  await button('保存修改').waitFor()
+  assert.equal(await field(spotName).inputValue(), '核实后的岸边入口')
+  pass('spot conflict keeps input until discard, then uses the new revision and returns to the list')
   await page.setViewportSize({ width: 440, height: 956 })
   await page.emulateMedia({ colorScheme: 'light' })
+  await setH5TextScale(page, 16)
   await go('/pages/mine/library?type=trips')
   await button('编辑日志').click()
   await button('保存修改').waitFor()
+  if (!(await field('渔获 1 尾数').isVisible())) await button('渔获与钓法').click()
   assert.equal(await field('渔获 1 尾数').inputValue(), '0')
   assert.equal(await field('渔获 1 重量（kg）').inputValue(), '')
-  await fill('鱼情与心得', '补充私人日志')
+  await fill('出钓记录', '补充私人日志')
   await overflow('trip editor / 440px light')
   await screenshot('author-trip-light-440.png')
   await button('保存修改').click()

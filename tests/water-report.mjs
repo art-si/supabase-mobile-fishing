@@ -29,15 +29,17 @@ export async function waterReportChecks({
     latitude: 31.123456,
     observed_at: '2026-11-18T10:00:00+08:00',
     description: '目击疑似电鱼工具，需要核实',
-    media: [{ id: mediaId }],
-    consent_version: '2026-11-19-water-v1'
+    media: [{ id: mediaId }]
   }
   await rejects(
-    () => write(alice, 'save_water_report', { ...draft, consent_version: '' }),
-    /REPORT_CONSENT_REQUIRED/,
-    'report requires explicit versioned cloud consent'
+    () => write(alice, 'save_water_report', { ...draft, latitude:null, longitude:null }),
+    /water_reports_saved_coordinates_required/,
+    'report requires water coordinates'
   )
   const result = await write(alice, 'save_water_report', { ...draft, status: 'delivered' })
+  check(result.longitude===draft.longitude && result.latitude===draft.latitude &&
+    (await db.query('select consent_version from public.water_reports where id=$1',[id])).rows[0].consent_version===null,
+    'the selected coordinates are stored exactly without recording a separate consent')
   check(
     result.status === 'saved' && !result.owner_id && !result.signature,
     'report save never claims delivery and strips internal fields'
@@ -131,7 +133,7 @@ export async function waterReportChecks({
   await rejects(() => write(null, 'update_water_report', edit), /AUTH_REQUIRED|permission denied for function fishing_write/, 'anonymous cannot edit a private report')
   await rejects(() => write(bob, 'update_water_report', edit), /NOT_FOUND/, 'another member cannot edit a private report')
   await rejects(() => write(eve, 'update_water_report', edit), /NOT_FOUND/, 'community moderator cannot edit private reports')
-  await rejects(() => write(alice, 'update_water_report', { ...edit, consent_version: '' }), /REPORT_CONSENT_REQUIRED/, 'private report editing preserves cloud consent requirement')
+  await rejects(() => write(alice, 'update_water_report', { ...edit, longitude:null,latitude:null }), /water_reports_saved_coordinates_required/, 'private report editing requires a water point')
   await rejects(() => write(alice, 'update_water_report', { ...edit, request_id: null }), /INVALID_INPUT/, 'report edit requires a request identity')
   await rejects(() => write(alice, 'update_water_report', { ...edit, media: [{ id: image }, { id: image }] }), /INVALID_INPUT/, 'report edit rejects duplicate media before mutation')
   await rejects(() => write(alice, 'update_water_report', { ...edit, media: [{ id: randomUUID() }] }), /FORBIDDEN/, 'report edit cannot attach missing evidence')

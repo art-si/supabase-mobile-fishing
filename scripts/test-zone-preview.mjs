@@ -35,7 +35,7 @@ await context.routeWebSocket(/supabase\.co/, (socket) => socket.close())
 await context.route('**/*', (route) => {
   const url = new URL(route.request().url())
   if (url.origin === base) return route.continue()
-  if (url.origin === 'https://tlfmfokyhahlpzmpliad.supabase.co') {
+  if (url.origin === 'https://jupuypvmgjpnpntfetqv.supabase.co') {
     if (url.pathname.includes('_write')) writes.push(url.pathname)
     return route.fulfill({
       headers: {

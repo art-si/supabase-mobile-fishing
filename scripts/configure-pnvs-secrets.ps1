@@ -9,7 +9,7 @@ param(
 
 $ErrorActionPreference = 'Stop'
 Set-StrictMode -Version Latest
-$projectRef = 'tlfmfokyhahlpzmpliad'
+$projectRef = 'jupuypvmgjpnpntfetqv'
 $setupDirectory = Join-Path $PSScriptRoot 'pnvs-secret-setup'
 if (-not (Test-Path -LiteralPath $CliPath -PathType Leaf)) { throw 'Supabase CLI not found.' }
 

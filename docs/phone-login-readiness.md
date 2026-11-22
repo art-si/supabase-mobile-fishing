@@ -2,6 +2,8 @@
 
 ## 当前结论
 
+短信注册、登录验证码和找回密码由 `SMS_DELIVERY_ENABLED` 控制。开启后，Supabase 的 `send-sms-hook` 接受有效格式的中国大陆手机号，包括 192 号段。原测试号码白名单已从发送逻辑移除。已设置密码的账号也可使用钓友号或手机号加密码登录。
+
 ### 账号能力更新（2026-11-19）
 
 已接入手机号／钓友号密码登录、短信验证设置／找回密码、原手机号验证后换绑新手机号，以及原生安全会话保存与启动恢复。接口、状态、设备测试边界见[账号登录与安全](account-security.md)。服务端密码规则已写入并回读。用户授权向尾号 4090 的白名单号码发送 1 条验证码，已亲自收码登录、设置密码；远端手机号验证／密码状态核对通过。发送后已关闭真实发送开关，后续回归没有追加短信。以下较早记录保留过程背景，以本节为准。
@@ -101,9 +103,9 @@
 - `ALIYUN_PNVS_ACCESS_KEY_ID` / `ALIYUN_PNVS_ACCESS_KEY_SECRET`：独立 RAM 用户的调用凭据，仅授予 `supabase/aliyun-pnvs-ram-policy.json` 中的 `dypns:SendSmsVerifyCode`。不使用主账号全权限密钥；微信 AppSecret 不能代替。
 - `ALIYUN_PNVS_SIGN_NAME=恒创联众`、`ALIYUN_PNVS_TEMPLATE_CODE=100001`、`ALIYUN_PNVS_SCHEME_NAME=钓友集登录`：已核对的发送参数，仍须与实际控制台保持一致。
 - `SMS_OTP_EXPIRY_SECONDS=300`、`SMS_MIN_INTERVAL_SECONDS=60`：待与远端 Auth 的 6 位验证码、300 秒有效期和频控配置统一后启用。
-- `SMS_DELIVERY_ENABLED` 默认关闭；`SMS_ALLOWED_TEST_PHONES` 默认空。受控实发必须显式启用并配置用户确认的 `+86` 测试号码，空值或号码不匹配拒发。
+- `SMS_DELIVERY_ENABLED` 默认关闭。启用后按 Supabase 的发送频控和阿里云 PNVS 的号码及频率规则发送。控制台快速测试的绑号要求仅适用于阿里云的快速测试入口。[阿里云短信认证服务](https://help.aliyun.com/zh/pnvs/user-guide/sms-authentication-service)
 - 必须先应用短信账本迁移并验证 RLS/权限，再部署函数。`verify_jwt=false` 仅对这个使用 Webhooks 签名认证的 Hook 生效，不影响其他函数。
-- 当前不自动打开 Auth Phone / Send SMS Hook 或前端短信开关。先完成配置及零网络测试；取得用户对具体号码和费用的确认后，才做最少量真实收码。测试白名单不是公开上线模式，不能把本机契约测试称为真实短信验证成功。
+- 首次接入应先配置 Auth Phone、Send SMS Hook 和前端短信开关。发送开关可通过 `scripts/prepare-sms-hook.ps1 -EnableDelivery`、`-DisableDelivery` 管理。本机契约测试验证发送逻辑，真实到达以手机收码为准。
 
 2026-11-19 服务端准备回读：`send-sms-hook` 已部署至确认项目，版本 1、ACTIVE；`20261119083229_sms_hook_deliveries.sql` 已应用。远端账本为空，RLS/强制 RLS 均开启，anon/authenticated 无读取权限，service_role 仅能插入、读取及更新状态。该服务器内部表故意没有客户端 RLS policy，安全建议中的对应 INFO 不表示客户端可以访问。阿里云调用凭据、Hook secret、Auth Hook 配置、测试白名单仍待配置；未启用真实发送或宣称登录可用。
 

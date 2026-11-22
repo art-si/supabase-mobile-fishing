@@ -1,12 +1,12 @@
 <script setup lang="ts">
 import { ref, watch } from 'vue'
-import { onHide, onLoad, onShow } from '@dcloudio/uni-app'
+import { onHide, onLoad, onReachBottom, onShow } from '@dcloudio/uni-app'
 import FishingShell from '@/components/FishingShell.vue'
 import PostCard from '@/components/PostCard.vue'
+import ContentReviewStatus from '@/components/ContentReviewStatus.vue'
 import ContentOwnerActions from '@/components/ContentOwnerActions.vue'
 import ContentReportAction from '@/components/ContentReportAction.vue'
-import ShareToChat from '@/components/ShareToChat.vue'
-import PostComments from '@/components/PostComments.vue'
+import PostComments from './components/PostComments.vue'
 import MobileLoadError from '@mobile-core/components/MobileLoadError.vue'
 import MobileLoadingStatus from '@/components/FishingLoadingStatus.vue'
 import { useResource } from '@/composables/useResource'
@@ -15,9 +15,10 @@ import { useLoginAction } from '@/composables/useLoginAction'
 import { useAuthStore } from '@/stores/auth'
 import { read, write } from '@/services/repository'
 import type { Post, Comment } from '@/domain/models'
-import { postCaption } from '@/domain/composition'
 const id = ref(''),
   auth = useAuthStore()
+const commentList = ref<InstanceType<typeof PostComments>>()
+onReachBottom(() => commentList.value?.reachBottom())
 type PostDetail = { post: Post; comments: Comment[]; comments_next?: string | null }
 const { data, loading, error, load, invalidate } = useResource(
   () => read<PostDetail>('post', { id: id.value }),
@@ -80,7 +81,16 @@ function unavailable() {
   void load()
 }
 function showComments() {
-  uni.pageScrollTo({ selector: '#comments', duration: 150 })
+  // #ifdef H5
+  const heading = document.getElementById('comments-heading')
+  if (!heading) return
+  const reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches
+  heading.focus({ preventScroll: true })
+  heading.scrollIntoView({ block: 'center', behavior: reduceMotion ? 'instant' : 'smooth' })
+  // #endif
+  // #ifndef H5
+  uni.pageScrollTo({ selector: '#comments', duration: 0 })
+  // #endif
 }
 </script>
 <template>
@@ -91,19 +101,20 @@ function showComments() {
         :message="error"
         @retry="load"
       />
-      <template v-if="data && !error"
-        ><PostCard
+      <template v-if="data && !error">
+        <ContentReviewStatus
+          v-if="data.post.status === 'hidden'"
+          :id="data.post.id"
+          type="post"
+          :status="data.post.status"
+          :owner="data.post.author.id"
+        />
+        <PostCard
           :post="data.post"
           full
           :busy="mutation.busy.value"
           @react="react"
           @open="showComments"
-        />
-        <ShareToChat
-          v-if="data.post.status === 'published' && data.post.audience !== 'private'"
-          :id="data.post.id"
-          type="post"
-          :title="postCaption(data.post)"
         />
         <ContentOwnerActions
           :id="data.post.id"
@@ -115,7 +126,9 @@ function showComments() {
           @changed="load"
         />
         <PostComments
+          ref="commentList"
           :post="data.post.id"
+          :likes="data.post.like_count"
           :initial="data.comments"
           :next="data.comments_next"
           :total="data.post.comment_count"

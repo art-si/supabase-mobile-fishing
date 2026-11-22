@@ -7,7 +7,7 @@ param([switch]$Apply)
 $ErrorActionPreference = 'Stop'
 . (Join-Path $PSScriptRoot 'private-supabase-cli.ps1')
 $projectRoot = [IO.Path]::GetFullPath((Split-Path -Parent $PSScriptRoot))
-$projectRef = 'tlfmfokyhahlpzmpliad'
+$projectRef = 'jupuypvmgjpnpntfetqv'
 $secretName = 'AMAP_WEB_SERVICE_KEY'
 $inputPath = Join-Path $projectRoot '.env.amap-web-service.local'
 $temporaryPath = $null

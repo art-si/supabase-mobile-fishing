@@ -93,60 +93,51 @@ async function deleteAccount() {
   <FishingShell title="设置与隐私" back
     ><view class="fishing-content stack">
       <FishingThemePicker />
-      <MobileAction v-if="auth.signedIn" class="panel list-row settings-nav-row" @click="emailContactOpen = true">
-        <MobileIcon name="message" :size="20" />
-        <view class="settings-nav-copy"><text class="name">我的邮箱资料</text><text class="caption">官方渠道邮件联系</text></view>
-        <MobileIcon class="settings-link-arrow" name="chevron" :size="18" />
-      </MobileAction>
+      <view v-if="auth.signedIn" class="panel fishing-menu">
+        <MobileAction class="list-row" @click="emailContactOpen = true">
+          <MobileIcon name="message" :size="22" />
+          <view class="settings-nav-copy"><text class="name">我的邮箱资料</text><text class="caption">官方渠道邮件联系</text></view>
+          <MobileIcon class="settings-link-arrow" name="chevron" :size="16" />
+        </MobileAction>
+        <MobileAction v-if="!isDemo" class="list-row" @click="uni.navigateTo({ url: '/pages/notifications/index?settings=1' })">
+          <MobileIcon name="message" :size="22" />
+          <view class="settings-nav-copy"><text class="name">通知设置</text><text class="caption">点赞 · 评论与回复</text></view>
+          <MobileIcon class="settings-link-arrow" name="chevron" :size="16" />
+        </MobileAction>
+        <MobileAction v-if="!isDemo" class="list-row" @click="uni.navigateTo({ url: '/pages/account/security' })">
+          <MobileIcon name="shield" :size="22" />
+          <view class="settings-nav-copy"><text class="name">账号与安全</text><text class="caption">手机号 · 密码</text></view>
+          <MobileIcon class="settings-link-arrow" name="chevron" :size="16" />
+        </MobileAction>
+        <MobileAction v-if="canReview" class="list-row" @click="uni.navigateTo({ url: '/pages/moderation/index' })">
+          <MobileIcon name="shield" :size="22" />
+          <view class="settings-nav-copy"><text class="name">内容审核</text><text class="caption">待审内容</text></view>
+          <MobileIcon class="settings-link-arrow" name="chevron" :size="16" />
+        </MobileAction>
+      </view>
       <text v-if="emailContactNotice" class="notice" role="status">{{ emailContactNotice }}</text>
-      <MobileAction
-        v-if="auth.signedIn && !isDemo"
-        class="panel list-row settings-nav-row"
-        @click="uni.navigateTo({ url: '/pages/notifications/index?settings=1' })"
-      >
-        <MobileIcon name="message" :size="20" /><view class="settings-nav-copy"
-          ><text class="name">通知设置</text><text class="caption">点赞 · 评论与回复</text></view
-        ><MobileIcon class="settings-link-arrow" name="chevron" :size="18" />
-      </MobileAction>
-      <MobileAction
-        v-if="auth.signedIn && !isDemo"
-        class="panel list-row settings-nav-row"
-        @click="uni.navigateTo({ url: '/pages/account/security' })"
-      >
-        <MobileIcon name="shield" :size="20" /><view class="settings-nav-copy"
-          ><text class="name">账号与安全</text><text class="caption">手机号 · 密码</text></view
-        ><MobileIcon class="settings-link-arrow" name="chevron" :size="18" />
-      </MobileAction>
-      <MobileAction
-        v-if="canReview"
-        class="panel list-row settings-nav-row"
-        @click="uni.navigateTo({ url: '/pages/moderation/index' })"
-        ><MobileIcon name="shield" :size="20" /><view class="settings-nav-copy"
-          ><text class="name">内容审核</text><text class="caption">待审内容</text></view
-        ><MobileIcon class="settings-link-arrow" name="chevron" :size="18"
-      /></MobileAction>
-      <view class="panel stack"
+      <view class="panel stack settings-privacy"
         ><text class="name">位置隐私</text
         ><text class="muted"
           >新建动态和钓位默认公开，保存前可调整谁可以看。钓位展示精确位置，出钓日志仅自己可见。</text
         ></view
       >
-      <view class="panel"
+      <view class="panel fishing-menu"
         ><MobileAction
           class="list-row"
           @click="uni.navigateTo({ url: '/pages/settings/legal?type=privacy' })"
-          ><MobileIcon name="shield" :size="20" /><text class="grow">隐私说明</text
-          ><MobileIcon class="settings-link-arrow" name="chevron" :size="18" /></MobileAction
+          ><MobileIcon name="shield" :size="22" /><text class="grow name">隐私说明</text
+          ><MobileIcon class="settings-link-arrow" name="chevron" :size="16" /></MobileAction
         ><MobileAction
           class="list-row"
           @click="uni.navigateTo({ url: '/pages/settings/legal?type=terms' })"
-          ><MobileIcon name="document" :size="20" /><text class="grow">用户协议</text
-          ><MobileIcon class="settings-link-arrow" name="chevron" :size="18" /></MobileAction
+          ><MobileIcon name="document" :size="22" /><text class="grow name">用户协议</text
+          ><MobileIcon class="settings-link-arrow" name="chevron" :size="16" /></MobileAction
         ><MobileAction
           class="list-row"
-          @click="uni.navigateTo({ url: '/pages/settings/legal?type=contact' })"
-          ><MobileIcon name="message" :size="20" /><text class="grow">联系与反馈</text
-          ><MobileIcon class="settings-link-arrow" name="chevron" :size="18" /></MobileAction
+          @click="uni.navigateTo({ url: '/pages/contact/index' })"
+          ><MobileIcon name="message" :size="22" /><text class="grow name">联系与反馈</text
+          ><MobileIcon class="settings-link-arrow" name="chevron" :size="16" /></MobileAction
       ></view>
       <template v-if="auth.signedIn"
         ><MobileAction class="secondary" :disabled="busy" @click="logoutOpen = true">{{
@@ -171,7 +162,7 @@ async function deleteAccount() {
       :busy="busy"
       ><view class="stack fishing-sheet-content"
         ><text class="body"
-          >注销将删除你的资料、发布、日志、钓位、上传图片和好友关系，以及你参与的聊天记录。此操作不可撤销。对方已保存的截图无法追回。</text
+          >注销将删除你的资料、发布、日志、钓位、上传图片、私密上报材料，也会清除旧版好友和聊天记录。此操作不可撤销。对方已保存的截图无法追回。</text
         ><text class="muted"
           >为保护账号，需要最近 5 分钟内用手机号重新验证。注销未完成时，账号会保留。</text
         ><MobileField
@@ -189,7 +180,7 @@ async function deleteAccount() {
     ><MobileConfirmDialog
       v-model="logoutOpen"
       :title="isDemo ? '退出本机体验？' : '退出登录？'"
-      message="退出会清除这台设备上当前账号未提交的鱼情、钓位和聊天草稿。已保存的记录不会删除，其他设备不受影响。"
+      message="退出会清除这台设备上当前账号未提交的鱼情、钓位和水域线索草稿。已保存的记录不会删除，其他设备不受影响。"
       confirm-text="清除草稿并退出"
       @confirm="logout"
   /><ReportEmailContactSheet v-model="emailContactOpen" @saved="emailContactNotice = '邮箱资料已保存在本机'" @cleared="emailContactNotice = '本机邮箱资料已清除'" /></FishingShell>
@@ -209,9 +200,9 @@ async function deleteAccount() {
   justify-content: space-between;
   gap: 4px 12px;
 }
-.settings-nav-copy .caption {
-  margin-inline-start: auto;
-  text-align: end;
+.settings-privacy {
+  padding: var(--fishing-gap) var(--fishing-inset);
+  gap: 4px;
 }
 .fishing-content :deep(.mobile-action.settings-delete) {
   align-self: stretch;

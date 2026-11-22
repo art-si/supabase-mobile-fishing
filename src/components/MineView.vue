@@ -43,18 +43,6 @@ const links = [
     url: '/pages/mine/library?type=spots'
   },
   {
-    label: '我的钓友',
-    subtitle: '认识更多同路人',
-    icon: 'user',
-    url: '/pages/people/index?tab=friends'
-  },
-  {
-    label: '水域线索上报',
-    subtitle: '私密整理线索，查找官方渠道',
-    icon: 'shield',
-    url: '/pages/water-report/index'
-  },
-  {
     label: '我的社区举报',
     subtitle: '查看社区内容与钓位纠错进度',
     icon: 'flag',
@@ -80,21 +68,24 @@ defineExpose({ refresh: load })
       @keydown="preventActionKey"
       @keyup="activateActionKey($event, () => open('/pages/mine/profile'))"
     >
-      <view class="mine-profile__identity">
+      <view
+        class="mine-profile__identity"
+        :class="{ 'mine-profile__identity--guest': !auth.signedIn }"
+      >
         <MobileAvatar :src="data?.profile.avatar?.url" :name="data?.profile.nickname" :size="56">
           <FishMark v-if="!data?.profile.nickname" :size="36" />
           <text v-else>{{ data.profile.nickname.slice(0, 1) }}</text>
         </MobileAvatar>
         <view class="mine-profile__copy">
           <text class="heading mine-profile__name">{{
-            data?.profile.nickname || (auth.signedIn ? '钓友' : '登录钓友集')
+            auth.signedIn ? data?.profile.nickname || '钓友' : '登录/注册'
           }}</text>
           <text v-if="data?.profile.bio || !auth.signedIn" class="muted mine-profile__bio">{{
             data?.profile.bio || '同步收藏、钓位与出钓记录'
           }}</text>
         </view>
         <view class="mine-profile__edit">
-          <text>{{ auth.signedIn ? '编辑钓友资料' : '手机号登录 / 注册' }}</text>
+          <text v-if="auth.signedIn">编辑钓友资料</text>
           <MobileIcon name="chevron" :size="16" />
         </view>
       </view>
@@ -102,7 +93,7 @@ defineExpose({ refresh: load })
     <MobileAction class="primary" @click="uni.navigateTo({ url: '/pages/post/compose' })"
       ><MobileIcon name="add" :size="20" />记录鱼情</MobileAction
     >
-    <view class="panel"
+    <view class="panel fishing-menu"
       ><MobileAction v-for="link in links" :key="link.url" class="list-row" @click="open(link.url)"
         ><MobileIcon :name="link.icon" :size="22" /><view class="grow stack stack--tight"
           ><text class="name">{{ link.label }}</text>
@@ -118,10 +109,8 @@ defineExpose({ refresh: load })
 <style scoped>
 .mine-profile.mobile-action {
   display: flex;
-  flex-direction: column;
-  gap: 20px;
   width: 100%;
-  padding: 24px;
+  padding: var(--fishing-inset);
   color: var(--ink);
   text-align: left;
   white-space: normal;
@@ -129,19 +118,22 @@ defineExpose({ refresh: load })
 .mine-profile__identity {
   display: flex;
   flex-wrap: wrap;
-  gap: 12px;
+  gap: 4px var(--fishing-gap);
   align-items: center;
   width: 100%;
 }
+.mine-profile__identity--guest {
+  flex-wrap: nowrap;
+  column-gap: var(--fishing-gap-small);
+}
 .mine-profile__copy {
   display: flex;
-  flex: 1 1 5.5rem;
+  flex: 1 1 6rem;
   flex-direction: column;
-  gap: 8px;
+  gap: 4px;
   min-width: 0;
 }
 .mine-profile__name {
-  font-size: 1.375rem;
   overflow-wrap: anywhere;
 }
 .mine-profile__bio {
@@ -153,21 +145,15 @@ defineExpose({ refresh: load })
   align-items: center;
   gap: 6px;
   margin-left: auto;
-  min-height: 48px;
   max-width: 100%;
-  font-size: 0.875rem;
+  font-size: var(--fishing-label-size);
   line-height: 1.5;
   color: var(--lake);
 }
 .mine-profile__edit .mobile-icon {
   flex: none;
 }
-@media (max-width: 359px) {
-  .mine-profile.mobile-action {
-    padding: 20px;
-  }
-  .mine-profile__identity {
-    gap: 12px;
-  }
+.fishing-menu .stack {
+  gap: 4px;
 }
 </style>

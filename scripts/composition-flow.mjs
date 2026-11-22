@@ -145,6 +145,8 @@ export async function compositionFlow({
     textResponse.status() === 200 && text.title === '' && text.media.length === 0,
     'Text-only post saves without an invented title'
   )
+  await page.waitForURL(/#\/(?:pages\/home\/index)?\?tab=feed$/)
+  await go(page, `/pages/post/detail?id=${text.id}`)
   await page.locator('.post-card').waitFor()
   check(
     (await page.locator('.post-card .heading').count()) === 0,
@@ -326,6 +328,8 @@ export async function compositionFlow({
     draftOrder
   )
   check(true, 'Persisted photo order matches the restored draft')
+  await page.waitForURL(/#\/(?:pages\/home\/index)?\?tab=feed$/)
+  await go(page, `/pages/post/detail?id=${photoPost.id}`)
   await button(page, '编辑这条鱼情').waitFor()
   await shot('composition-photo-only-375')
   check(

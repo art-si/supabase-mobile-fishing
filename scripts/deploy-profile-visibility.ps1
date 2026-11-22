@@ -2,7 +2,7 @@
 $ErrorActionPreference='Stop'
 . (Join-Path $PSScriptRoot 'private-supabase-cli.ps1')
 $projectRoot=Split-Path -Parent $PSScriptRoot
-if(([IO.File]::ReadAllText((Join-Path $projectRoot 'supabase/.temp/project-ref'))).Trim() -ne 'tlfmfokyhahlpzmpliad'){throw 'Unexpected project'}
+if(([IO.File]::ReadAllText((Join-Path $projectRoot 'supabase/.temp/project-ref'))).Trim() -ne 'jupuypvmgjpnpntfetqv'){throw 'Unexpected project'}
 $version='20261120102600';$name='fishing_avatar_visibility'
 $history=Invoke-FishingPrivateCli -Arguments @('db','query','--linked','--output','json',"select version from supabase_migrations.schema_migrations where version='$version';") | ConvertFrom-Json
 if(@($history.rows).Count -gt 0){Write-Output 'Avatar visibility migration already applied';exit 0}

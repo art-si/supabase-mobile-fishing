@@ -35,7 +35,7 @@ await context.route('**/*', async (route) => {
   const request = route.request(),
     url = new URL(request.url())
   if (url.origin === base || !url.protocol.startsWith('http')) return route.continue()
-  if (url.origin !== 'https://tlfmfokyhahlpzmpliad.supabase.co') return route.abort()
+  if (url.origin !== 'https://jupuypvmgjpnpntfetqv.supabase.co') return route.abort()
   const headers = {
     'access-control-allow-origin': '*',
     'access-control-allow-headers': '*',

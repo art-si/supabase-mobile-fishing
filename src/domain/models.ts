@@ -26,6 +26,7 @@ export interface Media {
   duration?: number
   size?: number
 }
+export type DiscussionPerson = Pick<Profile, 'id' | 'nickname' | 'avatar'>
 export interface Post {
   review_revision?: number
   content_update?: ContentUpdateInfo | null
@@ -156,11 +157,11 @@ export interface Message {
   sequence: number
   body: string
   created_at: string
-  kind?: 'text' | 'image' | 'post' | 'spot'
+  kind?: 'text' | 'image' | 'video' | 'sticker' | 'post' | 'spot'
   media?: Media[]
   card?: { id: string; type: 'post' | 'spot'; title: string; detail: string } | null
   /** In-memory UI state only; never sent to the database. */
-  localPhoto?: string
+  localMediaPath?: string
   mediaSignedAt?: number
   error?: string
   retryable?: boolean
@@ -175,7 +176,6 @@ export interface SocialSnapshot {
 export interface PersonDetail {
   profile: Profile
   following: boolean
-  friend: boolean
   blocked: boolean
   posts: Post[]
 }

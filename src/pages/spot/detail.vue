@@ -13,9 +13,11 @@ import FishingPhotos from '@/components/FishingPhotos.vue'
 import ContentReviewStatus from '@/components/ContentReviewStatus.vue'
 import ContentOwnerActions from '@/components/ContentOwnerActions.vue'
 import SpotStatusStamp from '@/components/SpotStatusStamp.vue'
+import SpotReactionBar from '@/components/SpotReactionBar.vue'
+import SpotSourceActions from '@/components/SpotSourceActions.vue'
+import SpotCommentsSheet from '@/components/SpotCommentsSheet.vue'
 import SpotDeleteAction from '@/components/SpotDeleteAction.vue'
 import ContentReportAction from '@/components/ContentReportAction.vue'
-import ShareToChat from '@/components/ShareToChat.vue'
 // #ifdef MP-WEIXIN
 import StaticMapPreview from '@/components/StaticMapPreview.vue'
 // #endif
@@ -23,10 +25,14 @@ import { read, write } from '@/services/repository'
 import { useResource } from '@/composables/useResource'
 import { useMutation } from '@/composables/useMutation'
 import { useLoginAction } from '@/composables/useLoginAction'
+import { useSpotCommunity } from '@/composables/useSpotCommunity'
 import { useAuthStore } from '@/stores/auth'
+import { spotCommunityKey } from '@/services/spot-community'
+import { isDemo } from '@/config'
 import { audienceLabels, canNavigate, validCoordinates } from '@/domain/rules'
 import { describeSpotLocation } from '@/platforms/spot-location'
 import type { Spot } from '@/domain/models'
+import { splitSpotShareText } from '../../../supabase/functions/_shared/discovery-contract'
 const id = ref(''),
   auth = useAuthStore(),
   mutation = useMutation()
@@ -34,6 +40,16 @@ const { data, error, loading, load, invalidate } = useResource(
   () => read<Spot>('spot', { id: id.value }),
   null as Spot | null
 )
+const share = computed(() => splitSpotShareText(data.value?.description || ''))
+const discussionTarget = computed(() => data.value && !isDemo && data.value.audience === 'public' &&
+  data.value.status === 'published' ? spotCommunityKey(data.value.id) : '')
+const { summaries, busy: communityBusy, commentsOpen, commentTarget, apply: applySummary,
+  react: reactToCommunity, openComments } = useSpotCommunity(
+  computed(() => discussionTarget.value ? [discussionTarget.value] : [])
+)
+const community = computed(() => summaries.value[discussionTarget.value])
+const prohibited = computed(() => community.value?.status === 'prohibited' ||
+  (!community.value?.status && data.value?.fishing_status === 'prohibited'))
 const resolvedAddress = ref('')
 let addressVersion = 0
 const placeLabel = computed(() => {
@@ -116,20 +132,21 @@ async function applyBookmark(intent: Bookmark, resumed = false) {
             ><text class="badge">{{ data.water_type }}</text
             ><text class="caption">{{ data.city }}</text></view
           ><text class="heading spot-summary__title">{{ data.name }}</text
-          ><text v-if="data.description" class="body">{{ data.description }}</text
-          ><FishingPhotos
+          ><text v-if="community?.status === 'unavailable'" class="badge badge--warm">钓友反馈点位已失效</text
+          ><text v-if="share.description" class="body">{{ share.description }}</text
+          ><SpotSourceActions :sources="share.sources" /><FishingPhotos
             v-if="data.media?.length"
             :media="data.media"
             label="钓位现场照片"
             full
           /><view
-            v-if="data.species || data.fishing_status === 'prohibited'"
+            v-if="data.species || prohibited"
             :class="[
               'row row--between row--wrap spot-summary__facts',
-              { 'spot-summary__facts--prohibited': data.fishing_status === 'prohibited' }
+              { 'spot-summary__facts--prohibited': prohibited }
             ]"
             ><FishFacts v-if="data.species" :species="data.species" /><SpotStatusStamp
-              v-if="data.fishing_status === 'prohibited'"
+              v-if="prohibited"
               class="spot-summary__stamp"
               prohibited
           /></view>
@@ -170,11 +187,15 @@ async function applyBookmark(intent: Bookmark, resumed = false) {
           v-if="data.precision !== 'hidden' && validCoordinates(data.longitude, data.latitude)"
           class="panel"
         >
-          <StaticMapPreview :target="{ spotId: data.id }" :area="data.precision === 'area'" />
+          <StaticMapPreview :target="{ spotId: data.id }" :area="data.precision === 'area'" :prohibited="prohibited && data.precision === 'exact'" />
         </view>
         <!-- #endif -->
         <view class="panel stack stack--tight spot-tools">
-          <view class="spot-tools__primary">
+          <SpotReactionBar v-if="discussionTarget" :community="community" :title="data.name" :saved="data.saved"
+            :busy="communityBusy.has(discussionTarget) || mutation.busy.value"
+            @react="kind => kind === 'bookmark' && !community ? bookmark() : reactToCommunity(discussionTarget, kind)"
+            @comments="openComments(discussionTarget, data.name)" />
+          <view v-else class="spot-tools__primary">
             <MobileAction
               class="text-action spot-tool-action"
               :disabled="mutation.busy.value"
@@ -184,13 +205,6 @@ async function applyBookmark(intent: Bookmark, resumed = false) {
                 data.saved ? '已收藏' : '收藏'
               }}</MobileAction
             >
-            <ShareToChat
-              v-if="data.status === 'published' && data.audience !== 'private'"
-              :id="data.id"
-              type="spot"
-              :title="data.name"
-              compact
-            />
           </view>
           <ContentOwnerActions
             :id="data.id"
@@ -203,7 +217,9 @@ async function applyBookmark(intent: Bookmark, resumed = false) {
           />
           <SpotDeleteAction :id="data.id" :owner="data.author.id" compact />
         </view>
-        <ContentReportAction :id="data.id" type="spot" :owner="data.author.id" /> </template
+        <ContentReportAction :id="data.id" type="spot" :owner="data.author.id" />
+        <SpotCommentsSheet v-model="commentsOpen" :target="commentTarget.id" :title="commentTarget.title"
+          @summary="applySummary" /> </template
       ><text v-if="mutation.error.value && !error" class="error" role="alert">{{
         mutation.error.value
       }}</text>
@@ -222,8 +238,8 @@ async function applyBookmark(intent: Bookmark, resumed = false) {
   gap: 12px;
 }
 .spot-summary__facts--prohibited {
-  min-height: 3.25rem;
-  padding-right: 4.25rem;
+  min-height: clamp(52px, 3.8rem, 76px);
+  padding-right: calc(clamp(52px, 3.8rem, 76px) + 12px);
 }
 .spot-summary__stamp {
   position: absolute;
@@ -250,9 +266,6 @@ async function applyBookmark(intent: Bookmark, resumed = false) {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(min(100%, 6rem), 1fr));
   gap: 8px;
-}
-.spot-summary__facts > :first-child:not(:last-child) {
-  margin-right: auto;
 }
 .spot-summary__place {
   padding: 8px 12px;

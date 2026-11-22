@@ -83,10 +83,10 @@ const theme = useAppearanceStore()
   box-sizing: border-box;
   display: flex;
   flex-direction: column;
-  gap: 10px;
+  gap: 4px;
   border-radius: 9px;
-  padding: 12px 8px;
-  height: 96px;
+  padding: 6px 8px;
+  height: 56px;
 }
 .skin-preview__heading {
   width: 56%;
@@ -97,8 +97,8 @@ const theme = useAppearanceStore()
 .skin-preview__card {
   display: flex;
   flex-direction: column;
-  gap: 6px;
-  padding: 10px 8px;
+  gap: 3px;
+  padding: 4px 8px;
   border-radius: 5px;
   background: var(--preview-paper);
 }
@@ -122,7 +122,7 @@ const theme = useAppearanceStore()
   align-items: center;
   gap: 4px;
   color: var(--reed);
-  font-size: 0.75rem;
+  font-size: var(--fishing-small-size);
   line-height: 1.5;
   min-height: 1.5em;
 }

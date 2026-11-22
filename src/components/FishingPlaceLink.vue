@@ -15,6 +15,7 @@ const props = withDefaults(
     latitude?: number | null
     approximate?: boolean
     navigation?: boolean
+    hint?: string
   }>(),
   { approximate: true, navigation: false }
 )
@@ -113,7 +114,7 @@ function copy() {
     v-model="visible"
     :place="label"
     :title="navigation ? '地图导航' : '在地图中查看'"
-    :hint="approximate ? '按发布者分享的地点搜索，请在地图中确认具体位置。' : undefined"
+    :hint="hint || (approximate ? '按发布者分享的地点搜索，请在地图中确认具体位置。' : undefined)"
     :fallback="fallback"
     :message="message"
     @open="open"
@@ -131,7 +132,7 @@ function copy() {
   border-radius: 8px;
   text-align: left;
   color: var(--lake);
-  font-size: 0.8125rem;
+  font-size: var(--fishing-caption-size);
   line-height: 1.5;
 }
 .fishing-place-link__label {

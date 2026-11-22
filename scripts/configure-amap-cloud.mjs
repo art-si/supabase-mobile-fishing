@@ -9,7 +9,7 @@ import { resolve, dirname } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
 const root = fileURLToPath(new URL('../', import.meta.url))
-const project = 'tlfmfokyhahlpzmpliad'
+const project = 'jupuypvmgjpnpntfetqv'
 const local = resolve(root, '.env.local')
 const env = parseEnv(readFileSync(local, 'utf8'))
 if (env.VITE_SUPABASE_URL !== `https://${project}.supabase.co`)
@@ -74,17 +74,10 @@ try {
       `Map secret upload failed (${result.error?.code || result.status}; ${categories.join(',')}); credentials and CLI output withheld`
     )
   }
-  // Re-read immediately before patching only one field, preserving concurrent SMS task edits.
-  let content = readFileSync(local, 'utf8')
-  const line = `VITE_AMAP_SERVICE_HOST=https://${project}.supabase.co/functions/v1/amap-js/_AMapService`
-  content = /^VITE_AMAP_SERVICE_HOST=.*$/m.test(content)
-    ? content.replace(/^VITE_AMAP_SERVICE_HOST=.*$/m, () => line)
-    : `${content.trimEnd()}\n${line}\n`
-  writeFileSync(local, content)
   console.log(
     'Uploaded only AMAP_JS_KEY, AMAP_SECURITY_JS_CODE, AMAP_JS_ALLOWED_ORIGINS to the confirmed fishing project.'
   )
-  console.log('Frontend proxy URL updated; all Auth/SMS fields preserved. Secret values withheld.')
+  console.log('The browser proxy must use the first-level /_AMapService route. Secret values withheld.')
 } finally {
   if (created) {
     unlinkSync(temporary)

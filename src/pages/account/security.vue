@@ -5,6 +5,7 @@ import FishingShell from '@/components/FishingShell.vue'
 import MobileAction from '@mobile-core/components/MobileAction.vue'
 import MobileIcon from '@mobile-core/components/MobileIcon.vue'
 import { useAuthStore } from '@/stores/auth'
+import { isDemo } from '@/config'
 import { accountIdentity } from '@/services/account-security'
 import { maskPhone } from '@/domain/account-security'
 import { errorText } from '@/domain/rules'
@@ -20,6 +21,7 @@ const phone = ref(''),
 let version = 0
 let active = false
 async function load() {
+  if (isDemo) return
   const current = ++version
   loading.value = true
   error.value = ''
@@ -80,9 +82,10 @@ watch(
 )
 </script>
 <template>
-  <FishingShell title="账号与安全" back>
+  <FishingShell title="账号与安全" back narrow>
     <view class="fishing-content account-content">
-      <text v-if="loading" class="caption" role="status">正在读取账号…</text>
+      <text v-if="isDemo" class="notice">体验记录仅保存于这台设备。账号安全设置在正式环境中使用。</text>
+      <text v-else-if="loading" class="caption" role="status">正在读取账号…</text>
       <template v-else-if="auth.signedIn">
         <view class="account-heading"
           ><text class="account-title" role="heading" aria-level="1">登录方式</text
@@ -115,11 +118,17 @@ watch(
         </view>
         <text v-if="copyFeedback" class="caption" role="status">{{ copyFeedback }}</text>
         <text class="caption"
-          >设置密码后，可用钓友号或手机号登录。钓友号固定，昵称可在个人资料中修改；更换手机号后，记录、收藏和好友都会保留。</text
+          >设置密码后，可用钓友号或手机号登录。钓友号固定，昵称可在个人资料中修改。更换手机号后，记录、收藏和关注关系都会保留。</text
         >
         <text class="caption"
           >登录状态会自动保存。主动退出、登录失效或更换设备后，需要重新登录。</text
         >
+        <view class="account-list">
+          <MobileAction class="list-row" @click="uni.navigateTo({ url: '/pages/account/connections' })">
+            <text class="name">第三方账号</text>
+            <MobileIcon name="chevron" :size="18" aria-hidden="true" />
+          </MobileAction>
+        </view>
         <text v-if="error" class="error" role="alert">{{ error }}</text>
         <MobileAction v-if="error" class="secondary" @click="load">重新读取</MobileAction>
       </template>

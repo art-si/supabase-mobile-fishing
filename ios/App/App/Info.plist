@@ -13,9 +13,9 @@
 	<key>NSPhotoLibraryAddUsageDescription</key>
 	<string>仅在你主动保存照片到相册时添加照片。</string>
 	<key>NSLocationWhenInUseUsageDescription</key>
-	<string>进入地图时获取本次位置以查找附近水域，不在后台持续定位，不自动保存或公开位置。</string>
+	<string>使用钓友集时获取位置，用于识别所在城市和显示附近的钓位、水域及距离。</string>
 	<key>NSLocationAlwaysAndWhenInUseUsageDescription</key>
-	<string>进入地图时获取本次位置以查找附近水域，不在后台持续定位，不自动保存或公开位置。</string>
+	<string>使用钓友集时获取位置，用于识别所在城市和显示附近的钓位、水域及距离。</string>
 	<key>CFBundleDisplayName</key>
         <string>钓友集</string>
 	<key>CFBundleExecutable</key>

@@ -3,6 +3,7 @@ import { computed, nextTick, ref, watch } from 'vue'
 import { onLoad, onShow, onHide, onUnload } from '@dcloudio/uni-app'
 import FishingShell from '@/components/FishingShell.vue'
 import FishingPhotos from '@/components/FishingPhotos.vue'
+import FishingEmptyState from '@/components/FishingEmptyState.vue'
 import FishingLoadingStatus from '@/components/FishingLoadingStatus.vue'
 import MobileAction from '@mobile-core/components/MobileAction.vue'
 import MobileLoadError from '@mobile-core/components/MobileLoadError.vue'
@@ -16,13 +17,14 @@ import {
   decisionLabels,
   reviewLabels,
   type ReviewDecision,
-  type ReviewItem
+  type ReviewItem,
+  type ReviewType
 } from '@/domain/moderation'
 import { ApiError } from '@/services/http'
 import { reportTypeLabels } from '@/domain/content-reports'
 const auth = useAuthStore(),
   id = ref(''),
-  type = ref(''),
+  type = ref<ReviewType>(),
   isUpdate = ref(false),
   comparison = ref<'proposal' | 'current'>('proposal'),
   resolved = ref(false),
@@ -46,6 +48,7 @@ let version = 0,
 const self = computed(() => item.value?.author.id === auth.userId)
 const comparing = computed(() => isUpdate.value && comparison.value === 'current')
 const displayed = computed(() => (comparing.value ? item.value?.current : item.value))
+const missing = computed(() => !id.value || !type.value)
 const details = computed(() =>
   Object.entries(displayed.value?.details || {}).filter(([, value]) => Boolean(value))
 )
@@ -70,6 +73,9 @@ watch(
   },
   { flush: 'sync' }
 )
+watch(reason, (value) => {
+  if (value.trim()) fieldError.value = ''
+})
 const choices = computed<ReviewDecision[]>(() =>
   isUpdate.value && resolved.value
     ? []
@@ -105,7 +111,7 @@ function invalidate() {
   photoGeneration.value++
 }
 async function load() {
-  if (!id.value || busy.value) return
+  if (missing.value || busy.value) return
   const current = ++version
   item.value = null
   photosReady.value = false
@@ -219,8 +225,9 @@ async function reread() {
   await load()
 }
 onLoad((options) => {
-  id.value = options?.id || ''
-  type.value = options?.type || ''
+  id.value = options?.id?.trim() || ''
+  const candidate = options?.type
+  if (candidate === 'post' || candidate === 'spot' || candidate === 'comment') type.value = candidate
   isUpdate.value = options?.update === '1'
 })
 onShow(() => {
@@ -239,6 +246,18 @@ watch(
 <template>
   <FishingShell :title="isUpdate ? '审核修改' : '审核内容'" back>
     <view class="fishing-content stack">
+      <FishingEmptyState
+        v-if="missing"
+        icon="shield"
+        title="缺少审核记录"
+        description="请从内容审核列表打开要处理的记录。"
+      >
+        <MobileAction
+          class="secondary"
+          @click="uni.redirectTo({ url: '/pages/moderation/index' })"
+          >返回内容审核</MobileAction
+        >
+      </FishingEmptyState>
       <FishingLoadingStatus v-if="loading" label="正在读取内容与照片…" />
       <MobileLoadError v-if="error" title="无法读取审核内容" :message="error" @retry="load" />
       <template v-if="item && displayed">

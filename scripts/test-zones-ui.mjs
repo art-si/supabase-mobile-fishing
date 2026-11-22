@@ -52,7 +52,7 @@ await context.addInitScript(() => {
   )
 })
 await context.routeWebSocket(/supabase\.co/, (socket) => socket.close())
-await context.route('https://tlfmfokyhahlpzmpliad.supabase.co/**', async (route) => {
+await context.route('https://jupuypvmgjpnpntfetqv.supabase.co/**', async (route) => {
   const url = new URL(route.request().url())
   if (url.pathname.includes('/amap-js/')) return route.continue()
   const headers = {

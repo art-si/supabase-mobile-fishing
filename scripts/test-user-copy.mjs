@@ -29,7 +29,7 @@ if (!process.argv.includes('--skip-build')) {
   }
   const build = spawnSync(
     process.platform === 'win32' ? 'pnpm.cmd' : 'pnpm',
-    ['exec', 'uni', 'build', '-p', 'h5', '--mode', 'test-user-copy', '--outDir', buildDirectory],
+    ['exec', 'mobile-pro', 'uni', 'build', '-p', 'h5', '--mode', 'test-user-copy', '--outDir', buildDirectory],
     { stdio: 'inherit', shell: process.platform === 'win32', env }
   )
   if (build.status !== 0) process.exit(build.status ?? 1)
@@ -40,6 +40,7 @@ const mime = {
   '.js': 'text/javascript',
   '.css': 'text/css',
   '.png': 'image/png',
+  '.jpg': 'image/jpeg',
   '.svg': 'image/svg+xml',
   '.woff2': 'font/woff2',
   '.json': 'application/json'
@@ -76,7 +77,7 @@ const pages = [
   { name: 'settings', route: '/pages/settings/index', title: '设置与隐私' },
   { name: 'privacy', route: '/pages/settings/legal?type=privacy', title: '隐私说明' },
   { name: 'terms', route: '/pages/settings/legal?type=terms', title: '用户协议' },
-  { name: 'contact', route: '/pages/settings/legal?type=contact', title: '联系与反馈' }
+  { name: 'contact', route: '/pages/contact/index', title: '联系与反馈' }
 ]
 const cors = {
   'access-control-allow-origin': '*',
@@ -87,6 +88,8 @@ async function setup({ signedIn = false } = {}) {
   const context = await browser.newContext({
     viewport: { width: 375, height: 812 },
     locale: 'zh-CN',
+    permissions: ['geolocation'],
+    geolocation: { longitude: 114.3, latitude: 30.6 },
     colorScheme: 'light',
     reducedMotion: 'reduce',
     serviceWorkers: 'block'
@@ -150,6 +153,7 @@ async function setup({ signedIn = false } = {}) {
       { fixtureUser, base }
     )
   const page = await context.newPage()
+  if (!signedIn) await page.clock.install({ time: new Date('2026-11-21T12:00:00+08:00') })
   page.setDefaultTimeout(12000)
   page.on('pageerror', (error) => state.errors.push(error.message))
   return { context, page, state }
@@ -172,9 +176,15 @@ async function textCheck(page, item) {
   if (item.name === 'privacy') {
     assert.doesNotMatch(text, /数据保存与境外处理|第三方服务与数据处理|服务提供方说明/)
   }
+  if (item.name === 'privacy' || item.name === 'terms') {
+    assert.doesNotMatch(text, /运营者：|版本日期|869123771|复制微信号|复制QQ号/)
+    assert.equal(await current(page).getByRole('heading', { name: '联系运营者' }).count(), 0)
+  }
   if (item.name === 'contact') {
     assert.match(text, /微信：869123771/)
     assert.match(text, /QQ：869123771/)
+    assert.match(text, /钓友集微信群/)
+    assert.match(text, /个人微信/)
     assert.doesNotMatch(text, /版本日期|水域线索与官方渠道/)
   }
 }
@@ -265,7 +275,7 @@ try {
         if (item.name === 'privacy' && width === 375)
           await shot(page, 'privacy-light-375-viewport', false)
         if (width === 1280 && item.name !== 'settings') {
-          const box = await page.locator('.legal-page').boundingBox()
+          const box = await current(page).locator('.fishing-content').boundingBox()
           assert.ok(box.width <= 761, 'wide legal content needs a readable maximum width')
         }
       }
@@ -285,7 +295,7 @@ try {
     }
   })
   await check('navigation-contact-privacy-and-terms', async ({ page, context }) => {
-    await context.grantPermissions(['clipboard-read', 'clipboard-write'], { origin: base })
+    await context.grantPermissions(['geolocation', 'clipboard-read', 'clipboard-write'], { origin: base })
     await open(page, pages[0])
     const contact = page.getByRole('button', { name: '联系与反馈', exact: true })
     await contact.focus()
@@ -302,8 +312,25 @@ try {
     metrics.push({ name: 'contact-keyboard-focus', ...focus })
     await shot(page, 'settings-keyboard-focus')
     await page.keyboard.press('Space')
-    await page.waitForURL('**/pages/settings/legal?type=contact')
+    await page.waitForURL('**/pages/contact/index')
     await textCheck(page, pages[3])
+    for (const [label, file, width] of [
+      ['钓友集微信群', 'wechat-group.png', 720],
+      ['个人微信', 'wechat-personal.jpg', 1126]
+    ]) {
+      const action = page.getByRole('button', { name: `查看${label}二维码`, exact: true })
+      await action.focus()
+      await page.keyboard.press('Enter')
+      const dialog = page.getByRole('dialog', { name: `预览${label}二维码`, exact: true })
+      const image = dialog.locator('.mobile-image-viewer__loaded')
+      await image.waitFor()
+      assert.ok((await image.getAttribute('src')).endsWith(file))
+      assert.equal(await image.evaluate(el => el.naturalWidth), width)
+      await shot(page, file.split('.')[0] + '-preview', false)
+      await page.keyboard.press('Escape')
+      await dialog.waitFor({ state: 'hidden' })
+      assert.ok(await action.evaluate(el => el === document.activeElement))
+    }
     for (const [label, feedback] of [
       ['复制运营者微信号', '微信号已复制'],
       ['复制运营者QQ号', 'QQ号已复制']
@@ -323,6 +350,14 @@ try {
     await page.getByRole('button', { name: '用户协议', exact: true }).click()
     await page.waitForURL('**/pages/settings/legal?type=terms')
     await textCheck(page, pages[2])
+  })
+  await check('old-contact-link-and-expired-group', async ({ page }) => {
+    await page.clock.setSystemTime(new Date('2026-11-28T00:00:00+08:00'))
+    await page.goto(base + '/#/pages/settings/legal?type=contact')
+    await page.waitForURL('**/pages/contact/index')
+    await page.getByText('群二维码已到期，可通过个人微信联系入群。').waitFor()
+    assert.equal(await page.getByRole('button', { name: '查看钓友集微信群二维码' }).count(), 0)
+    await page.getByRole('button', { name: '查看个人微信二维码' }).waitFor()
   })
   await check(
     'settings-navigation-and-delete-affordance',
@@ -375,11 +410,11 @@ try {
             }
           }
         })
-        assert.equal(value.rows.length, 4)
+        assert.equal(value.rows.length, 6)
         for (const row of value.rows) {
           assert.ok(row.arrow && row.right >= 0 && row.right <= 25, row.label + ': trailing arrow')
           assert.ok(
-            row.height >= 48 && row.centered <= 1,
+            row.height >= 56 && (large || row.height === 56) && row.centered <= 1,
             row.label + ': touch target and icon alignment'
           )
         }

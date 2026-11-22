@@ -157,7 +157,7 @@ onBeforeUnmount(() => {
   gap: 12px;
 }
 .weather-temperature {
-  font-size: max(28px, 1.75rem);
+  font-size: var(--fishing-value-size);
   font-weight: 600;
   font-variant-numeric: tabular-nums;
   line-height: 1.3;

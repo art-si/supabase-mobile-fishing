@@ -11,23 +11,23 @@ const browser=await chromium.launch({channel:'chrome',headless:true})
 const owner='11111111-1111-4111-8111-111111111111'
 const checks=[],errors=[],escaped=[],contexts=[]
 const pass=message=>{checks.push(message);console.log('PASS',message)}
-async function setup({denied=false}={}){
+async function setup({denied=false,guest=false}={}){
   const context=await browser.newContext({viewport:{width:375,height:812},locale:'zh-CN',reducedMotion:'reduce'})
   contexts.push(context)
   const writes=[],feeds=[]
-  await context.addInitScript(({owner,denied})=>{
-    localStorage.setItem('dyj.auth.v1',JSON.stringify({type:'object',data:{access_token:'city-profile-fixture',refresh_token:'fixture',expires_at:Date.now()/1000+3600,user:{id:owner}}}))
+  await context.addInitScript(({owner,denied,guest})=>{
+    if (!guest) localStorage.setItem('dyj.auth.v1',JSON.stringify({type:'object',data:{access_token:'city-profile-fixture',refresh_token:'fixture',expires_at:Date.now()/1000+3600,user:{id:owner}}}))
     Object.defineProperty(navigator,'permissions',{configurable:true,value:{query:async()=>({state:denied?'denied':'granted'})}})
     const fixture=window.cityReview={callbacks:[],city:'武汉市',district:'江汉区',province:'湖北省',geocodes:0}
     class Geolocation{getCurrentPosition(callback){fixture.callbacks.push(callback)}}
     class Geocoder{getAddress(point,callback){fixture.geocodes++;callback('complete',{regeocode:{formattedAddress:'真实定位仅做接口隔离测试',addressComponent:{province:fixture.province,city:fixture.city,district:fixture.district}}})}}
     window.AMap={Geolocation,Geocoder}
-  },{owner,denied})
+  },{owner,denied,guest})
   await context.routeWebSocket(/supabase\.co/,socket=>socket.close())
   await context.route('**/*',route=>{
     const req=route.request(),url=new URL(req.url())
     if(url.origin===base||!url.protocol.startsWith('http'))return route.continue()
-    if(url.origin!=='https://tlfmfokyhahlpzmpliad.supabase.co'){escaped.push(url.origin);return route.abort()}
+    if(url.origin!=='https://jupuypvmgjpnpntfetqv.supabase.co'){escaped.push(url.origin);return route.abort()}
     const reply=(json,status=200)=>route.fulfill({json,status,headers:{'access-control-allow-origin':'*','access-control-allow-headers':'*'}})
     if(req.method()==='OPTIONS')return reply({})
     if(url.pathname==='/auth/v1/user')return reply({id:owner})
@@ -113,7 +113,7 @@ try{
   await page.getByRole('button',{name:'清空城市',exact:true}).click()
   await page.getByRole('button',{name:'选择常驻城市',exact:true}).getByText('选择城市（可选）',{exact:true}).waitFor()
   pass('optional home city can be cleared without saving or changing the same-city filter')
-  const second=await setup({denied:true})
+  const second=await setup({denied:true,guest:true})
   await second.page.goto(`${base}/#/pages/home/index`)
   await second.page.getByRole('button',{name:'同城',exact:true}).click()
   await second.page.getByText(/定位权限已关闭/).waitFor()
@@ -121,7 +121,7 @@ try{
   assert.equal(await second.page.evaluate(()=>window.cityReview.callbacks.length),0)
   assert.equal(second.writes.length,0)
   pass('denied device location still supports manual nationwide city selection')
-  const third=await setup()
+  const third=await setup({guest:true})
   await third.page.goto(`${base}/#/pages/home/index`)
   await third.page.getByRole('button',{name:'同城',exact:true}).click()
   await third.page.waitForFunction(()=>window.cityReview.callbacks.length===1)
@@ -129,7 +129,7 @@ try{
   await third.page.getByRole('button',{name:'切换同城城市',exact:true}).getByText('武汉市',{exact:true}).waitFor()
   assert.ok(third.feeds.some(item=>item.filter==='city'&&item.city==='武汉市'))
   assert.equal(third.writes.length,0)
-  pass('successful location defaults the same-city filter to its reverse-geocoded city without writing profile')
+  pass('successful guest location defaults the same-city filter to its reverse-geocoded city without writing profile')
   await third.page.evaluate(()=>{window.cityReview.city='';window.cityReview.district='天门市'})
   await third.page.getByRole('button',{name:'切换同城城市',exact:true}).click()
   await third.page.getByRole('button',{name:'定位当前城市',exact:true}).click()

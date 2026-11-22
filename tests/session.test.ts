@@ -43,7 +43,8 @@ function harness(
     isDemo = false,
     native = false,
     secure = new Map<string, string>(),
-    secureRead = undefined as undefined | (() => Promise<string | null>)
+    secureRead = undefined as undefined | (() => Promise<string | null>),
+    waitForEntryLocation = (): Promise<void> | undefined => undefined
   } = {}
 ) {
   const storage = new Map<string, any>(),
@@ -55,6 +56,7 @@ function harness(
     vue: { ref },
     '@/config': { isDemo },
     './http': { request, ApiError },
+    './entry-location': { waitForEntryLocation },
     '@/domain/private-storage': { privateStorageKey },
     '@/domain/auth-errors': { authSessionFromResponse, authSessionFromStorage },
     './draft-handoff': {
@@ -125,7 +127,7 @@ function appHarness(api: Record<string, any>) {
     appearanceRefreshes = 0
   const resumes: Promise<void>[] = []
   const dependencies: Record<string, unknown> = {
-    vue: { onUnmounted() {} },
+    vue: { onUnmounted() {}, watch() {} },
     '@dcloudio/uni-app': {
       onLaunch: (callback: () => void) => {
         launch = callback
@@ -149,6 +151,12 @@ function appHarness(api: Record<string, any>) {
     // Session lifecycle tests never open the independent Realtime transport.
     '@/services/live-updates': { initializeLiveUpdates() {}, setLiveForeground() {} },
     '@/services/app-activity': { setAppForeground() {} },
+    '@/services/entry-location': {
+      checkEntryLocation() {},
+      disposeEntryLocation() {},
+      startEntryLocation() {},
+      entryLocationReady: ref(true)
+    },
     '@mobile-core/app-foreground': { createAppForeground },
     '@/stores/appearance': {
       watchSystemAppearance() {},
@@ -206,6 +214,29 @@ test('a fresh guest with no stored session has no restoration error', async () =
   await api.hydrateSession()
   assert.equal(api.session.value, null)
   assert.equal(api.sessionNotice.value, '')
+})
+test('waiting for startup location cannot release a request from a previous account', async () => {
+  const checking = deferred<void>()
+  const ready = deferred<void>()
+  const calls: string[] = []
+  const { api } = harness(async (_path, options) => {
+    calls.push(options.token)
+    return { items: [] }
+  }, {
+    waitForEntryLocation: () => {
+      checking.resolve()
+      return ready.promise
+    }
+  })
+  await api.saveSession(session('A'))
+  const pending = api.sessionRequest('/rest/v1/rpc/fishing_read')
+  await checking.promise
+  assert.deepEqual(calls, [])
+  await api.saveSession(session('B'))
+  ready.resolve()
+  await assert.rejects(pending, { code: 'SESSION_CHANGED' })
+  await api.sessionRequest('/rest/v1/rpc/fishing_read')
+  assert.deepEqual(calls, ['access-B'])
 })
 test('a hydrated expired access token renews through its persisted refresh token', async () => {
   let calls = 0

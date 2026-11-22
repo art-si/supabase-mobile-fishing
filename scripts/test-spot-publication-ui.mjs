@@ -7,11 +7,16 @@ const base = process.env.FISHING_H5_URL || 'http://127.0.0.1:5178',
   output = 'artifacts/spot-publication'
 const owner = '11111111-1111-4111-8111-111111111111',
   id = '22222222-2222-4222-8222-222222222222'
-const address = '湖北省武汉市蔡甸区沌阳街道湖北特种设备检验检测研究院附近'
+const address = '万家湖'
+const douyinSource = 'https://v.douyin.com/dyj-source-fixture/'
+const toutiaoSource = 'https://m.toutiao.com/is/dyj-source-fixture/'
+const observations = '岸边干净。工作日上午钓友很少。'
+const shareText = `${observations}\n${douyinSource}?track=1\n${toutiaoSource}`
 const checks = [],
   errors = [],
   escaped = [],
-  writes = []
+  writes = [],
+  visitedSources = []
 let deleted = false,
   failEditOnce = false
 let item = {
@@ -41,6 +46,8 @@ const browser = await chromium.launch({ channel: 'chrome', headless: true })
 const context = await browser.newContext({
   viewport: { width: 375, height: 812 },
   locale: 'zh-CN',
+  permissions: ['geolocation'],
+  geolocation: { latitude: 30.48, longitude: 114.18, accuracy: 12 },
   reducedMotion: 'reduce'
 })
 await context.addInitScript(
@@ -98,7 +105,12 @@ await context.route('**/*', (route) => {
     return route.continue()
   }
   if (!url.protocol.startsWith('http')) return route.continue()
-  if (url.origin !== 'https://tlfmfokyhahlpzmpliad.supabase.co') {
+  if (url.href === douyinSource || url.href === toutiaoSource) {
+    visitedSources.push(url.href)
+    return route.fulfill({ body: '隔离验收原文' })
+  }
+  if (url.origin === 'https://tiles.openfreemap.org') return route.abort()
+  if (url.origin !== 'https://jupuypvmgjpnpntfetqv.supabase.co') {
     escaped.push(url.origin)
     return route.abort()
   }
@@ -215,19 +227,48 @@ try {
   await page.getByText(address, { exact: true }).waitFor()
   assert.equal(await page.getByRole('group', { name: '垂钓状态', exact: true }).count(), 0)
   await page.getByRole('textbox', { name: '钓位名称（选填）', exact: true }).fill('神仙钓位')
+  await page.getByRole('button', { name: /^补充钓位信息/ }).click()
+  await page.getByRole('button', { name: '选择常见鱼种', exact: true }).click()
+  const species = page.getByRole('dialog', { name: '选择常见鱼种', exact: true })
+  await species.getByRole('checkbox', { name: '鲫鱼', exact: true }).click()
+  await species.getByRole('button', { name: /^确定/ }).click()
+  await species.waitFor({ state: 'hidden' })
+  await page.getByRole('textbox', { name: '水域与鱼情', exact: true }).fill(shareText)
+  await page.getByText('保存后可查看抖音、今日头条原文。', { exact: true }).waitFor()
+  await page.screenshot({ path: `${output}/create-with-sources.png`, fullPage: true })
   await page.getByRole('button', { name: '保存钓位', exact: true }).click()
   await page.waitForURL(/#\/(?:pages\/home\/index)?\?tab=spots/)
   const created = writes.find((w) => w.action === 'save_spot').payload
   assert.equal(created.location_label, address)
+  assert.equal(created.description, shareText)
+  assert.equal(created.species, '鲫鱼')
   assert.equal(created.audience, 'public')
   assert.equal(created.fishing_status, 'allowed')
   assert.equal(await page.getByRole('button', { name: '记录我的钓位', exact: true }).count(), 0)
   await page.getByRole('button', { name: '新增钓位', exact: true }).waitFor()
+  const sharedCard = page.locator('.spot-card').filter({ hasText: '神仙钓位' })
+  await sharedCard.getByText('抖音', { exact: true }).waitFor()
+  await sharedCard.getByText('今日头条', { exact: true }).waitFor()
+  await sharedCard.getByText('人少', { exact: true }).waitFor()
+  await page.screenshot({ path: `${output}/published-source-card.png` })
   assert.equal(await page.locator('.spot-status-stamp').count(), 0)
   checks.push(
     'header adds a public allowed spot, returns to the main list and shows no allowed stamp'
   )
   await openSpot()
+  await page.getByText(observations, { exact: true }).waitFor()
+  assert.equal(await page.getByText(douyinSource, { exact: false }).count(), 0)
+  const original = page.getByRole('button', { name: '打开抖音原文', exact: true })
+  await original.focus()
+  await page.screenshot({ path: `${output}/detail-source-focus.png` })
+  const openedSource = context.waitForEvent('page')
+  await page.keyboard.press('Enter')
+  const originalPage = await openedSource
+  await originalPage.waitForLoadState()
+  assert.deepEqual(visitedSources, [douyinSource])
+  await originalPage.close()
+  await page.getByRole('button', { name: '打开今日头条原文', exact: true }).waitFor()
+  checks.push('author shares keep the saved location, show evidence labels and platform names, and open the canonical original')
   await page.evaluate(
     ({ owner, item }) =>
       localStorage.setItem(
@@ -264,7 +305,7 @@ try {
   await page.waitForURL(/#\/(?:pages\/home\/index)?\?tab=spots/)
   assert.equal(writes.at(-1).action, 'update_content')
   assert.equal(writes.at(-1).payload.fishing_status, 'prohibited')
-  await page.getByText('距你 1.3公里', { exact: true }).waitFor()
+  await page.getByText(/^距你 \d+(?:\.\d+)? km$/).first().waitFor()
   for (const row of layouts) {
     const name = await layout(row),
       card = page.locator('.spot-card--prohibited'),
@@ -272,26 +313,34 @@ try {
     assert.equal(await stamp.count(), 1)
     assert.ok(
       await card.evaluate(
-        (node) =>
-          getComputedStyle(node.querySelector('.spot-card__body')).filter === 'grayscale(1)' &&
-          getComputedStyle(node).filter === 'none' &&
-          getComputedStyle(node.querySelector('.heading')).color ===
-            getComputedStyle(node.querySelector('.caption')).color
+        (node) => {
+          const title = getComputedStyle(node.querySelector('.post-title'))
+          return title.filter === 'grayscale(1)' && Number(title.opacity) < 0.7 &&
+            getComputedStyle(node.querySelector('.heading')).color ===
+              getComputedStyle(node.querySelector('.caption')).color
+        }
       )
     )
-    assert.equal(await stamp.evaluate((node) => getComputedStyle(node).position), 'absolute')
-    assert.equal(await stamp.evaluate((node) => getComputedStyle(node).borderRadius), '50%')
+    assert.equal(await stamp.evaluate((node) => getComputedStyle(node).opacity), '1')
+    await card.getByRole('img', { name: '禁钓', exact: true }).waitFor()
+    assert.equal((await stamp.innerText()).trim(), '')
+    assert.ok(await stamp.locator('img').evaluate(async (image) => {
+      await image.decode()
+      return image.naturalWidth > 0
+    }))
     const stampBox = await stamp.boundingBox(),
-      box = await card.boundingBox()
+      box = await card.boundingBox(),
+      titleBox = await card.locator('.post-title').boundingBox(),
+      factsBox = await card.locator('.fish-facts').boundingBox()
     assert.ok(
       Math.abs(stampBox.width - stampBox.height) < 1 &&
-        stampBox.x + stampBox.width <= box.x + box.width + 1
+        stampBox.x + stampBox.width <= box.x + box.width + 1 &&
+        stampBox.y >= titleBox.y + titleBox.height &&
+        stampBox.x >= factsBox.x + factsBox.width
     )
-    assert.ok(
-      await stamp.evaluate((node) => {
-        const [r, g] = getComputedStyle(node).color.match(/\d+/g).map(Number)
-        return r > g
-      })
+    assert.equal(
+      await stamp.evaluate((node) => getComputedStyle(node).backgroundColor),
+      'rgba(0, 0, 0, 0)'
     )
     assert.equal(
       await page.locator('.spot-card:not(.spot-card--prohibited) .spot-status-stamp').count(),
@@ -300,7 +349,7 @@ try {
     await page.screenshot({ path: `${output}/spots-simple-${name}.png`, fullPage: true })
   }
   checks.push(
-    'changed-only save returns to list; banned cards have gray text and an independent red circular stamp at bottom right'
+    'changed-only save returns to list; prohibited cards use faded text and a clear wordless stamp'
   )
   await layout(layouts[0])
   await openSpot()
@@ -311,10 +360,14 @@ try {
   for (const row of layouts) {
     const name = await layout(row),
       tools = page.locator('.spot-tools')
-    assert.equal(await tools.getByRole('button').count(), 5)
-    for (const text of ['收藏', '发钓友', '编辑', '撤回', '删除']) {
+    assert.equal(await tools.getByRole('button').count(), 6)
+    for (const text of ['收藏：神仙钓位', '编辑', '撤回', '删除']) {
       const action = tools.getByRole('button', { name: text, exact: true })
       assert.ok((await action.boundingBox()).height >= 48)
+    }
+    for (const text of ['打开抖音原文', '打开今日头条原文']) {
+      const action = page.getByRole('button', { name: text, exact: true })
+      assert.ok((await action.boundingBox()).height >= 44)
     }
     assert.equal(await page.getByText(/精确钓点|信息核实日期|路线仅供参考|分享 · 公开/).count(), 0)
     await page.screenshot({ path: `${output}/detail-${name}.png`, fullPage: true })
@@ -327,37 +380,39 @@ try {
     await chooser.getByRole('button', { name: '高德地图', exact: true }).click()
     const call = await page.evaluate(() => window.mapUiCalls.at(-1))
     assert.equal(call.place.navigation, true)
-    assert.equal(call.place.longitude, 114.18)
-    assert.equal(call.place.latitude, 30.48)
+    assert.equal(call.place.longitude, created.longitude)
+    assert.equal(call.place.latitude, created.latitude)
     await page.keyboard.press('Escape')
     await chooser.waitFor({ state: 'hidden' })
     assert.ok(await place.evaluate((node) => node === document.activeElement))
   }
   await layout(layouts[0])
-  await page.getByRole('button', { name: '收藏', exact: true }).click()
-  await page.getByRole('button', { name: '已收藏', exact: true }).waitFor()
-  await page.getByRole('button', { name: '发钓友', exact: true }).click()
-  const sharing = page.getByRole('dialog', { name: '发给钓友', exact: true })
-  await sharing.waitFor()
-  await page.keyboard.press('Escape')
-  await sharing.waitFor({ state: 'hidden' })
+  const bookmark = page.getByRole('button', { name: '收藏：神仙钓位', exact: true })
+  await bookmark.click()
+  const bookmarked = page.getByRole('button', { name: '取消收藏：神仙钓位', exact: true })
+  await bookmarked.waitFor()
+  assert.equal(await bookmarked.getAttribute('aria-pressed'), 'true')
+  await bookmarked.click()
+  await bookmark.waitFor()
+  assert.equal(await bookmark.getAttribute('aria-pressed'), 'false')
+  assert.deepEqual(writes.filter((w) => w.action === 'spot_bookmark').map((w) => w.payload.enabled), [true, false])
   await page.getByRole('button', { name: '撤回', exact: true }).click()
   const withdrawing = page.getByRole('dialog', { name: '改为仅自己可见？', exact: true })
   await withdrawing.waitFor()
   await withdrawing.getByRole('button', { name: '继续分享', exact: true }).click()
   assert.equal(
-    writes.some((w) => w.action === 'withdraw_content' || w.action === 'send_message'),
+    writes.some((w) => w.action === 'withdraw_content'),
     false
   )
   checks.push(
-    'compact tools preserve bookmark, share, edit and withdrawal confirmation without sending a message'
+    'compact tools preserve bookmark toggling, editing and cancellation of withdrawal'
   )
   await editor()
   assert.equal(await save.isDisabled(), true)
   await status.getByRole('button', { name: '可钓', exact: true }).click()
   await save.click()
   await page.waitForURL(/#\/(?:pages\/home\/index)?\?tab=spots/)
-  await page.getByText('距你 1.3公里', { exact: true }).waitFor()
+  await page.getByText(/^距你 \d+(?:\.\d+)? km$/).first().waitFor()
   assert.equal(await page.locator('.spot-card--prohibited,.spot-status-stamp').count(), 0)
   await page.screenshot({ path: `${output}/spots-restored-375.png`, fullPage: true })
   checks.push(
@@ -365,10 +420,20 @@ try {
   )
   await openSpot()
   await editor()
-  await page.getByRole('textbox', { name: '钓位名称（选填）', exact: true }).fill('尚未保存的改动')
+  const spotName = page.getByRole('textbox', { name: '钓位名称（选填）', exact: true })
+  await spotName.fill('尚未保存的改动')
   failEditOnce = true
   await save.click()
-  await page.getByRole('textbox', { name: '钓位名称（选填）', exact: true }).fill('神仙钓位')
+  await page.getByText('这条记录已有新版本', { exact: true }).waitFor()
+  assert.equal(await spotName.inputValue(), '尚未保存的改动')
+  assert.equal(await save.isDisabled(), true)
+  const reload = page.getByRole('button', { name: '重新读取新版本', exact: true })
+  const replace = page.getByRole('alertdialog', { name: '读取新版本？', exact: true })
+  await reload.click()
+  await replace.getByRole('button', { name: '保留当前修改', exact: true }).click()
+  assert.equal(await spotName.inputValue(), '尚未保存的改动')
+  await reload.click()
+  await replace.getByRole('button', { name: '读取新版本', exact: true }).click()
   await page.waitForFunction(
     () =>
       document.querySelector('#spot-name input')?.value === '神仙钓位' &&
@@ -377,11 +442,11 @@ try {
   assert.equal(await page.getByText(/这条记录已有新版本|重新读取新版本/).count(), 0)
   await page.screenshot({ path: `${output}/edit-latest-375.png`, fullPage: true })
   checks.push(
-    'stale cached edits are ignored; a save race automatically loads the latest version without a conflict dialog'
+    'a save conflict preserves the current draft until the author confirms reading the latest version'
   )
-  await page.goto(`${base}/#/pages/home/index?tab=spots`)
   item = { ...item, precision: 'hidden', longitude: null, latitude: null, location_label: '' }
-  await openSpot()
+  const hiddenDetail = `${base}/#/pages/spot/detail?id=${item.id}`
+  await page.goto(hiddenDetail)
   await editor()
   assert.equal(await save.isDisabled(), true)
   await status.getByRole('button', { name: '禁钓', exact: true }).click()
@@ -390,7 +455,7 @@ try {
   assert.equal(writes.at(-1).payload.precision, 'hidden')
   assert.equal(writes.at(-1).payload.longitude, null)
   checks.push('status-only edit preserves an old hidden location and does not request a new point')
-  await openSpot()
+  await page.goto(hiddenDetail)
   await page.getByRole('button', { name: '删除', exact: true }).click()
   const removal = page.getByRole('alertdialog', { name: '删除这个钓位？', exact: true })
   await removal.waitFor()

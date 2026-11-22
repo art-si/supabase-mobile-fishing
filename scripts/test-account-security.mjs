@@ -54,6 +54,8 @@ async function setup(signedIn = false) {
   const context = await browser.newContext({
     viewport: { width: 375, height: 812 },
     locale: 'zh-CN',
+    permissions: ['geolocation'],
+    geolocation: { latitude: 31.12, longitude: 120.12 },
     reducedMotion: 'reduce'
   })
   if (signedIn)
@@ -130,7 +132,7 @@ async function setup(signedIn = false) {
     const request = route.request(),
       url = new URL(request.url())
     if (url.origin === base) return route.continue()
-    if (url.hostname !== 'tlfmfokyhahlpzmpliad.supabase.co') {
+    if (url.hostname !== 'jupuypvmgjpnpntfetqv.supabase.co') {
       state.blocked.push(url.hostname)
       return route.abort('blockedbyclient')
     }
@@ -473,6 +475,8 @@ try {
       await button(page, '退出登录').click()
       await button(page, '清除草稿并退出').click()
       await page.waitForFunction(() => !localStorage.getItem('dyj.auth.v1'))
+      await page.waitForURL((url) => url.hash === '#/' || url.hash.startsWith('#/pages/home'))
+      await page.getByRole('navigation', { name: '主导航' }).waitFor()
       const grants = state.requests.filter((r) => r.path.startsWith('/auth/v1/token')).length
       await open(page, 'pages/login/index')
       await text(page, '密码登录')
@@ -615,7 +619,7 @@ try {
       await open(page, 'pages/account/security')
       await text(page, '138 **** 0000')
       await text(page, 'DY000000000001')
-      await context.grantPermissions(['clipboard-read', 'clipboard-write'], { origin: base })
+      await context.grantPermissions(['geolocation', 'clipboard-read', 'clipboard-write'], { origin: base })
       await button(page, '复制钓友号').click()
       await text(page, '钓友号已复制')
       assert.equal(await page.evaluate(() => navigator.clipboard.readText()), 'DY000000000001')

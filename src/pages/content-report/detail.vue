@@ -3,6 +3,7 @@ import { computed, nextTick, ref, watch } from 'vue'
 import { onLoad, onShow, onHide, onUnload } from '@dcloudio/uni-app'
 import FishingShell from '@/components/FishingShell.vue'
 import FishingPhotos from '@/components/FishingPhotos.vue'
+import FishingEmptyState from '@/components/FishingEmptyState.vue'
 import FishingLoadingStatus from '@/components/FishingLoadingStatus.vue'
 import MobileAction from '@mobile-core/components/MobileAction.vue'
 import MobileLoadError from '@mobile-core/components/MobileLoadError.vue'
@@ -154,7 +155,7 @@ watch(
   { flush: 'sync' }
 )
 onLoad((options) => {
-  id.value = options?.id || ''
+  id.value = options?.id?.trim() || ''
 })
 onShow(() => {
   visible = true
@@ -172,6 +173,18 @@ onUnload(() => {
 <template>
   <FishingShell title="处理举报" back>
     <view class="fishing-content stack">
+      <FishingEmptyState
+        v-if="!id"
+        icon="flag"
+        title="缺少举报编号"
+        description="请从举报列表打开要处理的记录。"
+      >
+        <MobileAction
+          class="secondary"
+          @click="uni.redirectTo({ url: '/pages/content-report/index?review=1' })"
+          >返回举报列表</MobileAction
+        >
+      </FishingEmptyState>
       <FishingLoadingStatus v-if="loading" label="正在读取举报与最新内容…" />
       <MobileLoadError v-if="error" title="无法读取举报" :message="error" @retry="load()" />
       <template v-if="item">

@@ -21,7 +21,7 @@ async function open(mode='success'){
  await context.route('**/*',route=>{
   const req=route.request(),url=new URL(req.url());if(url.origin===base||!url.protocol.startsWith('http'))return route.continue()
   const headers={'access-control-allow-origin':'*','access-control-allow-headers':'*','access-control-allow-methods':'*'}
-  if(url.origin==='https://tlfmfokyhahlpzmpliad.supabase.co')return route.fulfill({status:200,headers,json:url.pathname==='/auth/v1/user'?{id:owner}:{items:[]}})
+  if(url.origin==='https://jupuypvmgjpnpntfetqv.supabase.co')return route.fulfill({status:200,headers,json:url.pathname==='/auth/v1/user'?{id:owner}:{items:[]}})
   escaped.push(url.href);return route.abort()
  })
  const page=await context.newPage();page.setDefaultTimeout(12000);page.on('pageerror',e=>errors.push(e.message))

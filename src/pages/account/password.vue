@@ -4,6 +4,7 @@ import { onLoad, onShow, onHide, onUnload } from '@dcloudio/uni-app'
 import FishingShell from '@/components/FishingShell.vue'
 import AccountPhoneVerification from '@/components/AccountPhoneVerification.vue'
 import MobileAction from '@mobile-core/components/MobileAction.vue'
+import { isDemo } from '@/config'
 import MobileField from '@mobile-core/components/MobileField.vue'
 import { revealControl, nativeFieldOf, type ElementTarget } from '@mobile-core/form-focus'
 import { useAuthStore } from '@/stores/auth'
@@ -52,6 +53,7 @@ onLoad((query) => {
   mode.value = query?.mode === 'set' ? 'set' : 'reset'
 })
 async function open() {
+  if (isDemo) return
   const current = ++version
   active.value = true
   loading.value = true
@@ -167,12 +169,14 @@ function done() {
 </script>
 <template>
   <FishingShell
+    narrow
     :title="mode === 'set' ? '设置登录密码' : '找回密码'"
     back
     :confirm-back="async () => !busy"
   >
     <view class="fishing-content account-content">
-      <text v-if="loading" class="caption" role="status">正在准备验证…</text>
+      <text v-if="isDemo" class="notice">本机体验无需登录密码。正式账号可通过短信验证设置或找回密码。</text>
+      <text v-else-if="loading" class="caption" role="status">正在准备验证…</text>
       <template v-else-if="step === 3">
         <view class="account-heading" role="status"
           ><text class="account-title" role="heading" aria-level="1">密码已设置</text

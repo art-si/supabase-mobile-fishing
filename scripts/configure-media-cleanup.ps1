@@ -1,7 +1,7 @@
 # Copies the existing project-scoped Vault secret into Edge secrets without displaying it.
 $ErrorActionPreference = 'Stop'
 . (Join-Path $PSScriptRoot 'private-supabase-cli.ps1')
-$projectRef = 'tlfmfokyhahlpzmpliad'
+$projectRef = 'jupuypvmgjpnpntfetqv'
 $secretName = 'MEDIA_CLEANUP_HMAC_KEY'
 $setupDirectory = Join-Path $PSScriptRoot 'media-cleanup-secret-setup'
 $secretValue = $null

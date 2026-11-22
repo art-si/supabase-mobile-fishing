@@ -14,7 +14,11 @@ export const precisionLabels: Record<Precision, string> = {
   area: '大致水域',
   hidden: '不分享位置'
 }
-export const audienceOptions = Object.entries(audienceLabels).map(([id, name]) => ({ id, name }))
+export function audienceOptions(current: Audience) {
+  return Object.entries(audienceLabels)
+    .filter(([id]) => id !== 'friends' || current === 'friends')
+    .map(([id, name]) => ({ id, name }))
+}
 export const precisionOptions = Object.entries(precisionLabels).map(([id, name]) => ({ id, name }))
 export function today() {
   const now = new Date()

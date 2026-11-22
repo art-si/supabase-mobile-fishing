@@ -6,7 +6,7 @@
 
 ## 本地体验
 
-需要 Node 22.13+、pnpm 11 和同级 `../supabase-mobile-pro`；也可通过 `MOBILE_PRO_ROOT` 指定共享仓路径。
+需要 Node 22.13+ 和 pnpm 11。单独克隆钓友集后，`pnpm install` 会从 Gitee 下载锁定提交的 `supabase-mobile-pro`，并安装它统一维护的 Vue、Pinia、Uni-app 和构建工具。联调公共组件时可用 `MOBILE_PRO_ROOT` 指向本地 Pro 源码，构建工具仍使用锁定包中的版本。
 
 ```powershell
 pnpm install
@@ -83,7 +83,7 @@ pnpm dev:demo
 | 架构 | 参照 supabase-mobile-pro，Uni-app、Vue 3、TypeScript、Pinia、共享 mobile-core，App 沿用 Capacitor |
 | 设计 | Apple Design 与 UI UX Pro Max 原则，适配钓鱼场景 |
 | 地图 | 高德，复用 supabase-mobile-pro 驾驶员项目配置，安全码留服务端 |
-| 后端 | 新建 Supabase 项目 tlfmfokyhahlpzmpliad |
+| 后端 | Supabase 项目 jupuypvmgjpnpntfetqv |
 | 登录 | 手机号验证后自动注册或登录，各端适配入口 |
 
 ## 当前阶段

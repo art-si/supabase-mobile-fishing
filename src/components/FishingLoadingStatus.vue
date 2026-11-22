@@ -1,62 +1,75 @@
 <script setup lang="ts">
-import MobileLoadingStatus from '@mobile-core/components/MobileLoadingStatus.vue'
-import FishMark from './FishMark.vue'
 defineOptions({ options: { virtualHost: true, styleIsolation: 'apply-shared' } })
-withDefaults(defineProps<{ label: string; block?: boolean }>(), { block: true })
+withDefaults(defineProps<{ label: string; block?: boolean; media?: boolean; bare?: boolean }>(), { block: true })
 </script>
+
 <template>
-  <MobileLoadingStatus :label="label" :block="block">
-    <template #indicator>
-      <view class="fish-loading" :class="{ 'fish-loading--inline': !block }" aria-hidden="true">
-        <FishMark :size="block ? 44 : 28" swimming />
-        <view class="fish-loading__bubble" />
-        <view class="fish-loading__bubble fish-loading__bubble--second" />
+  <view
+    class="fishing-skeleton"
+    :class="{ panel: block && !media && !bare, 'fishing-skeleton--media': media }"
+    role="status"
+    :aria-label="label"
+  >
+    <view v-if="block && !media" class="fishing-skeleton__card" aria-hidden="true">
+      <view class="fishing-skeleton__header">
+        <view class="fishing-skeleton__shape fishing-skeleton__avatar" />
+        <view class="fishing-skeleton__lines">
+          <view class="fishing-skeleton__shape fishing-skeleton__line fishing-skeleton__line--title" />
+          <view class="fishing-skeleton__shape fishing-skeleton__line fishing-skeleton__line--short" />
+        </view>
       </view>
-    </template>
-  </MobileLoadingStatus>
+      <view class="fishing-skeleton__shape fishing-skeleton__line" />
+      <view class="fishing-skeleton__shape fishing-skeleton__line fishing-skeleton__line--title" />
+    </view>
+    <view v-else class="fishing-skeleton__shape fishing-skeleton__placeholder" aria-hidden="true" />
+  </view>
 </template>
+
 <style scoped>
-.fish-loading {
-  position: relative;
-  display: flex;
+.fishing-skeleton {
+  width: 100%;
+}
+.fishing-skeleton__card,
+.fishing-skeleton__lines {
+  display: grid;
+  gap: 10px;
+  min-width: 0;
+}
+.fishing-skeleton__header {
+  display: grid;
+  grid-template-columns: 44px minmax(0, 1fr);
   align-items: center;
-  flex: none;
-  padding: 8px 14px 8px 0;
+  gap: 12px;
+  margin-bottom: 6px;
 }
-.fish-loading__bubble {
-  position: absolute;
-  right: 5px;
-  top: 6px;
-  width: 5px;
-  height: 5px;
-  border: 1px solid var(--lake);
+.fishing-skeleton__shape {
+  background: var(--inset);
+}
+.fishing-skeleton__avatar {
+  aspect-ratio: 1;
   border-radius: 50%;
-  opacity: 0.5;
-  animation: fish-bubble 1.8s ease-out infinite;
 }
-.fish-loading__bubble--second {
-  right: 0;
-  top: 0;
-  width: 3px;
-  height: 3px;
-  animation-delay: 0.65s;
+.fishing-skeleton__line {
+  height: 0.75rem;
+  border-radius: 6px;
 }
-.fish-loading--inline {
-  padding: 3px 10px 3px 0;
+.fishing-skeleton__line--title {
+  width: 66%;
 }
-.fish-loading--inline .fish-loading__bubble {
-  width: 3px;
-  height: 3px;
-  right: 2px;
-  top: 0;
+.fishing-skeleton__line--short {
+  width: 40%;
 }
-.fish-loading--inline .fish-loading__bubble--second {
-  display: none;
+.fishing-skeleton__placeholder {
+  width: min(35%, 120px);
+  height: 0.75rem;
+  margin: 12px auto;
+  border-radius: 6px;
 }
-@media (prefers-reduced-motion: reduce) {
-  .fish-loading__bubble {
-    animation: none;
-    opacity: 0.5;
-  }
+.fishing-skeleton--media .fishing-skeleton__placeholder {
+  width: 100%;
+  height: auto;
+  aspect-ratio: 16 / 9;
+  margin: 0;
+  border-radius: 12px;
 }
 </style>

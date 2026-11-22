@@ -14,7 +14,7 @@ await context.addInitScript(()=>{
   Object.defineProperty(navigator,'permissions',{value:{query:async()=>({state:'denied'})}})
 })
 await context.routeWebSocket(/supabase\.co/,(socket)=>socket.close())
-await context.route('https://tlfmfokyhahlpzmpliad.supabase.co/**',(route)=>route.fulfill({headers:{'access-control-allow-origin':'*','access-control-allow-headers':'*'},json:{items:[],profile:{nickname:'界面验收'}}}))
+await context.route('https://jupuypvmgjpnpntfetqv.supabase.co/**',(route)=>route.fulfill({headers:{'access-control-allow-origin':'*','access-control-allow-headers':'*'},json:{items:[],profile:{nickname:'界面验收'}}}))
 const page=await context.newPage()
 page.on('pageerror',e=>errors.push(e.message))
 try{
