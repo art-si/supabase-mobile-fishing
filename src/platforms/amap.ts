@@ -8,7 +8,11 @@ import { normalizeAmapWeather, validAdcode, type WeatherTarget } from '@/domain/
 import type { MapPoint, MobileMapInstance, MobileMapSdk } from '@mobile-core/map'
 import { validCoordinates } from '@/domain/rules'
 import type { MapPlace } from '@/domain/map'
-import { naturalPlaceType, waterPlace, type WaterPlace } from '../../supabase/functions/_shared/water-places'
+import {
+  naturalPlaceType,
+  waterPlace,
+  type WaterPlace
+} from '../../supabase/functions/_shared/water-places'
 export interface LngLat {
   getLng(): number
   getLat(): number
@@ -127,8 +131,13 @@ export function loadAmap(): Promise<AmapNamespace> {
       const sameOrigin = proxy.origin === window.location.origin
       if (proxy.protocol !== 'https:' && !(sameOrigin && proxy.protocol === 'http:'))
         throw new Error()
+      // The SDK retains the full prefix when forwarding requests. Permit the
+      // confirmed project's existing Edge proxy as well as root reverse proxies.
+      const hostedProxy =
+        proxy.origin === config.supabaseUrl &&
+        proxy.pathname === '/functions/v1/amap-js/_AMapService'
       if (
-        proxy.pathname !== '/_AMapService' ||
+        (!hostedProxy && proxy.pathname !== '/_AMapService') ||
         proxy.search ||
         proxy.hash ||
         proxy.username ||
@@ -300,9 +309,12 @@ export async function reversePlaceName(point: MapPoint) {
         for (const poi of address.pois ?? []) {
           const name = poi.name?.trim()
           if (
-            !name || !Number.isFinite(poi.distance) || poi.distance < 0 ||
+            !name ||
+            !Number.isFinite(poi.distance) ||
+            poi.distance < 0 ||
             poi.distance >= nearestDistance
-          ) continue
+          )
+            continue
           nearestName = name
           nearestDistance = poi.distance
         }
@@ -315,19 +327,32 @@ export async function reversePlaceName(point: MapPoint) {
 
 async function fetchWaterPlaces(point: MapPoint, radius: number) {
   const amap = await loadAmap()
-  return timed(new Promise<WaterPlace[]>((resolve, reject) => {
-    const search = new amap.PlaceSearch({ type: naturalPlaceType, pageSize: 25, extensions: 'base' })
-    search.searchNearBy('', point, radius, (status, result) => {
-      if (status === 'no_data') return resolve([])
-      if (status !== 'complete') return reject(new Error('水域名称暂时无法读取'))
-      const places: WaterPlace[] = []
-      for (const poi of result.poiList?.pois ?? []) {
-        const place = waterPlace(poi.name, poi.type, poi.location?.getLng?.(), poi.location?.getLat?.())
-        if (place) places.push(place)
-      }
-      resolve(places)
-    })
-  }), '水域名称识别', 7000)
+  return timed(
+    new Promise<WaterPlace[]>((resolve, reject) => {
+      const search = new amap.PlaceSearch({
+        type: naturalPlaceType,
+        pageSize: 25,
+        extensions: 'base'
+      })
+      search.searchNearBy('', point, radius, (status, result) => {
+        if (status === 'no_data') return resolve([])
+        if (status !== 'complete') return reject(new Error('水域名称暂时无法读取'))
+        const places: WaterPlace[] = []
+        for (const poi of result.poiList?.pois ?? []) {
+          const place = waterPlace(
+            poi.name,
+            poi.type,
+            poi.location?.getLng?.(),
+            poi.location?.getLat?.()
+          )
+          if (place) places.push(place)
+        }
+        resolve(places)
+      })
+    }),
+    '水域名称识别',
+    7000
+  )
 }
 
 const waterPlaceCache = new Map<string, { expires: number; request: Promise<WaterPlace[]> }>()
@@ -338,7 +363,7 @@ export function nearbyWaterPlaces(point: MapPoint, radius: number) {
   const key = [point[0].toFixed(4), point[1].toFixed(4), radius].join('/')
   const cached = waterPlaceCache.get(key)
   if (cached && cached.expires > Date.now()) return cached.request
-  const request = fetchWaterPlaces(point, radius).catch(error => {
+  const request = fetchWaterPlaces(point, radius).catch((error) => {
     if (waterPlaceCache.get(key)?.request === request) waterPlaceCache.delete(key)
     throw error
   })

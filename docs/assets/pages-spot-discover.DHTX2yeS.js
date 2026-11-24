@@ -1,0 +1,1 @@
+import{C as s,G as a,Q as e,vt as t,z as r}from"./uni-h5.es.BB788i-H.js";import{bt as o}from"./index-loVAK0sJ.js";var i=e({__name:"discover",setup:e=>(o(()=>s({url:"/pages/home/index?tab=spots"})),(s,e)=>{const o=r;return t(),a(o)})});export{i as default};

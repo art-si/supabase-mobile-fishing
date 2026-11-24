@@ -1,0 +1,1 @@
+import{G as r,Q as s,vt as a,w as t,z as e}from"./uni-h5.es.BB788i-H.js";import{bt as o}from"./index-loVAK0sJ.js";var i=s({__name:"history",setup:s=>(o(()=>t({url:"/pages/water-report/index?tab=records"})),(s,t)=>{const o=e;return a(),r(o)})});export{i as default};

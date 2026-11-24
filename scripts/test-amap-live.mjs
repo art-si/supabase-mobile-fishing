@@ -118,7 +118,7 @@ try {
     await page.screenshot({ path: resolve(output, `map-${label}.png`), fullPage: true })
   }
   const proxy = new URL(await page.evaluate(() => window._AMapSecurityConfig?.serviceHost))
-  const secured = proxy.pathname === '/_AMapService' &&
+  const secured = (proxy.pathname === '/_AMapService' || proxy.href === 'https://jupuypvmgjpnpntfetqv.supabase.co/functions/v1/amap-js/_AMapService') &&
     await page.evaluate(() => !window._AMapSecurityConfig?.securityJsCode)
   assert.ok(secured)
   if (cloud) assert.equal(proxy.protocol, 'https:')

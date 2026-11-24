@@ -1,0 +1,1 @@
+import{Pt as t,St as s,gt as n}from"./uni-h5.es.BB788i-H.js";import{Et as o,Tt as a,yt as c}from"./index-loVAK0sJ.js";function e(e,i,u){const f=s(!1);let r=!1,l=!1;const m=t([f,e],([t,s])=>{const n=!l&&t&&s;n!==r&&(r=n,n?i():u())},{flush:"sync"});function p(){l||(l=!0,m(),r&&u(),r=!1)}a(()=>{l||(f.value=!0)}),c(()=>{f.value=!1}),o(p),n(p)}export{e as t};

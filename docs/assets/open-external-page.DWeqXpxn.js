@@ -1,0 +1,1 @@
+import{k as e}from"./index-loVAK0sJ.js";import{t as o}from"./esm.3feXAS8g.js";async function r(r){return e.isNativePlatform()?await o.open({url:r}):window.open(r,"_blank","noopener,noreferrer"),"opened"}export{r as t};

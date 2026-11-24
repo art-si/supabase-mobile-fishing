@@ -1,1 +1,0 @@
-import{St as a}from"./uni-h5.es.BB788i-H.js";import{B as t,lt as n}from"./index-OyNmOCvu.js";function e(){const e=a(!1),r=a("");return{busy:e,error:r,run:async function(a){if(!e.value){e.value=!0,r.value="";try{await a()}catch(o){o instanceof n&&"SESSION_CHANGED"===o.code||(r.value=t(o))}finally{e.value=!1}}}}}export{e as t};

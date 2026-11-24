@@ -7,6 +7,19 @@ export interface JsMapDependencies {
   reserve: () => Promise<boolean>
   fetch: typeof fetch
 }
+// Public deployment origin, not a credential. Merge it in code so publishing
+// Pages never replaces the existing local, native or custom-domain allowlist.
+export function jsMapAllowedOrigins(configured: string) {
+  return [
+    ...new Set([
+      ...configured
+        .split(',')
+        .map((value) => value.trim())
+        .filter(Boolean),
+      'https://art-si.github.io'
+    ])
+  ]
+}
 const routes = new Map([
   ['/v3/log/init', 'restapi.amap.com'],
   ['/v3/place/text', 'restapi.amap.com'],

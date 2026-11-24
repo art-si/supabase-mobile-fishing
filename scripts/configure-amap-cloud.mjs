@@ -88,7 +88,7 @@ try {
     'Uploaded only AMAP_JS_KEY, AMAP_SECURITY_JS_CODE, AMAP_JS_ALLOWED_ORIGINS to the confirmed fishing project.'
   )
   console.log(
-    'The browser proxy must use the first-level /_AMapService route. Secret values withheld.'
+    'Pages can use the confirmed amap-js HTTPS endpoint; custom proxies use /_AMapService. Secret values withheld.'
   )
 } finally {
   if (created) {

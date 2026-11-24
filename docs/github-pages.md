@@ -1,6 +1,6 @@
 # GitHub Pages 静态发布
 
-目标地址：[钓友集](https://art-si.github.io/supabase-mobile-fishing/)。此文档记录配置和本机验证，不表示已经推送或上线。
+目标地址：[钓友集](https://art-si.github.io/supabase-mobile-fishing/)。使用已打包的 `docs` 和现有 Supabase 高德安全代理。
 
 ## 打包与预览
 
@@ -25,7 +25,7 @@ pnpm preview:docs
 | `VITE_SUPABASE_URL` | 固定 `https://jupuypvmgjpnpntfetqv.supabase.co` |
 | `VITE_SUPABASE_KEY` | 真实 publishable／anon key；缺失时打包停止 |
 | `VITE_AMAP_KEY` | 高德 Web JS 公开 Key |
-| `VITE_AMAP_SERVICE_HOST` | 真实 `https://代理域名/_AMapService`，不能填 Pages 地址、本机路径或多级 Edge URL |
+| `VITE_AMAP_SERVICE_HOST` | 默认使用已确认项目的 `https://jupuypvmgjpnpntfetqv.supabase.co/functions/v1/amap-js/_AMapService`；也支持已有 HTTPS 一级反向代理 |
 | `VITE_WATER_INDEX_BASE_URL` | 可留空，使用包内岸线资源；外置时需公开 HTTPS 和允许跨域读取 |
 | `VITE_PHONE_AUTH_ENABLED` | 已验证真实短信服务后才能开启，打包不自动开启 |
 | `VITE_OPERATOR_PHONE_ENABLED` / `VITE_AUTH_CAPTCHA_ENABLED` | 未完成真实能力适配时保持 false |
@@ -42,26 +42,33 @@ pnpm preview:docs
 
 仓库也附带手动 Actions 工作流 `.github/workflows/pages.yml`。如采用此方式，Pages Source 改为 **GitHub Actions**，再手动运行 **Deploy prebuilt docs to GitHub Pages**。它上传已提交的 `docs`，不在 CI 重新构建，不需要复制 `.env.local` 或配置构建密钥。工作流使用完整 tar 保留 Uni 生成的 `assets/..-node_modules-*.js`；不要换成会排除点开头文件的上传方式。两种发布方式任选一种。[GitHub 发布源说明](https://docs.github.com/en/pages/getting-started-with-github-pages/configuring-a-publishing-source-for-your-github-pages-site)
 
-## 高德地图所需的独立代理
+## 高德地图代理
 
-GitHub Pages 只能托管静态文件，无法执行本机 `/_AMapService` 代理。高德 JS SDK 的代理要求一级路径 `/_AMapService`，不能直接使用 Supabase 的多级函数路径。[高德安全密钥与代理说明](https://lbs.amap.com/api/javascript-api-v2/guide/abc/jscode)
+GitHub Pages 只能托管静态文件，无法执行本机 `/_AMapService` 代理。`.env.pages` 现在直接指定现有 `amap-js` 云函数的完整 HTTPS 地址，无需另配代理域名或服务器。真实 JS SDK 验证确认请求会保留整个路径前缀；此前前端将所有多级路径判为无效，导致 SDK 尚未加载就显示地图不可用，现已允许已确认项目的这一精确路径。自定义代理仍要求一级 `/_AMapService`。高德安全码继续只在云函数中注入，不进入浏览器。[高德安全密钥与代理说明](https://lbs.amap.com/api/javascript-api-v2/guide/abc/jscode)
 
-仓库提供 `deploy/amap-proxy.nginx.conf`，放入已有 HTTPS 代理域名的 Nginx server 块；它保留路径后缀、查询参数和真实来源头，转发到已确认项目的 `amap-js`。安全码仍只保存在 Supabase 服务端，浏览器、Nginx 配置和静态包均不需要安全码。
+`deploy/amap-proxy.nginx.conf` 保留为已有 Nginx 的可选部署方式；默认 Pages 配置不依赖它。
 
-还需在 `amap-js` 的 `AMAP_JS_ALLOWED_ORIGINS` 中追加精确来源 **`https://art-si.github.io`**，保留现有本机、局域网和 Capacitor 来源；来源不含仓库路径，也不能写 `*`。高德控制台若启用了域名限制，也需允许实际站点域名。
+`amap-js` 运行时将精确来源 **`https://art-si.github.io`** 与已有 `AMAP_JS_ALLOWED_ORIGINS` 合并，不覆盖现有本机、局域网和 Capacitor 来源，也不允许其他 `github.io` 站点。此次只部署该地图函数，未重设任何 Secret。高德控制台若启用了域名限制，配置对象是网页互动地图使用的 **Web 端（JS API）Key**；“钓友集服务端”Web 服务 Key 的 IP 白名单不接受网页域名。
 
-当前尚未提供代理域名，因此 pages 默认留空；打包会明确提示「交互地图尚不可用」。这不阻止静态页面和其他已配置后端功能访问，也不使用假地图兜底。拿到真实代理后，在 `.env.pages.local` 设置 `VITE_AMAP_SERVICE_HOST`、完成服务器来源配置，再重新打包并真实验证地图。`configure-amap-cloud.mjs` 已补充自动加入 Pages 精确来源，但它会重新设置三个地图 Secret；执行前需在 `.env.local` 完整核对 `AMAP_JS_ALLOWED_ORIGINS`，不能只填新域名而丢失已有来源。本次仅补齐脚本，没有执行远端 Secret 更新。
+Pages 构建现在要求高德公开 JS Key 和有效 HTTPS 代理配置；缺少配置时停止构建并保留原 `docs`，不再只告警后生成地图不可用的发布包。`configure-amap-cloud.mjs` 用于首次配置或主动轮换地图凭据，不是本次修复或日常 Pages 打包的必需步骤。
 
 ## 验证
 
 ```powershell
 pnpm test:docs
+node scripts/test-pages-map-live.mjs --local
+# 推送并等待 GitHub Pages 发布后：
+node scripts/test-pages-map-live.mjs
 ```
 
 从 `docs` 启动普通静态服务，同时验证根路径与 `/supabase-mobile-fishing/`；检查所有生成资源、懒加载页面、Hash 深链刷新、真实模式入口、焦点和弹层。截图覆盖 320/375/440px、横屏、宽屏、深色及 150%/200% 文字，输出到忽略提交的 `artifacts/github-pages/`。
 
 该脚本使用固定浏览器测试坐标通过现有位置门槛，拦截外部网络，只验证静态交付和页面交互；没有模拟登录成功、短信、地图或远端业务数据。它不能替代真实 GPS、GitHub 线上访问、高德代理、真实短信、小程序或原生真机验收。
 
+`test-pages-map-live.mjs` 使用真实高德 SDK、真实底图和地点接口，以及真实公开后端读取。`--local` 仅将 `docs` 静态文件放到浏览器中的 Pages 来源下作发布前验证；无参数时直接访问 GitHub Pages。两种模式都不替换地图/API响应，仅固定浏览器测试坐标，并阻止业务写入。检查底图数据、拖动缩放、搜索、选点、逆地理编码、深链刷新和多种视口，截图与去除查询参数的网络记录位于 `artifacts/pages-map-live/`。
+
 2026-11-24 本机验收：218 个生成文件约 5.04 MiB，根路径及仓库子路径均通过；懒加载、深链刷新、217 个公开资源、焦点归还及上述视口截图通过，没有资源 404 或未捕获浏览器异常。已回看实际截图，布局与现有主题保持一致；检查依据为 Apple `layout.md` 的适配、`accessibility.md` 的大字、`sheets.md` 的关闭规则，以及 UI UX Pro Max 的视口和溢出规则。TypeScript 和独立目录微信构建通过，微信鱼形资源继续使用 `/static` 路径。
 
-独立真实只读探测：以 `https://art-si.github.io` 来源请求已确认项目的公开鱼情接口，返回 HTTP 200 和条目结构；地图代理来源探测返回 HTTP 403 `MAP_ORIGIN_DENIED`（使用无效测试 Key，未调用高德上游）。因此后端公开读取已验证，Pages 地图来源白名单仍待实际配置；没有发送短信、创建账号或写入业务数据。GitHub 线上部署尚未执行。
+2026-11-24 地图修复：`amap-js` v10 已部署并回读比对源文件一致。Pages 来源现在可以通过代理；其他 GitHub 站点仍返回 `MAP_ORIGIN_DENIED`，原本机来源继续被允许。10 项代理契约测试、Edge 类型检查和客户端类型检查通过。
+
+发布前真实地图验收通过：金鸡湖底图及水域范围可见，拖动、双击缩放、8 条真实地点联想、地点选择、手动选点的逆地理编码和深链刷新均通过。320/375/440px、横屏、宽屏、深色大字截图已生成并回看；所有观察到的代理响应为 HTTP 200，没有浏览器异常或业务写入。独立静态验收再次通过根路径与仓库子路径的全部资源、焦点、弹层和大字检查。

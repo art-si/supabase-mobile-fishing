@@ -28,7 +28,9 @@ if (env.VITE_AMAP_SERVICE_HOST) {
     const proxy = new URL(env.VITE_AMAP_SERVICE_HOST)
     if (
       proxy.protocol !== 'https:' ||
-      proxy.pathname !== '/_AMapService' ||
+      (proxy.pathname !== '/_AMapService' &&
+        proxy.href !==
+          'https://jupuypvmgjpnpntfetqv.supabase.co/functions/v1/amap-js/_AMapService') ||
       proxy.search ||
       proxy.hash ||
       proxy.username ||

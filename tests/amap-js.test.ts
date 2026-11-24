@@ -1,6 +1,35 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { createJsMapHandler, type JsMapDependencies } from '../supabase/functions/_shared/amap-js'
+import {
+  createJsMapHandler,
+  jsMapAllowedOrigins,
+  type JsMapDependencies
+} from '../supabase/functions/_shared/amap-js'
+
+test('Pages proxy preserves configured origins and permits only the exact Pages host', async () => {
+  const origins = jsMapAllowedOrigins(
+    ' http://localhost:5179,capacitor://localhost,https://existing.example, '
+  )
+  assert.deepEqual(origins, [
+    'http://localhost:5179',
+    'capacitor://localhost',
+    'https://existing.example',
+    'https://art-si.github.io'
+  ])
+  const f = fixture({ allowedOrigins: origins })
+  for (const origin of origins) {
+    const response = await f.call(undefined, { headers: { Origin: origin } })
+    assert.equal(response.status, 200)
+    assert.equal(response.headers.get('Access-Control-Allow-Origin'), origin)
+  }
+  for (const origin of [
+    'https://other.github.io',
+    'https://art-si.github.io.evil.example',
+    'http://art-si.github.io'
+  ])
+    assert.equal((await f.call(undefined, { headers: { Origin: origin } })).status, 403)
+  assert.equal(f.reservations(), origins.length)
+})
 
 function fixture(overrides: Partial<JsMapDependencies> = {}) {
   const requests: URL[] = []

@@ -32,7 +32,8 @@ try {
   mapReady =
     Boolean(env.VITE_AMAP_KEY?.trim()) &&
     proxy.protocol === 'https:' &&
-    proxy.pathname === '/_AMapService' &&
+    (proxy.pathname === '/_AMapService' ||
+      (proxy.origin === projectUrl && proxy.pathname === '/functions/v1/amap-js/_AMapService')) &&
     !proxy.search &&
     !proxy.hash &&
     !proxy.username &&
@@ -40,11 +41,11 @@ try {
     !proxy.hostname.endsWith('.github.io') &&
     !['localhost', '127.0.0.1', '[::1]'].includes(proxy.hostname)
 } catch {
-  /* A missing production proxy must remain visible in the build report. */
+  /* A Pages release must not silently ship an unavailable interactive map. */
 }
 if (!mapReady)
-  console.warn(
-    '注意：尚未配置高德 HTTPS 代理，静态站点可访问，交互地图尚不可用。见 docs/github-pages.md。'
+  throw new Error(
+    'Pages 构建缺少高德公开 Key 或有效 HTTPS 代理；未更新 docs。见 docs/github-pages.md。'
   )
 
 // Compile into a disposable directory first. Uni/Vite may empty outDir, so never

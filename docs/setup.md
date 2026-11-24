@@ -101,11 +101,11 @@ H5/Capacitor 使用高德 JS API 与 `_AMapService` 服务器代理。代理限�
 
 2026-11-19 已复用相邻 `supabase-mobile-pro/modules/supabase-mobile-tms-driver/.env.local` 的 JS Key 和配对安全码。`node scripts/reuse-amap.mjs` 只迁移高德字段，不修改短信或登录配置，不回写 Pro。公开 Key 在 `VITE_AMAP_KEY`；安全码改名为**非 VITE** 的 `AMAP_SECURITY_JS_CODE`，仅供开发服务器读取。`.env.local` 忽略提交且禁止通过 Vite HTTP 读取。
 
-云端 `amap-js` 已部署，服务器转发目标为 `https://jupuypvmgjpnpntfetqv.supabase.co/functions/v1/amap-js/_AMapService`。高德 JS API 只接受一级路径 `/_AMapService`。部署时将站点的 `/_AMapService/*` 反向代理到上述目标并保留后缀与查询参数，然后将 `VITE_AMAP_SERVICE_HOST` 设为 `https://地图代理域名/_AMapService`。`node scripts/configure-amap-cloud.mjs` 上传高德服务端环境配置并清理临时文件。
+云端 `amap-js` 已部署，HTTPS 代理地址为 `https://jupuypvmgjpnpntfetqv.supabase.co/functions/v1/amap-js/_AMapService`。2026-11-24 已实测高德 JS SDK 可以保留该完整前缀转发，前端和发行检查已允许这一精确地址；GitHub Pages 默认直接使用它，无需独立代理域名。已有 Nginx 也可将一级 `/_AMapService/*` 转发到该目标。云函数将 Pages 精确来源与现有来源合并，安全码只在服务端。详见 [GitHub Pages 配置](github-pages.md)。`node scripts/configure-amap-cloud.mjs` 只用于首次配置或轮换服务端凭据。
 
 这是游客可用的 JS SDK 代理（JSONP 无法携带 Supabase 用户 JWT），**不查询帖子、钓位或私密数据**；原 `amap`、`media-upload`、`account-delete` 的 JWT 校验没有关闭。允许列表限定到本机／当前局域网的 5178、5179、5181 端口，以及 Capacitor 的 `https://localhost`、`capacitor://localhost`。来源头不能代替身份认证，非浏览器可伪造；因此另有固定高德接口／Key 校验、8秒上游超时、1MiB响应限制和数据库原子总限额（每分钟60、UTC每日1000次）。`fishing_js_map_ticket` 仅服务端可执行，计数器不保存 IP、地点或查询词；平台及高德的访问日志仍可能含 URL 参数，应纳入隐私及保留策略。上线正式域名或电脑 IP 改变后，需更新**精确来源列表**，不能改成 `*`。
 
-Vite 开发服务器固定使用同源 `/_AMapService`，预览可用相同路径。正式发行检查要求配置绝对 HTTPS 地址和一级路由。地图测试命令 `node scripts/test-amap-live.mjs` 可通过 `FISHING_H5_URL` 指定已启动服务，使用测试坐标和真实公开地点搜索。`node tests/amap-js-quota.mjs` 验证服务端额度权限，`node scripts/check-amap-bundle.mjs` 扫描构建产物。
+Vite 开发服务器固定使用同源 `/_AMapService`，预览可用相同路径。正式发行检查要求绝对 HTTPS 地址，允许一级代理或上述已确认项目的云函数地址。地图测试命令 `node scripts/test-amap-live.mjs` 可通过 `FISHING_H5_URL` 指定已启动服务，使用测试坐标和真实公开地点搜索。`node tests/amap-js-quota.mjs` 验证服务端额度权限，`node scripts/check-amap-bundle.mjs` 扫描构建产物。
 
 `pwsh -NoProfile -File scripts/test-amap-cloud.ps1` 检查云端入口拒绝非法来源、Key、接口和方法及匿名访问权限。正式上线前需在目标网络核对端到端转发、商用授权和共用配额。
 

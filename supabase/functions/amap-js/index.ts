@@ -1,14 +1,11 @@
-import { createJsMapHandler } from '../_shared/amap-js.ts'
+import { createJsMapHandler, jsMapAllowedOrigins } from '../_shared/amap-js.ts'
 import { service } from '../_shared/http.ts'
 
 Deno.serve(
   createJsMapHandler({
     key: Deno.env.get('AMAP_JS_KEY') || '',
     securityCode: Deno.env.get('AMAP_SECURITY_JS_CODE') || '',
-    allowedOrigins: (Deno.env.get('AMAP_JS_ALLOWED_ORIGINS') || '')
-      .split(',')
-      .map((value) => value.trim())
-      .filter(Boolean),
+    allowedOrigins: jsMapAllowedOrigins(Deno.env.get('AMAP_JS_ALLOWED_ORIGINS') || ''),
     reserve: async () => {
       const response = await service('/rest/v1/rpc/fishing_js_map_ticket', {
         method: 'POST',
