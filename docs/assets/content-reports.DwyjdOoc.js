@@ -1,0 +1,1 @@
+import{h as t,lt as a,m as s,s as o,vt as i}from"./index-OyNmOCvu.js";import{r}from"./media.oiEycrZ_.js";async function n(n,e={}){if(i)throw new a("体验模式不提交真实社区举报",0,"CONTENT_REPORT_DEMO");const m=t.value,c=await s("/rest/v1/rpc/fishing_reports",{method:"POST",data:{action:n,payload:e}});if("item"===n){const t=c.content;t&&await r([t])}return o(m),c}export{n as t};

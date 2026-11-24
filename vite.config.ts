@@ -9,6 +9,10 @@ const applicationRoot = import.meta.dirname
 
 export default defineConfig(async ({ mode }) => {
   const env = loadEnv(mode, applicationRoot, 'VITE_')
+  for (const [name, value] of Object.entries(env)) {
+    if (value && /(?:SECRET|SERVICE_ROLE|PASSWORD|ACCESS_TOKEN|PRIVATE_KEY|SECURITY_JS_CODE|WEB_SERVICE_KEY)/.test(name))
+      throw new Error(`${name} 是服务端配置，不能通过 VITE_* 发布到客户端。`)
+  }
   const key = env.VITE_SUPABASE_KEY?.trim()
   if (key && !key.startsWith('sb_publishable_')) {
     let role: string | undefined

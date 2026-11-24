@@ -1,0 +1,1 @@
+var e={pending:"待审核",published:"已通过审核",rejected:"审核未通过",hidden:"暂时隐藏",deleted:"已删除"},d={published:"通过审核",rejected:"退回内容",hidden:"隐藏内容"};export{e as n,d as t};

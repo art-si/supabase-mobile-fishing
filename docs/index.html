@@ -1,0 +1,224 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <link rel="stylesheet" href="./assets/uni.6f143da8.css">
+
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <meta name="theme-color" content="#0f766e" />
+    <link rel="icon" type="image/png" sizes="64x64" href="./static/brand/favicon.png" />
+    <link rel="apple-touch-icon" sizes="180x180" href="./static/brand/apple-touch-icon.png" />
+    <title>钓友集</title>
+    <style>/* Geometry comes from fish-symbol.svg; these rules only size and animate its layers. */
+.fish-mark {
+  --fish-size: 48px;
+  position: relative;
+  display: inline-block;
+  flex: none;
+  width: var(--fish-size);
+  height: calc(var(--fish-size) * 0.6);
+  color: var(--lake, #0f6b5b);
+  vertical-align: middle;
+}
+.fish-mark__body,
+.fish-mark__tail {
+  position: absolute;
+  inset: 0;
+  display: block;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+}
+.fish-mark__tail {
+  transform-origin: 26% 50%;
+}
+.fish-mark__vector {
+  display: block;
+  width: 100%;
+  height: 100%;
+  overflow: visible;
+}
+.fish-mark--swimming {
+  animation: fish-swim 1.8s ease-in-out infinite;
+}
+.fish-mark--swimming .fish-mark__tail {
+  animation: fish-tail 0.6s ease-in-out infinite alternate;
+}
+@keyframes fish-swim {
+  0%,
+  100% {
+    transform: translateY(1px) rotate(-2deg);
+  }
+  50% {
+    transform: translateY(-2px) rotate(2deg);
+  }
+}
+@keyframes fish-tail {
+  from {
+    transform: scaleX(0.94) rotate(-3deg);
+  }
+  to {
+    transform: scaleX(1) rotate(3deg);
+  }
+}
+@keyframes fish-bubble {
+  0%,
+  15% {
+    opacity: 0;
+    transform: translate(0, 4px) scale(0.65);
+  }
+  55% {
+    opacity: 0.65;
+  }
+  100% {
+    opacity: 0;
+    transform: translate(5px, -9px) scale(1);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .fish-mark--swimming,
+  .fish-mark--swimming .fish-mark__tail,
+  .fish-loading__bubble {
+    animation: none !important;
+  }
+}
+html {
+  color-scheme: light dark;
+}
+.fishing-boot {
+  --lake: #0f6b5b;
+  --mist: #f5f7f5;
+  --ink: #182d27;
+  --reed: #53665f;
+  --on-lake: #fff;
+  box-sizing: border-box;
+  position: fixed;
+  inset: 0;
+  z-index: 9999;
+  display: grid;
+  place-items: center;
+  padding: max(24px, env(safe-area-inset-top, 0px)) max(24px, env(safe-area-inset-right, 0px))
+    max(24px, env(safe-area-inset-bottom, 0px)) max(24px, env(safe-area-inset-left, 0px));
+  background: var(--mist);
+  color: var(--reed);
+  text-align: center;
+  font:
+    0.875rem/1.6 'Noto Sans SC',
+    'PingFang SC',
+    'Microsoft YaHei',
+    system-ui,
+    sans-serif;
+}
+.fishing-boot__content {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  max-width: 100%;
+}
+.fishing-boot__water {
+  position: relative;
+  width: 140px;
+  height: 88px;
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+}
+.fishing-boot__ripple {
+  position: absolute;
+  left: 24px;
+  bottom: 4px;
+  width: 96px;
+  height: 12px;
+  border-bottom: 1px solid var(--lake);
+  border-radius: 50%;
+  opacity: 0.25;
+}
+.fishing-boot__title {
+  font-size: 1.375rem;
+  line-height: 1.4;
+  font-weight: 700;
+  color: var(--ink);
+  letter-spacing: 0.06em;
+}
+.fishing-boot__label {
+  overflow-wrap: anywhere;
+}
+.fishing-boot .fish-loading__bubble {
+  position: absolute;
+  right: 8px;
+  top: 10px;
+  width: 6px;
+  height: 6px;
+  border: 1px solid var(--lake);
+  border-radius: 50%;
+  opacity: 0.5;
+  animation: fish-bubble 1.8s ease-out infinite;
+}
+.fishing-boot .fish-loading__bubble--second {
+  width: 3px;
+  height: 3px;
+  top: -2px;
+  right: 0;
+  animation-delay: 0.65s;
+}
+@media (prefers-color-scheme: dark) {
+  .fishing-boot {
+    --lake: #79ceb8;
+    --mist: #111c19;
+    --ink: #eaf2ee;
+    --reed: #a4b6ae;
+    --on-lake: #10221b;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .fishing-boot .fish-loading__bubble {
+    animation: none;
+  }
+}
+.fishing-boot[data-skin="lake"]{--lake:#0F6B5B;--mist:#F5F7F5;--ink:#182D27;--reed:#53665F;--on-lake:#FFFFFF;}.fishing-boot[data-skin="ocean"]{--lake:#185F8D;--mist:#F4F7FA;--ink:#203244;--reed:#53697B;--on-lake:#FFFFFF;}.fishing-boot[data-skin="stone"]{--lake:#49515B;--mist:#F6F6F7;--ink:#24292F;--reed:#60666F;--on-lake:#FFFFFF;}@media(prefers-color-scheme:dark){.fishing-boot[data-skin="lake"]{--lake:#79CEB8;--mist:#111C19;--ink:#EAF2EE;--reed:#A4B6AE;--on-lake:#10221B;}.fishing-boot[data-skin="ocean"]{--lake:#8FC5ED;--mist:#131C25;--ink:#E9F0F7;--reed:#ACBDCC;--on-lake:#13283A;}.fishing-boot[data-skin="stone"]{--lake:#C7CDD5;--mist:#191C20;--ink:#ECEFF2;--reed:#B4BCC6;--on-lake:#24292F;}}</style>
+    <script type="module" crossorigin src="./assets/index-OyNmOCvu.js"></script>
+    <link rel="modulepreload" crossorigin href="./assets/uni-h5.es.BB788i-H.js">
+    <link rel="modulepreload" crossorigin href="./assets/preload-helper.DbYNonRq.js">
+    <link rel="stylesheet" crossorigin href="./assets/index-B1Snjeeh.css">
+  </head>
+  <body>
+    <div id="app"><div class="fishing-boot" data-skin="lake" role="status" aria-live="polite">
+  <div class="fishing-boot__content">
+    <div class="fishing-boot__water" aria-hidden="true">
+      <div class="fish-mark fish-mark--swimming" style="--fish-size: 80px">
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 160 96" fill="currentColor" class="fish-mark__vector" aria-hidden="true">
+  <title>钓友集 · 鱼与交流</title>
+  <defs>
+    <path id="fish-outline" d="M39 32C53 15 75 7 95 7C126 7 151 22 151 46C151 73 126 87 95 87C85 87 77 86 70 84C68 83.5 66.7 84 65 85L56 91C53 93 51 92 51 89L51.4 80C51.5 78 50.4 76.2 48.4 74.5C43.8 70.6 40.3 66.4 37 62C34 58 31 58 27 61L15 70C10 74 7 72 8 66C11 51 11 43 8 28C7 22 10 20 15 24L28 33C32 36 36 37 39 32Z" />
+    <clipPath id="tail-region"><rect width="44" height="96" /></clipPath>
+    <clipPath id="body-region"><rect x="41" width="119" height="96" /></clipPath>
+    <mask id="fish-details" maskUnits="userSpaceOnUse" x="0" y="0" width="160" height="96">
+      <rect width="160" height="96" fill="white" />
+      <circle cx="119" cy="34" r="6" fill="black" />
+      <circle cx="64" cy="51" r="4" fill="black" />
+      <circle cx="82" cy="51" r="4" fill="black" />
+      <circle cx="100" cy="51" r="4" fill="black" />
+    </mask>
+  </defs>
+  <g id="fish-tail" class="fish-mark__tail" clip-path="url(#tail-region)">
+    <use href="#fish-outline" />
+  </g>
+  <g id="fish-body" clip-path="url(#body-region)" mask="url(#fish-details)">
+    <use href="#fish-outline" />
+  </g>
+</svg>
+
+      </div>
+      <span class="fish-loading__bubble"></span
+      ><span class="fish-loading__bubble fish-loading__bubble--second"></span>
+      <span class="fishing-boot__ripple"></span>
+    </div>
+    <strong class="fishing-boot__title">钓友集</strong>
+    <span class="fishing-boot__label">正在准备鱼情…</span>
+  </div>
+</div>
+</div>
+    <script>try{var saved=JSON.parse(localStorage.getItem("dyj.appearance.skin.v1")||'null');var skin=typeof saved==='string'?saved:saved&&saved.data;if(["lake","ocean","stone"].includes(skin))document.querySelector('.fishing-boot').setAttribute('data-skin',skin)}catch{}</script>
+  </body>
+</html>

@@ -11,9 +11,13 @@ const props = withDefaults(
   }
 )
 const theme = useAppearanceStore()
+let staticRoot = '/static'
+// #ifdef H5
+staticRoot = `${import.meta.env.BASE_URL}static`
+// #endif
 // Platform-safe bitmap layers, exported together from assets/brand/fish-symbol.svg.
 const source = computed(
-  () => `/static/brand/fish-${theme.skin}-${theme.dark ? 'dark' : 'light'}-${props.tone}`
+  () => `${staticRoot}/brand/fish-${theme.skin}-${theme.dark ? 'dark' : 'light'}-${props.tone}`
 )
 </script>
 <template>

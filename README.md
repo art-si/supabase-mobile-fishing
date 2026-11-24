@@ -24,6 +24,8 @@ pnpm dev:demo
 | 目标 | 命令 | 产物／说明 |
 | --- | --- | --- |
 | H5 线上／体验 | `pnpm build:h5` / `pnpm build:demo` | `dist/build/h5` / `dist/demo/h5` |
+| GitHub Pages | `pnpm build:docs` | 生成 `docs/`，保留现有文档；[配置与发布](docs/github-pages.md) |
+| Pages 静态预览／验收 | `pnpm preview:docs` / `pnpm test:docs` | 5182 端口、仓库子路径、纯静态服务与截图检查 |
 | 微信线上／体验 | `pnpm build:mp-weixin` / `pnpm build:mp-demo` | 开发者工具导入对应 `dist/build/mp-weixin` / `dist/demo/mp-weixin` |
 | App 线上／体验资源 | `pnpm native:sync` / `pnpm native:sync:demo` | 同步 `android/` 与 `ios/` |
 | Android | `pnpm android:open` | 需要 Android Studio、SDK、签名 |

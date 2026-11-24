@@ -1,5 +1,7 @@
 # 配置与部署清单
 
+GitHub Pages 的 `docs` 打包、正式环境变量、仓库设置和独立高德代理配置见 [GitHub Pages 静态发布](github-pages.md)。
+
 ## 已确认
 
 - Supabase：`jupuypvmgjpnpntfetqv`，URL `https://jupuypvmgjpnpntfetqv.supabase.co`。

@@ -1,0 +1,49 @@
+name: Deploy prebuilt docs to GitHub Pages
+
+# Optional alternative to Settings > Pages > Deploy from a branch > /docs.
+# Deliberately manual: do not deploy the existing development work automatically.
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: github-pages
+  cancel-in-progress: false
+
+jobs:
+  upload:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+      - name: Require the locally built static site
+        run: |
+          test -f docs/index.html
+          test -f docs/.nojekyll
+          test -f docs/.pages-assets.json
+      # Uni emits dot-prefixed chunks (assets/..-node_modules-*.js).
+      # upload-pages-artifact v3/v4 excludes those, so upload a complete Pages tar.
+      - name: Archive docs including dot-prefixed chunks
+        run: tar --dereference --hard-dereference --directory docs --exclude=.git --exclude=.github -cf "$RUNNER_TEMP/artifact.tar" .
+      - uses: actions/upload-artifact@v4
+        with:
+          name: github-pages
+          path: ${{ runner.temp }}/artifact.tar
+          retention-days: 1
+          if-no-files-found: error
+  deploy:
+    needs: upload
+    runs-on: ubuntu-latest
+    permissions:
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Deploy
+        id: deployment
+        uses: actions/deploy-pages@v4

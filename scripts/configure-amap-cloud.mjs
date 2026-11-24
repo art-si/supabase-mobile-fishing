@@ -28,13 +28,23 @@ for (const entries of Object.values(networkInterfaces()))
       /^(10\.|192\.168\.|172\.(1[6-9]|2\d|3[01])\.)/.test(entry.address)
     )
       hosts.add(entry.address)
+const pagesOrigin = 'https://art-si.github.io'
 const origins = ['https://localhost', 'capacitor://localhost']
 for (const host of hosts)
-  for (const port of [5178, 5179, 5181]) origins.push(`http://${host}:${port}`)
+  for (const port of [5178, 5179, 5181, 5182]) origins.push(`http://${host}:${port}`)
 const values = {
   AMAP_JS_KEY: env.VITE_AMAP_KEY,
   AMAP_SECURITY_JS_CODE: env.AMAP_SECURITY_JS_CODE,
-  AMAP_JS_ALLOWED_ORIGINS: env.AMAP_JS_ALLOWED_ORIGINS || origins.join(',')
+  AMAP_JS_ALLOWED_ORIGINS: [
+    ...new Set([
+      ...(env.AMAP_JS_ALLOWED_ORIGINS
+        ? env.AMAP_JS_ALLOWED_ORIGINS.split(',')
+            .map((value) => value.trim())
+            .filter(Boolean)
+        : origins),
+      pagesOrigin
+    ])
+  ].join(',')
 }
 const temporary = resolve(root, `.env.amap-upload.${randomUUID()}.local`)
 if (dirname(temporary) !== resolve(root)) throw new Error('Invalid temporary target')
@@ -77,7 +87,9 @@ try {
   console.log(
     'Uploaded only AMAP_JS_KEY, AMAP_SECURITY_JS_CODE, AMAP_JS_ALLOWED_ORIGINS to the confirmed fishing project.'
   )
-  console.log('The browser proxy must use the first-level /_AMapService route. Secret values withheld.')
+  console.log(
+    'The browser proxy must use the first-level /_AMapService route. Secret values withheld.'
+  )
 } finally {
   if (created) {
     unlinkSync(temporary)
