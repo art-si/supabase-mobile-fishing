@@ -1,4 +1,5 @@
 import { ref, shallowRef, watch, onScopeDispose } from 'vue'
+import { createLatestRequest } from '@mobile-core/latest-request'
 import { errorText } from '@/domain/rules'
 import { sessionScope } from '@/services/session'
 import { ApiError } from '@/services/http'
@@ -6,25 +7,25 @@ export function useResource<T>(loader: () => Promise<T>, initial: T) {
   const data = shallowRef(initial)
   const loading = ref(false)
   const error = ref('')
-  let version = 0
+  const request = createLatestRequest()
   async function load() {
-    const current = ++version
+    const isCurrent = request.start()
     loading.value = true
     error.value = ''
     try {
       const result = await loader()
-      if (current === version) data.value = result
+      if (isCurrent()) data.value = result
     } catch (e) {
-      if (current === version) {
+      if (isCurrent()) {
         error.value = errorText(e)
         if (e instanceof ApiError && [401, 403, 404].includes(e.status)) data.value = initial
       }
     } finally {
-      if (current === version) loading.value = false
+      if (isCurrent()) loading.value = false
     }
   }
   function invalidate() {
-    version++
+    request.invalidate()
     loading.value = false
   }
   watch(
