@@ -548,7 +548,7 @@ try {
       assert.equal(await code(page).getAttribute('maxlength'), '6')
       assert.equal(await consent(page).getAttribute('aria-checked'), 'true')
       assert.equal(
-        await page.locator('.login-checkbox-component .wd-checkbox.is-checked').count(),
+        await consent(page).locator('.wd-checkbox.is-checked').count(),
         1
       )
       await page.getByText('我已阅读并同意', { exact: true }).click()

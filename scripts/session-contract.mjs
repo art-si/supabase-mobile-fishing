@@ -41,17 +41,9 @@ export async function sessionContract({
     count: null,
     media: []
   }
-  const conversation = {
-    id: 'c1111111-1111-4111-8111-111111111111',
-    peer: profiles.B,
-    last_message: '仅A可见的历史消息',
-    last_at: '2026-11-19T00:00:00Z',
-    unread: 0,
-    can_send: true
-  }
   let serial = 0,
     libraryGate,
-    sendGate,
+    profileSaveGate,
     logoutGate,
     rejectA = false,
     failLogout = false
@@ -115,8 +107,8 @@ export async function sessionContract({
         case 'feed':
         case 'spots':
           return reply({ items: [], next: null })
-        case 'library': {
-          const result = { trips: who === 'A' ? [trip] : [], posts: [], spots: [] }
+        case 'library_trips': {
+          const result = { items: who === 'A' ? [trip] : [], next: null }
           if (who === 'A' && libraryGate) await libraryGate.promise
           return reply(result)
         }
@@ -128,43 +120,15 @@ export async function sessionContract({
             friend: false,
             blocked: false
           })
-        case 'social':
-          return reply({
-            conversations: who === 'A' ? [conversation] : [],
-            friends: [],
-            requests: []
-          })
-        case 'messages':
-          return who === 'A'
-            ? reply([
-                {
-                  id: 'm1',
-                  client_id: 'client-m1',
-                  conversation_id: conversation.id,
-                  sender_id: ids.B,
-                  sequence: 1,
-                  body: conversation.last_message,
-                  created_at: '2026-11-19T00:00:00Z'
-                }
-              ])
-            : reply({ message: 'FORBIDDEN' }, 403)
         default:
           return reply({ message: 'NOT_FOUND' }, 404)
       }
     }
     if (url.pathname === '/rest/v1/rpc/fishing_write') {
       if (!who) return reply({ message: 'NOT_AUTHENTICATED' }, 401)
-      if (body.action === 'send_message') {
-        if (sendGate) await sendGate.promise
-        return reply({
-          id: 'm2',
-          client_id: body.payload.client_id,
-          conversation_id: conversation.id,
-          sender_id: ids[who],
-          sequence: 2,
-          body: body.payload.body,
-          created_at: '2026-11-19T00:00:01Z'
-        })
+      if (body.action === 'update_profile') {
+        if (profileSaveGate) await profileSaveGate.promise
+        return reply({ id: ids[who] })
       }
       return reply({ id: body.payload?.id || 'saved-fixture' })
     }
@@ -221,14 +185,14 @@ export async function sessionContract({
     await go('/pages/mine/library?type=trips')
     await visible(trip.title)
     const libraryBefore = requests.filter(
-      (r) => r.body.action === 'library' && r.who === 'A'
+      (r) => r.body.action === 'library_trips' && r.who === 'A'
     ).length
     libraryGate = deferred()
     await go('/pages/home/index')
     await go('/pages/mine/library?type=trips')
     await waitUntil(
       () =>
-        requests.filter((r) => r.body.action === 'library' && r.who === 'A').length > libraryBefore
+        requests.filter((r) => r.body.action === 'library_trips' && r.who === 'A').length > libraryBefore
     )
     await login(other, 'B')
     await visible('账号已在另一页面切换，旧账号内容已清空。')
@@ -274,24 +238,26 @@ export async function sessionContract({
       'expired authorization hides private fields, retains the owner draft and restores it only for that owner'
     )
 
-    await go(`/pages/chat/index?id=${conversation.id}`)
-    await visible(conversation.last_message)
-    sendGate = deferred()
-    await page.locator('.chat-input textarea').fill('A发送中的私信')
-    await page.getByRole('button', { name: '发送', exact: true }).click()
-    await waitUntil(() => requests.some((r) => r.body.action === 'send_message'))
+    await go('/pages/mine/profile')
+    await page.waitForFunction(() => document.querySelector('input[aria-label="昵称"]')?.value === '账号A（接口测试）')
+    await fill('一句话介绍自己', '账号A尚未保存的介绍')
+    profileSaveGate = deferred()
+    await page.getByRole('button', { name: '保存资料', exact: true }).click()
+    await waitUntil(() => requests.some((r) =>
+      r.who === 'A' && r.body.action === 'update_profile' && r.body.payload.bio === '账号A尚未保存的介绍'))
     await login(other, 'B')
-    sendGate.release()
-    sendGate = undefined
-    await page.getByText('你无权读取这个会话', { exact: true }).waitFor()
-    assert.equal(await page.locator('.chat-turn').count(), 0)
-    assert.equal(await page.locator('.chat-input textarea').inputValue(), '')
+    await page.waitForFunction(() => document.querySelector('input[aria-label="昵称"]')?.value === '账号B（接口测试）')
+    profileSaveGate.release()
+    profileSaveGate = undefined
+    await page.waitForFunction(() => !document.querySelector('textarea[aria-label="一句话介绍自己"]')?.disabled)
+    assert.ok(new URL(page.url()).hash.startsWith('#/pages/mine/profile'))
+    assert.equal(await page.locator('textarea[aria-label="一句话介绍自己"]').inputValue(), profiles.B.bio)
     assert.equal(
-      requests.filter((r) => r.who === 'B' && r.body.action === 'send_message').length,
+      requests.filter((r) => r.who === 'B' && r.body.action === 'update_profile').length,
       0
     )
     pass(
-      'account switch removes old chat and pending sends; delayed delivery never reappears under B'
+      'switching accounts while saving a profile preserves the new editor and never writes A’s changes as B'
     )
 
     await login(other, 'A')
@@ -416,7 +382,7 @@ export async function sessionContract({
     pass('session contract made no external service requests and exposed no uncaught errors')
   } finally {
     libraryGate?.release()
-    sendGate?.release()
+    profileSaveGate?.release()
     logoutGate?.release()
     for (const gate of refreshGates.values()) gate.release()
     await other.close()

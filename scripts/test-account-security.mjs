@@ -498,10 +498,10 @@ try {
       )
       const alignment = await page.evaluate(() => {
         const a = document
-          .querySelector('.login-remember .login-checkbox-component')
+          .querySelector('.login-remember .mobile-checkbox__indicator')
           .getBoundingClientRect()
         const b = document
-          .querySelector('.login-consent .login-checkbox-component')
+          .querySelector('.login-consent .mobile-checkbox__indicator')
           .getBoundingClientRect()
         const remember = document.querySelector('.login-remember').getBoundingClientRect()
         const forgot = document.querySelector('.login-forgot').getBoundingClientRect()
