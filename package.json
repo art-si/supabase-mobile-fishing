@@ -59,7 +59,7 @@
     "libheif-js": "1.23.5",
     "mediabunny": "1.66.2",
     "pbf": "5.2.0",
-    "supabase-mobile-pro": "https://gitee.com/art-si/supabase-mobile-pro/repository/archive/3b61ba1c4cfc07baf8f3ed88fc1e42f6ed2b42aa.tar.gz"
+    "supabase-mobile-pro": "https://gitee.com/art-si/supabase-mobile-pro/repository/archive/3d54612c46a1dd538e2f7941a1a9b5a09f1fd7d8.tar.gz"
   },
   "devDependencies": {
     "@capacitor/ios": "8.6.2",

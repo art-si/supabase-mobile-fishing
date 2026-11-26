@@ -11,6 +11,7 @@ import MobileSelect from '@mobile-core/components/MobileSelect.vue'
 import MobileSegmented from '@mobile-core/components/MobileSegmented.vue'
 import MobileAction from '@mobile-core/components/MobileAction.vue'
 import MobileMediaUploader from '@mobile-core/components/MobileMediaUploader.vue'
+import { preserveMediaPickerPage, resumeMediaPickerPage } from '@mobile-core/media-picker-session'
 import MobileMultiChoice from '@mobile-core/components/MobileMultiChoice.vue'
 import MobileComboField from '@mobile-core/components/MobileComboField.vue'
 import MobileDateTimeField from '@mobile-core/components/MobileDateTimeField.vue'
@@ -184,6 +185,9 @@ watch(
 )
 onShow(() => {
   pageVisible.value = true
+  // #ifdef MP-WEIXIN
+  if (resumeMediaPickerPage()) return
+  // #endif
   if (!available.value) return
   const result = consumeSelection(requestId.value)
   if (result) {
@@ -198,6 +202,9 @@ onShow(() => {
     void resolveStoredLocation()
 })
 onHide(() => {
+  // #ifdef MP-WEIXIN
+  if (preserveMediaPickerPage()) return
+  // #endif
   pageVisible.value = false
   invalidateLocation()
 })

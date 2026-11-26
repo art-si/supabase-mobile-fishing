@@ -58,7 +58,7 @@ const data = {
   }))
 }
 if (photoSuite)
-  data.photo = (await readFile('src/static/brand/logo-horizontal.png')).toString('base64')
+  data.photo = (await readFile('src/static/web/brand/logo-horizontal.png')).toString('base64')
 for (const actor of data.accounts)
   await db.query('insert into auth.users(id) values($1)', [actor.session.user.id])
 if (moderationSuite || notificationSuite || updatesSuite) {

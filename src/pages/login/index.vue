@@ -5,6 +5,7 @@ import FishingShell from '@/components/FishingShell.vue'
 import FishMark from '@/components/FishMark.vue'
 import MobileField from '@mobile-core/components/MobileField.vue'
 import MobileAction from '@mobile-core/components/MobileAction.vue'
+import MobileCheckbox from '@mobile-core/components/MobileCheckbox.vue'
 import { revealControl, nativeFieldOf, type ElementTarget } from '@mobile-core/form-focus'
 import { useAuthStore } from '@/stores/auth'
 import { config, isDemo, backendReady } from '@/config'
@@ -459,25 +460,17 @@ function switchPassword() {
                   required
                 />
                 <view class="login-password-options">
-                  <MobileAction
-                    class="login-choice login-remember"
-                    role="checkbox"
+                  <MobileCheckbox
+                    class="login-remember"
                     :aria-label="rememberLoginLabel()"
-                    :aria-checked="remember"
+                    :model-value="remember"
+                    checked-color="var(--lake)"
+                    unchecked-color="var(--reed)"
                     :disabled="busy"
-                    @click="toggleRemember"
+                    @update:model-value="toggleRemember"
                   >
-                    <view class="login-checkbox-component" aria-hidden="true"
-                      ><wd-checkbox
-                        :model-value="remember"
-                        type="circle"
-                        :readonly="true"
-                        checked-color="var(--lake)"
-                        unchecked-color="var(--reed)"
-                        custom-style="--wot-checkbox-icon-size:18px;pointer-events:none;"
-                    /></view>
                     <text class="caption login-choice-label">{{ rememberLoginLabel() }}</text>
-                  </MobileAction>
+                  </MobileCheckbox>
                   <MobileAction
                     v-if="canSendSms"
                     class="text-action login-forgot"
@@ -502,29 +495,19 @@ function switchPassword() {
 
             <view class="login-agreement">
               <view class="login-consent-row">
-                <MobileAction
+                <MobileCheckbox
                   id="login-consent"
-                  class="login-choice login-consent"
-                  role="checkbox"
-                  :aria-checked="agreed"
+                  class="login-consent"
+                  v-model="agreed"
                   :aria-describedby="consentError ? 'consent-error' : undefined"
                   :aria-invalid="Boolean(consentError)"
                   aria-label="同意用户协议与隐私说明"
+                  checked-color="var(--lake)"
+                  unchecked-color="var(--reed)"
                   :disabled="busy"
-                  @click="agreed = !agreed"
                 >
-                  <view class="login-checkbox-component" aria-hidden="true">
-                    <wd-checkbox
-                      :model-value="agreed"
-                      type="circle"
-                      :readonly="true"
-                      checked-color="var(--lake)"
-                      unchecked-color="var(--reed)"
-                      custom-style="--wot-checkbox-icon-size:18px;pointer-events:none;"
-                    />
-                  </view>
                   <text class="caption login-consent-label">我已阅读并同意</text>
-                </MobileAction>
+                </MobileCheckbox>
                 <view class="login-consent-copy">
                   <MobileAction
                     class="text-action"
@@ -775,25 +758,6 @@ function switchPassword() {
   flex-wrap: wrap;
   gap: 0 8px;
   min-width: 0;
-}
-.login-choice {
-  display: inline-flex;
-  align-items: center;
-  justify-content: flex-start;
-  gap: 10px;
-  flex: 0 1 auto;
-  min-width: 48px;
-  min-height: 48px;
-  padding: 0;
-  background: transparent;
-}
-.login-checkbox-component {
-  display: grid;
-  place-items: center;
-  width: 18px;
-  height: 18px;
-  flex: 0 0 18px;
-  pointer-events: none;
 }
 .login-consent-copy {
   display: flex;

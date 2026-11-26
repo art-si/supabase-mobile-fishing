@@ -3,17 +3,18 @@ import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
 import { runInNewContext } from 'node:vm'
 import ts from 'typescript'
+import { nativePicker } from './fixtures/native-media-picker'
 import { userErrorText } from '../src/domain/user-errors'
 
-function adapter(options: { native?: boolean; plugin?: boolean; mini?: boolean; failure?: unknown; blob?: Blob; responseOk?: boolean; capture?: () => Promise<unknown>; miniCapture?: () => Promise<unknown> } = {}) {
+function adapter(options: { native?: boolean; plugin?: boolean; mini?: boolean; failure?: unknown; blob?: Blob; responseOk?: boolean; capture?: () => Promise<unknown> } = {}) {
   let source = readFileSync(new URL('../src/platforms/comment-camera.ts', import.meta.url), 'utf8')
   source = source.replace(options.mini ? /\/\/ #ifndef MP-WEIXIN[\s\S]*?\/\/ #endif/g : /\/\/ #ifdef MP-WEIXIN[\s\S]*?\/\/ #endif/g, '')
-  const exports: any = {}, requests: any[] = [], imports: string[] = [], released: string[] = [], miniCalls: any[] = [], blobs: Blob[] = []
-  const hideListeners = new Set<() => void>(), showListeners = new Set<() => void>()
+  const exports: any = {}, requests: any[] = [], imports: string[] = [], released: string[] = [], blobs: Blob[] = []
+  const picker = nativePicker()
   let page = { route: 'pages/post/detail' }
   const modules: Record<string, unknown> = {
     '@capacitor/core': { Capacitor: { isNativePlatform: () => options.native ?? false, isPluginAvailable: () => options.plugin ?? true } },
-    '@mobile-core/media-choose': { chooseMediaFiles: async (...args: any[]) => { miniCalls.push(args); return options.miniCapture ? options.miniCapture() : [{ path: 'wxfile://captured.jpg', kind: 'image', size: 456 }] } },
+    '@mobile-core/media-choose': { chooseMediaFiles: picker.choose },
     '@capacitor/camera': {
       Camera: { getPhoto: async (input: unknown) => { requests.push(input); if (options.failure) throw options.failure; return options.capture ? options.capture() : { webPath: 'capacitor://localhost/_capacitor_file_/capture.jpeg', format: 'jpeg' } } },
       CameraSource: { Camera: 'CAMERA' }, CameraResultType: { Uri: 'uri' }, CameraDirection: { Rear: 'REAR' }
@@ -21,11 +22,13 @@ function adapter(options: { native?: boolean; plugin?: boolean; mini?: boolean; 
   }
   runInNewContext(ts.transpileModule(source, { compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 } }).outputText, {
     exports, require: (id: string) => { imports.push(id); assert.ok(id in modules, id); return modules[id] }, Blob, Uint8Array, getCurrentPages: () => [page],
-    uni: { onAppHide: (fn: () => void) => hideListeners.add(fn), offAppHide: (fn: () => void) => hideListeners.delete(fn), onAppShow: (fn: () => void) => showListeners.add(fn), offAppShow: (fn: () => void) => showListeners.delete(fn) },
     fetch: async () => ({ ok: options.responseOk ?? true, blob: async () => options.blob ?? new Blob([new Uint8Array([255, 216, 255, 224, 0, 16])], { type: 'application/octet-stream' }) }),
     URL: { createObjectURL: (blob: Blob) => { blobs.push(blob); return 'blob:captured' }, revokeObjectURL: (url: string) => released.push(url) }
   })
-  return { api: exports, requests, imports, released, miniCalls, blobs, setPage: (next: { route: string }) => { page = next }, page: () => page, hide: () => hideListeners.forEach(fn => fn()), show: () => showListeners.forEach(fn => fn()), listeners: () => hideListeners.size + showListeners.size }
+  return {
+    api: exports, requests, imports, released, picker, blobs, page: () => page,
+    setPage(next: { route: string }) { page = next; picker.setPage(next) }
+  }
 }
 
 test('plain H5 hides camera and defensively refuses capture without loading or invoking Camera', async () => {
@@ -79,9 +82,13 @@ test('camera rejects unavailable plugins, unreadable images and oversized or uns
 test('mini program camera delegates one image to the existing real chooseMedia adapter', async () => {
   const state = adapter({ mini: true })
   assert.equal(state.api.canUseCamera(), true)
-  assert.equal((await state.api.chooseCommentCamera())[0].path, 'wxfile://captured.jpg')
-  const [count, kinds, source] = state.miniCalls[0]
-  assert.equal(count, 1); assert.deepEqual(Array.from(kinds), ['image']); assert.equal(source, 'camera')
+  const pending = state.api.chooseCommentCamera()
+  const [call] = state.picker.calls
+  assert.equal(call.count, 1)
+  assert.deepEqual(Array.from(call.mediaType), ['image'])
+  assert.deepEqual(Array.from(call.sourceType), ['camera'])
+  call.success({ tempFiles: [{ tempFilePath: 'wxfile://captured.jpg', fileType: 'image', size: 456 }] })
+  assert.equal((await pending)[0].path, 'wxfile://captured.jpg')
   assert.equal(state.imports.includes('@capacitor/camera'), false)
   assert.equal(state.api.isCommentCameraHandoff(), false)
 })
@@ -116,30 +123,33 @@ test('native capture never transfers its image to another page instance or route
   }
 })
 
-test('mini camera preserves only an AppHide-confirmed request and removes its listeners after success', async () => {
-  let finish!: (files: unknown) => void
-  const pending = new Promise(resolve => { finish = resolve })
-  const state = adapter({ mini: true, miniCapture: () => pending })
+test('mini camera shares the pending page with the album and consumes its return only once', async () => {
+  const state = adapter({ mini: true })
+  const { picker } = state
   const result = state.api.chooseCommentCamera()
-  assert.equal(state.api.isCommentCameraHandoff(), false, 'ordinary route hide is not an app-background handoff')
-  assert.equal(state.listeners(), 2)
-  state.hide(); assert.equal(state.api.isCommentCameraHandoff(), true)
-  state.show(); assert.equal(state.api.isCommentCameraHandoff(), false)
-  finish([{ path: 'wxfile://captured.jpg', kind: 'image', size: 456 }])
+  await assert.rejects(picker.choose(1, ['image'], 'album'), (error: any) => error.code === 'MEDIA_SELECTION_IN_PROGRESS')
+  assert.equal(picker.calls.length, 1)
+  picker.hide()
+  assert.equal(picker.session.preserveMediaPickerPage(), true)
+  picker.calls[0].success({ tempFiles: [{ tempFilePath: 'wxfile://captured.jpg', fileType: 'image', size: 456 }] })
   assert.equal((await result).length, 1)
-  assert.equal(state.api.isCommentCameraHandoff(), false); assert.equal(state.listeners(), 0)
+  assert.equal(picker.session.resumeMediaPickerPage(), true)
+  assert.equal(picker.session.resumeMediaPickerPage(), false)
+  assert.equal(picker.listeners(), 0)
 })
 
-test('mini camera discards another page result and always clears background listeners on rejection', async () => {
-  let finish!: (files: unknown) => void, released = 0
-  const pending = new Promise(resolve => { finish = resolve })
-  const state = adapter({ mini: true, miniCapture: () => pending })
-  const result = state.api.chooseCommentCamera()
-  state.hide(); state.setPage({ route: 'pages/post/detail' })
-  assert.equal(state.api.isCommentCameraHandoff(), false)
-  finish([{ path: 'wxfile://captured.jpg', kind: 'image', size: 456, release: () => { released++ } }])
-  assert.equal((await result).length, 0); assert.equal(released, 1); assert.equal(state.listeners(), 0)
-  const denied = adapter({ mini: true, miniCapture: async () => { throw new Error('MEDIA_SELECTION_FAILED') } })
-  await assert.rejects(denied.api.chooseCommentCamera(), /MEDIA_SELECTION_FAILED/)
-  assert.equal(denied.api.isCommentCameraHandoff(), false); assert.equal(denied.listeners(), 0)
+test('a replacement page can select while the previous page waits; late results stay on their owner', async () => {
+  const state = adapter({ mini: true })
+  const { picker } = state
+  const first = state.api.chooseCommentCamera()
+  picker.hide()
+  state.setPage({ route: 'pages/post/detail' })
+  assert.equal(picker.session.preserveMediaPickerPage(), false)
+  const current = state.api.chooseCommentCamera()
+  picker.calls[0].success({ tempFiles: [{ tempFilePath: 'wxfile://old.jpg', fileType: 'image', size: 123 }] })
+  assert.equal((await first).length, 0)
+  picker.calls[1].fail({ errMsg: 'chooseMedia:fail authorize denied' })
+  await assert.rejects(current, (error: any) => error.code === 'MEDIA_PERMISSION_DENIED' && /微信设置/.test(userErrorText(error)))
+  assert.equal(picker.session.preserveMediaPickerPage(), false)
+  assert.equal(picker.listeners(), 0)
 })

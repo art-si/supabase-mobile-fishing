@@ -190,7 +190,7 @@
       "sha256": "336d80bb6ac69a5c1e7cb422c6476e1b0c1b85904373b28546122df50d6fa089"
     },
     {
-      "path": "src/static/brand/logo-horizontal.png",
+      "path": "src/static/web/brand/logo-horizontal.png",
       "width": 864,
       "height": 288,
       "sha256": "2487000c9cfd48e67c3a45b8980881b996b3cc6c5c49bf6dab9f3b3a5e1f2385"

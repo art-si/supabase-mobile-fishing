@@ -13,6 +13,7 @@ import DiscussionComment from '@/components/DiscussionComment.vue'
 import DiscussionLikes from '@/components/DiscussionLikes.vue'
 import { canRetryPhoto, uploadPhoto, uploadVideo } from '@/services/media'
 import { canUseCamera, chooseCommentCamera, isCommentCameraHandoff } from '@/platforms/comment-camera'
+import { preserveMediaPickerPage } from '@mobile-core/media-picker-session'
 import { revealControl } from '@mobile-core/form-focus'
 import { useAuthStore } from '@/stores/auth'
 import { read, write } from '@/services/repository'
@@ -94,7 +95,7 @@ watch(
 )
 onHide(()=>{
   // #ifdef MP-WEIXIN
-  if(isCommentCameraHandoff())return
+  if(preserveMediaPickerPage())return
   // #endif
   // #ifdef H5
   // The native camera temporarily backgrounds the web view; route exits still invalidate.

@@ -1,20 +1,8 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { readFileSync } from 'node:fs'
-import { resolve } from 'node:path'
-import { runInNewContext } from 'node:vm'
-import ts from 'typescript'
-import { resolveMobileProRoot } from '../scripts/mobile-pro.mjs'
+import { nativePicker } from './fixtures/native-media-picker'
+import { userErrorText } from '../src/domain/user-errors'
 
-function nativePicker() {
-  const file = resolve(resolveMobileProRoot(), 'packages/mobile-core/src/media-choose.ts')
-  // Match the actual non-H5 branch; this is an API contract, not a native device test.
-  const source = readFileSync(file, 'utf8').replace(/\/\/ #ifdef H5[\s\S]*?\/\/ #endif/g, '')
-  const exports: any = {}, calls: any[] = []
-  runInNewContext(ts.transpileModule(source, { compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 } }).outputText,
-    { exports, uni: { chooseMedia: (options: any) => calls.push(options) } })
-  return { choose: exports.chooseMediaFiles, calls }
-}
 test('native camera asks for exactly one image from the camera and retains genuine file metadata', async () => {
   const picker = nativePicker(), result = picker.choose(6, ['image', 'video'], 'camera'), call = picker.calls[0]
   assert.equal(call.count, 1)
@@ -44,7 +32,20 @@ test('native chooser cancellation resolves empty without a visible error', async
 test('native permission/provider failure is distinguishable from user cancellation', async () => {
   const picker = nativePicker(), result = picker.choose(2, ['image', 'video'], 'album')
   picker.calls[0].fail({ errMsg: 'chooseMedia:fail authorize denied' })
-  await assert.rejects(result, (error: any) => error.code === 'MEDIA_SELECTION_FAILED')
+  await assert.rejects(result, (error: any) => error.code === 'MEDIA_PERMISSION_DENIED' && /微信设置/.test(userErrorText(error)))
+})
+test('provider and privacy errors retain their own recovery path', async () => {
+  const picker = nativePicker()
+  for (const [detail, code] of [
+    ['chooseMedia:fail provider unavailable', 'MEDIA_SELECTION_FAILED'],
+    ['chooseMedia:fail privacy authorization incomplete', 'MEDIA_PRIVACY_REQUIRED'],
+    ['chooseMedia:fail api scope is not declared in the privacy agreement', 'MEDIA_PRIVACY_UNDECLARED']
+  ]) {
+    const pending = picker.choose(1, ['image'], 'album')
+    picker.calls.at(-1).fail({ errMsg: detail, errCode: 112 })
+    await assert.rejects(pending, (error: any) => error.code === code && error.nativeCode === 112 && !userErrorText(error).includes(detail))
+    assert.equal(picker.listeners(), 0)
+  }
 })
 test('no chooser opens without capacity or when a video-only consumer asks to take a photo', async () => {
   const picker = nativePicker()

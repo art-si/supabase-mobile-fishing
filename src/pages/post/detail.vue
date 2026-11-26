@@ -10,6 +10,7 @@ import PostComments from './components/PostComments.vue'
 import MobileLoadError from '@mobile-core/components/MobileLoadError.vue'
 import MobileLoadingStatus from '@/components/FishingLoadingStatus.vue'
 import { useResource } from '@/composables/useResource'
+import { preserveMediaPickerPage, resumeMediaPickerPage } from '@mobile-core/media-picker-session'
 import { useMutation } from '@/composables/useMutation'
 import { useLoginAction } from '@/composables/useLoginAction'
 import { useAuthStore } from '@/stores/auth'
@@ -25,7 +26,12 @@ const { data, loading, error, load, invalidate } = useResource(
   null as PostDetail | null
 )
 const mutation = useMutation()
-onHide(invalidate)
+onHide(() => {
+  // #ifdef MP-WEIXIN
+  if (preserveMediaPickerPage()) return
+  // #endif
+  invalidate()
+})
 // A failed permission/read must not reappear from stale state when the user retries.
 watch(
   error,
@@ -39,6 +45,9 @@ onLoad((options) => {
   void load()
 })
 onShow(() => {
+  // #ifdef MP-WEIXIN
+  if (resumeMediaPickerPage()) return
+  // #endif
   if (id.value) void load()
 })
 type Reaction = { id: string; kind: 'like' | 'bookmark'; enabled: boolean }

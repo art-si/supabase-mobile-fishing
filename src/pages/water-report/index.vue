@@ -14,6 +14,7 @@ import MobileSelect from '@mobile-core/components/MobileSelect.vue'
 import MobileConfirmDialog from '@mobile-core/components/MobileConfirmDialog.vue'
 import MobileDateTimeField from '@mobile-core/components/MobileDateTimeField.vue'
 import MobileMediaUploader from '@mobile-core/components/MobileMediaUploader.vue'
+import { preserveMediaPickerPage, resumeMediaPickerPage } from '@mobile-core/media-picker-session'
 import MobileSegmented from '@mobile-core/components/MobileSegmented.vue'
 import ReportRecords from '@/components/ReportRecords.vue'
 import type { MediaUploadEntry } from '@mobile-core/media-upload'
@@ -132,6 +133,9 @@ watch(()=>[draft.value.province,draft.value.city,draft.value.district],(_next,pr
 watch(()=>[draft.value.province,draft.value.city,draft.value.district,draft.value.location_label,draft.value.longitude,draft.value.latitude],()=>{if(!applying)formVersion++},{flush:'sync'})
 watch(publicRegion,()=>{if(!applying)formVersion++}, {deep:true,flush:'sync'})
 onHide(() => {
+  // #ifdef MP-WEIXIN
+  if (preserveMediaPickerPage()) return
+  // #endif
   active.value = false
   cancelLocation()
   copyOpen.value = false
@@ -250,6 +254,9 @@ watch(
 )
 onShow(() => {
   active.value = true
+  // #ifdef MP-WEIXIN
+  if (resumeMediaPickerPage()) return
+  // #endif
   if (!available.value) return
   if (id.value) {
     void loadReport()

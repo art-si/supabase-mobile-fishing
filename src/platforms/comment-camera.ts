@@ -20,8 +20,7 @@ function cameraError(code: string): Error & { code: string } {
 }
 
 type CameraPage = { page: unknown; route: string }
-type CameraHandoff = CameraPage & { kind: 'native' | 'mini'; background: boolean }
-let handoff: CameraHandoff | undefined
+let handoff: CameraPage | undefined
 function currentCameraPage(): CameraPage | undefined {
   if (typeof getCurrentPages !== 'function') return undefined
   const pages = getCurrentPages(), page = pages[pages.length - 1]
@@ -32,41 +31,23 @@ function sameCameraPage(snapshot: CameraPage): boolean {
   return Boolean(current && current.page === snapshot.page && current.route === snapshot.route)
 }
 
-/** A camera handoff is scoped to its original page; mini programs also require App.onHide. */
+/** Capacitor backgrounds the web view while its native camera is open. */
 export function isCommentCameraHandoff(): boolean {
-  if (!handoff || !sameCameraPage(handoff)) return false
-  return isMiniProgram()
-    ? handoff.kind === 'mini' && handoff.background
-    : Capacitor.isNativePlatform() && handoff.kind === 'native'
+  return Boolean(handoff && sameCameraPage(handoff) && Capacitor.isNativePlatform())
 }
 
 /** Ownership of the returned object URL passes to MobileMediaUploader's release lifecycle. */
 export async function chooseCommentCamera(): Promise<ChosenMedia[]> {
   if (isMiniProgram()) {
-    const page = currentCameraPage()
-    if (!page || handoff) throw cameraError('CAMERA_UNAVAILABLE')
-    const request: CameraHandoff = { ...page, kind: 'mini', background: false }
-    const hide = () => { if (handoff === request && sameCameraPage(page)) request.background = true }
-    const show = () => { request.background = false }
-    handoff = request
-    try {
-      uni.onAppHide(hide)
-      uni.onAppShow(show)
-      const files = await chooseMediaFiles(1, ['image'], 'camera')
-      if (!sameCameraPage(page)) { files.forEach(file => file.release?.()); return [] }
-      return files
-    } finally {
-      if (handoff === request) handoff = undefined
-      uni.offAppHide(hide)
-      uni.offAppShow(show)
-    }
+    if (!currentCameraPage()) throw cameraError('CAMERA_UNAVAILABLE')
+    return chooseMediaFiles(1, ['image'], 'camera')
   }
   // #ifndef MP-WEIXIN
   if (!Capacitor.isNativePlatform() || !Capacitor.isPluginAvailable('Camera'))
     throw cameraError('CAMERA_UNAVAILABLE')
   const page = currentCameraPage()
   if (!page || handoff) throw cameraError('CAMERA_UNAVAILABLE')
-  const request: CameraHandoff = { ...page, kind: 'native', background: false }
+  const request = page
   handoff = request
   try {
   const { Camera, CameraSource, CameraResultType, CameraDirection } = await import('@capacitor/camera')

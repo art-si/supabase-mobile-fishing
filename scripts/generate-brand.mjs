@@ -109,7 +109,7 @@ try {
     // Use the same glyph and the installed project font family for a transparent lockup.
     for (const [path, width, height] of [
       ['assets/brand/logo-horizontal.png', 1728, 576],
-      ['src/static/brand/logo-horizontal.png', 864, 288]
+      ['src/static/web/brand/logo-horizontal.png', 864, 288]
     ]) {
       await render(
         path,

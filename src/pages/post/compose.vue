@@ -15,6 +15,7 @@ import MobileMultiChoice from '@mobile-core/components/MobileMultiChoice.vue'
 import MobileComboField from '@mobile-core/components/MobileComboField.vue'
 import MobileDateTimeField from '@mobile-core/components/MobileDateTimeField.vue'
 import MobileMediaUploader from '@mobile-core/components/MobileMediaUploader.vue'
+import { preserveMediaPickerPage, resumeMediaPickerPage } from '@mobile-core/media-picker-session'
 import MobilePickerTrigger from '@mobile-core/components/MobilePickerTrigger.vue'
 import MobileSelect from '@mobile-core/components/MobileSelect.vue'
 import MobileSegmented from '@mobile-core/components/MobileSegmented.vue'
@@ -258,6 +259,9 @@ function askDraftChoice(kind: 'replace' | 'leave') {
   })
 }
 onHide(() => {
+  // #ifdef MP-WEIXIN
+  if (preserveMediaPickerPage()) return
+  // #endif
   pageVisible.value = false
   locationVersion++
   locationBusy.value = false
@@ -320,6 +324,9 @@ watch(
 )
 onShow(() => {
   pageVisible.value = true
+  // #ifdef MP-WEIXIN
+  if (resumeMediaPickerPage()) return
+  // #endif
   receiveLocation()
   void startPostLocation()
 

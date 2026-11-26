@@ -16,7 +16,7 @@
 | `assets/brand/miniapp-avatar.png` | 1024 × 1024 | 小程序头像、App 图标素材，实色方形 PNG |
 | `assets/brand/miniapp-avatar-master.png` | 2048 × 2048 | 同源高清头像导出，不是 imagegen 原始稿 |
 | `src/static/brand/fish-{skin}-{mode}-{tone}-{layer}.png` | 640 × 384 | 三种皮肤 × 明暗 × brand/muted × body/tail，共 24 张主题分层 PNG |
-| `src/static/brand/logo-horizontal.png` | 864 × 288 | 备用透明底横版 Logo，等比例导出 |
+| `src/static/web/brand/logo-horizontal.png` | 864 × 288 | 备用透明底横版 Logo，等比例导出 |
 | `src/static/brand/apple-touch-icon.png` | 180 × 180 | H5 添加到主屏幕时的图标 |
 | `src/static/brand/favicon.png` | 64 × 64 | H5 标签页图标 |
 | `android/app/src/main/res/mipmap-*/ic_launcher*.png` | 图标 48 / 72 / 96 / 144 / 192；前景 108 / 162 / 216 / 324 / 432 | 对应五档密度的方形、圆形及自适应前景图标 |
