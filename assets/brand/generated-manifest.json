@@ -1,7 +1,7 @@
 {
   "source": "assets/brand/fish-symbol.svg",
   "sourceSha256": "5579e9886c39dcace6f2909d5b13e45b936818bb699514526eb80792ec075153",
-  "palettesSha256": "d0b20ed79a6edce932d9fef9fd134881fd75f3b7566b3cb8b600a62c72e2c6c2",
+  "palettesSha256": "85ad32784fb2b7f344a03ebf2faf431b73a19fcfacd21603cc334baaa88762fe",
   "outputs": [
     {
       "path": "src/static/brand/fish-lake-light-brand-body.png",
@@ -55,97 +55,97 @@
       "path": "src/static/brand/fish-ocean-light-brand-body.png",
       "width": 640,
       "height": 384,
-      "sha256": "9e6e467bd28dc67906a8496a4558fd91c180cb31a195ee1a8914cc61ab4cabe5"
+      "sha256": "c05b53432f29c75fb75f274f17b6178485d85bbba96bb24e005aaedff96afe9e"
     },
     {
       "path": "src/static/brand/fish-ocean-light-brand-tail.png",
       "width": 640,
       "height": 384,
-      "sha256": "e2790ee5634dac021c27584954b3da4e68eb9b6d72af729059887ad1485eb2cf"
+      "sha256": "41693dcc251eaa1d15a08e49bc4abb1ef9c1d17fa877d07becff6b60cbff0733"
     },
     {
       "path": "src/static/brand/fish-ocean-light-muted-body.png",
       "width": 640,
       "height": 384,
-      "sha256": "cb0a07c588aa27b73414cfe57c1ecf8bb29e04eef000560c76609e1c7984d685"
+      "sha256": "813f36edc555230212e31d396e90e4888b07ceda69a40b5b3f0c96cb4ee2394d"
     },
     {
       "path": "src/static/brand/fish-ocean-light-muted-tail.png",
       "width": 640,
       "height": 384,
-      "sha256": "b3b4265b821c9543574a6937a0299a62fb484a2d231657aafe1558631cf71aeb"
+      "sha256": "1d569422219ed5a9ed8b4ad8bd35d21d53652ba65f42507e153722c509d52519"
     },
     {
       "path": "src/static/brand/fish-ocean-dark-brand-body.png",
       "width": 640,
       "height": 384,
-      "sha256": "0705fa06d867fc15553a5e2ed66614b489ffdc2712d9d70e5c5328b6f556ac14"
+      "sha256": "78b97f2cf55e603596bf61209d0ae83b9681e112e443f4797937ed94f899b905"
     },
     {
       "path": "src/static/brand/fish-ocean-dark-brand-tail.png",
       "width": 640,
       "height": 384,
-      "sha256": "dee4575cd7596f8b6f27f435d49f377e19a03b5376d9c7b308387bd27c75430b"
+      "sha256": "84918cfafe5b85397ffc0c2b695acc2fb933c1939613d6a1fbafa8e5bb80ec51"
     },
     {
       "path": "src/static/brand/fish-ocean-dark-muted-body.png",
       "width": 640,
       "height": 384,
-      "sha256": "3b61a1dcab74f4dd810a2db1a2f25ffee444bee262b253b58640ff8b695315cd"
+      "sha256": "6828b4d30433ab78af8306de07786fe37e820fe7a62ffdd488cd9753bea0f513"
     },
     {
       "path": "src/static/brand/fish-ocean-dark-muted-tail.png",
       "width": 640,
       "height": 384,
-      "sha256": "43f36bb2169abd357afe4598f82552116633a25c018f816ef0423c29dc284ee6"
+      "sha256": "fa25dee4d657c447dff86083e97b9ecfc9a9377331bab2f1ff86eef0602c0523"
     },
     {
       "path": "src/static/brand/fish-stone-light-brand-body.png",
       "width": 640,
       "height": 384,
-      "sha256": "a2ac840f703971f26688e5beb26fe8c053b6abab049563987bbb89bf53900c21"
+      "sha256": "29df2d3ca2a4318fedcafda0b83a835c525b76d6826626b4ff4ae4db4544a4df"
     },
     {
       "path": "src/static/brand/fish-stone-light-brand-tail.png",
       "width": 640,
       "height": 384,
-      "sha256": "538409facecdf00fb9553103fe390f933815f82fda60dc5fb0e2795e4e66c55a"
+      "sha256": "9624f454106d9d648cfa251bf11bcc7e5cb6d360cc87c43f932728244cbcad4c"
     },
     {
       "path": "src/static/brand/fish-stone-light-muted-body.png",
       "width": 640,
       "height": 384,
-      "sha256": "85640b38198caa0cd2c5e25f580651aad4a7881c8ad145afa13af52a4d6857ba"
+      "sha256": "3349120449f13d5914ab6e652f6debc931ddb81f4a84abfcc4d3406a89997fee"
     },
     {
       "path": "src/static/brand/fish-stone-light-muted-tail.png",
       "width": 640,
       "height": 384,
-      "sha256": "ce838b9d64949a1836fcfe79a022ad7c920e9ea3d3d1074a43bda60f965eef0c"
+      "sha256": "5d2a733aa7c8935b55d5addfd1f9034c9f7731c1f1a7e4e985b2485a6d7012e1"
     },
     {
       "path": "src/static/brand/fish-stone-dark-brand-body.png",
       "width": 640,
       "height": 384,
-      "sha256": "dfb1e7e1bcf1e6534756f3623c07f8fa321142f52bbeefa25195ff014270c60b"
+      "sha256": "c542349b3c329efbef89c9c4f46bebf7d2cbad4e6d8da33486dd5c53ba2d70b3"
     },
     {
       "path": "src/static/brand/fish-stone-dark-brand-tail.png",
       "width": 640,
       "height": 384,
-      "sha256": "aafdaa8d2406364ffd9a7cd7bc5179e1f6d77b42f7bad3a56ff080471ee11521"
+      "sha256": "a49bec036a9ea186e4a5f2a6ecec5c674f59976ff63461c1b790f6e2fb9a5e00"
     },
     {
       "path": "src/static/brand/fish-stone-dark-muted-body.png",
       "width": 640,
       "height": 384,
-      "sha256": "721be31bef6c5415b2f43b6c98c7c0b586f298193ac85a81410e56d3a531e4bb"
+      "sha256": "c9c4a333c53fd15a765da75f1b4a81e952c1454e8aa769b86ee2acc4461367fa"
     },
     {
       "path": "src/static/brand/fish-stone-dark-muted-tail.png",
       "width": 640,
       "height": 384,
-      "sha256": "b99e5d7449c8601f7b70bc94066733a6f1950660284e68fe2fa1c66e07f32bae"
+      "sha256": "c89d97e8410d2a1b038f69142254460b2da48fb5608efbb133bdad4d4e2dbf5f"
     },
     {
       "path": "assets/brand/fish-symbol.png",
