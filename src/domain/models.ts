@@ -67,8 +67,6 @@ export interface Comment {
   created_at: string
   reply_to_id?: string | null
   reply_to?: { id: string; author: Profile; body: string } | null
-  /** Only local experience storage uses this; deleted rows never leave the remote projection. */
-  deleted_at?: string | null
 }
 export interface CommentPage {
   items: Comment[]

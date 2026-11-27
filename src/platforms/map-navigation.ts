@@ -10,12 +10,7 @@ export type { SelectedPlace } from '@/domain/map'
 export function pickMap(context?: 'water') {
   const requestId = createId()
   const query = `pick=1&requestId=${requestId}${context ? '&context=water' : ''}`
-  // #ifdef MP-WEIXIN
-  uni.navigateTo({ url: `/pages/map/search?${query}` })
-  // #endif
-  // #ifdef H5
   uni.navigateTo({ url: `/pages/map/index?${query}` })
-  // #endif
   return requestId
 }
 export function consumeSelection(requestId: string): SelectedPlace | null {
@@ -24,6 +19,21 @@ export function consumeSelection(requestId: string): SelectedPlace | null {
   const place = uni.getStorageSync(key) as SelectedPlace
   uni.removeStorageSync(key)
   return validSelection(place) ? place : null
+}
+export function returnMapSelection(requestId: string, selected: SelectedPlace, notify: (message: string) => void) {
+  if (!requestId || getCurrentPages().length < 2) return notify('请从填写地点的页面重新打开地图。')
+  const key = `dyj.map.selection.${requestId}`
+  const place = { ...selected, created_at: Date.now() }
+  if (!validSelection(place)) return notify('地点信息不完整，请重新选点。')
+  try {
+    uni.setStorageSync(key, place)
+  } catch {
+    return notify('所选地点未能暂存，请重试确认。')
+  }
+  uni.navigateBack({ fail: () => {
+    uni.removeStorageSync(key)
+    notify('返回失败，请重试确认。')
+  } })
 }
 export async function navigateToSpot(spot: Spot) {
   if (!canNavigate(spot)) throw new Error('作者未开放精确钓点，不能据此导航')

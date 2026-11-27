@@ -319,6 +319,14 @@ export const REPORT_CHANNELS: readonly ReportChannel[] = [
   }
 ]
 const normalize = (value: string) => value.trim().replace(/(地区|市|区|县)$/, '')
+/** Prefer verified local accepting agencies; national entries are a fallback, not peers. */
+export function preferredReportChannels(channels: readonly ReportChannel[]) {
+  const local = channels.filter(c => c.province && !c.provinces)
+  if (local.length) return local
+  // A 12345 transfer line is not a specialist accepting agency. Keep national
+  // issue-specific channels available when that is the only local contact.
+  return [...channels]
+}
 // A county name entered in the city field must not resolve to a different, broader jurisdiction.
 const normalizeCity = (value: string) => value.trim().replace(/(地区|市)$/, '')
 export const reportChannelSpecificity = (c: ReportChannel) =>

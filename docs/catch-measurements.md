@@ -15,7 +15,7 @@
 
 - `src/domain/catch-measurements.ts`：数字校验、公斤／斤换算。
 - `src/components/CatchWeightField.vue`：组合 Pro 的 `MobileField` 和 `MobileSelect`；重量和单位同组，小屏或大字自动纵向排列。未修改生成的 `src/_mobile-core`。
-- `TripCatchesEditor`、动态编辑页、`FishFacts`、`PostCard`、本机体验库已接入。
+- `TripCatchesEditor`、动态编辑页、`FishFacts`、`PostCard` 和服务端读写接口已接入。
 - 遵循项目 apple-design 的 Entering data、Text fields、Segmented controls 参考与 ui-ux-pro-max 的表单标签、反馈规则。计量字段留在选填详情内，不增加首页装饰或额外入口。
 
 ## 真实 Supabase

@@ -21,7 +21,7 @@ export function fishingHandler(run: (caller: Caller, input: Record<string, unkno
   }
 }
 
-export async function readFishingInput(request: Request) {
+export async function readFishingInput(request: Request, maxBytes = 8192) {
   const reader = request.body?.getReader()
   if (!reader) throw new FishingError('INVALID_INPUT', 400)
   const decoder = new TextDecoder()
@@ -32,7 +32,7 @@ export async function readFishingInput(request: Request) {
       const { done, value } = await reader.read()
       if (done) break
       length += value.byteLength
-      if (length > 8192) {
+      if (length > maxBytes) {
         await reader.cancel()
         throw new FishingError('INVALID_INPUT', 400)
       }
@@ -68,5 +68,6 @@ export async function fishingRpc<T>(name: string, body: unknown, userToken?: str
       })
     : await service(path, options)
   if (!response.ok) throw new FishingError('SERVICE_UNAVAILABLE', 503)
+  if (response.status === 204) return undefined as T
   return response.json()
 }

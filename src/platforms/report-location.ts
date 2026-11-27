@@ -1,18 +1,29 @@
-import { isDemo } from '@/config'
 import { validCoordinates } from '@/domain/rules'
 import { districtOptions } from '@/domain/regions'
 import { lookupMapRegion } from '@/services/amap'
+// #ifdef MP-WEIXIN
+import { entryPosition, waitForEntryLocation } from '@/services/entry-location'
+import { captureEntryLocation } from './entry-location'
+// #endif
 // #ifdef H5
 import { locate,loadAmap,timed } from './amap'
 // #endif
 let supported=false
-// #ifdef H5
+// #ifdef H5 || MP-WEIXIN
 supported=true
 // #endif
-export const canLocateReport=supported&&!isDemo
+export const canLocateReport=supported
 export interface ReportLocation {province:string;city:string;district:string;location_label:string;longitude:number;latitude:number;areaCode?:string}
 /** One requested fix for this private draft; no tracking or remote report write. */
 export async function locateReport(){
+ // #ifdef MP-WEIXIN
+ if(canLocateReport){
+  // Reuse the real, authorized entry fix (including an entry request still in flight).
+  await waitForEntryLocation()
+  const position=entryPosition.value ?? await captureEntryLocation()
+  return describeReportLocation([position.longitude,position.latitude])
+ }
+ // #endif
  // #ifdef H5
  if(canLocateReport){
   const {point}=await locate()
@@ -24,7 +35,6 @@ export async function locateReport(){
 /** Resolve administrative fields from the same selected coordinate; never reuse old-city labels. */
 export async function describeReportLocation(point: [number, number]): Promise<ReportLocation> {
   if (!validCoordinates(...point)) throw new Error('水域坐标无效，请重新选点。')
-  if (isDemo) throw new Error('当前环境可手动选择地区和地点。')
   const [longitude, latitude] = point
   // #ifdef H5
   try {

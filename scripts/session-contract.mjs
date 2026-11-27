@@ -1,4 +1,6 @@
 import assert from 'node:assert/strict'
+import { readFileSync } from 'node:fs'
+import { pageManifest } from './miniapp-package.mjs'
 
 // Contract fixtures only. No real SMS, remote accounts, tokens or content are used.
 export async function sessionContract({
@@ -77,6 +79,7 @@ export async function sessionContract({
     const req = route.request(),
       url = new URL(req.url())
     if (url.origin === base || !url.protocol.startsWith('http')) return route.continue()
+    if (url.origin === 'https://tiles.openfreemap.org') return route.abort()
     if (url.origin !== 'https://jupuypvmgjpnpntfetqv.supabase.co') {
       escaped.push(url.href)
       return route.abort()
@@ -109,6 +112,8 @@ export async function sessionContract({
       return reply({}, failLogout ? 503 : 200)
     }
     if (rejectA && who === 'A') return reply({ message: 'JWT expired' }, 401)
+    if (url.pathname === '/rest/v1/rpc/fishing_password_configured') return reply(true)
+    if (url.pathname === '/functions/v1/amap') return reply({ code: 'MAP_SERVICE_UNAVAILABLE' }, 503)
     if (url.pathname === '/rest/v1/rpc/fishing_moderation') return reply({ allowed: false })
     if (url.pathname === '/rest/v1/rpc/fishing_read') {
       switch (body.action) {
@@ -120,6 +125,13 @@ export async function sessionContract({
           if (who === 'A' && libraryGate) await libraryGate.promise
           return reply(result)
         }
+        case 'library_trips': {
+          if (who === 'A' && libraryGate) await libraryGate.promise
+          return reply({ items: who === 'A' ? [trip] : [], next: null })
+        }
+        case 'library_posts':
+        case 'library_spots':
+          return reply({ items: [], next: null })
         case 'profile':
           return reply({
             profile: profiles[who || 'B'],
@@ -182,6 +194,8 @@ export async function sessionContract({
     // Each fixture authentication is a fresh page; do not reuse an earlier SMS countdown.
     await target.reload()
     await target.locator('.fishing-page').waitFor()
+    const smsSwitch = target.getByRole('button', { name: '使用短信验证码登录', exact: true })
+    if (await smsSwitch.isVisible()) await smsSwitch.click()
     await target
       .locator('input[aria-label="手机号码"]')
       .fill(who === 'A' ? '13800138000' : '13800138001')
@@ -221,14 +235,14 @@ export async function sessionContract({
     await go('/pages/mine/library?type=trips')
     await visible(trip.title)
     const libraryBefore = requests.filter(
-      (r) => r.body.action === 'library' && r.who === 'A'
+      (r) => r.body.action === 'library_trips' && r.who === 'A'
     ).length
     libraryGate = deferred()
     await go('/pages/home/index')
     await go('/pages/mine/library?type=trips')
     await waitUntil(
       () =>
-        requests.filter((r) => r.body.action === 'library' && r.who === 'A').length > libraryBefore
+        requests.filter((r) => r.body.action === 'library_trips' && r.who === 'A').length > libraryBefore
     )
     await login(other, 'B')
     await visible('账号已在另一页面切换，旧账号内容已清空。')
@@ -274,25 +288,12 @@ export async function sessionContract({
       'expired authorization hides private fields, retains the owner draft and restores it only for that owner'
     )
 
-    await go(`/pages/chat/index?id=${conversation.id}`)
-    await visible(conversation.last_message)
-    sendGate = deferred()
-    await page.locator('.chat-input textarea').fill('A发送中的私信')
-    await page.getByRole('button', { name: '发送', exact: true }).click()
-    await waitUntil(() => requests.some((r) => r.body.action === 'send_message'))
-    await login(other, 'B')
-    sendGate.release()
-    sendGate = undefined
-    await page.getByText('你无权读取这个会话', { exact: true }).waitFor()
-    assert.equal(await page.locator('.chat-turn').count(), 0)
-    assert.equal(await page.locator('.chat-input textarea').inputValue(), '')
-    assert.equal(
-      requests.filter((r) => r.who === 'B' && r.body.action === 'send_message').length,
-      0
-    )
-    pass(
-      'account switch removes old chat and pending sends; delayed delivery never reappears under B'
-    )
+    // Messaging was removed from the product. Keep the private-library and
+    // draft races above, and make sure acceptance never revives a retired page.
+    const routes = pageManifest(JSON.parse(readFileSync('src/pages.json', 'utf8'))).routes
+    assert.ok(!routes.some(route => route.startsWith('pages/chat/')))
+    assert.equal(requests.filter(r => r.body.action === 'send_message').length, 0)
+    pass('the current route manifest and session flow do not expose the retired chat service')
 
     await login(other, 'A')
     await routeTo(other, '/pages/login/index')

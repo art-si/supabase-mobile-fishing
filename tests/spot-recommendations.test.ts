@@ -121,42 +121,22 @@ test('Edge labels use caller-visible public descriptions and verify the model qu
   assert.deepEqual(await labelSpots(caller, [visible]), { mode: 'observations', items: [] })
 })
 
-test('external discovery searches social and editorial sources and retains only supported place metadata', async t => {
+test('opening discovery reads only the published catalog, including empty cities, without searching or analysing media', async t => {
   const environment: Record<string, string> = {
     SUPABASE_URL: 'https://fake-supabase.example',
     SUPABASE_ANON_KEY: 'fixture-api-key',
     SUPABASE_SERVICE_ROLE_KEY: 'fixture-service-key',
     SPOT_WEB_SEARCH_API_KEY: 'fixture-search-key'
   }
-  const searched: string[] = []
   let published: Awaited<ReturnType<typeof discoverSpotLeads>>['items'] = []
-  const address = '武汉市东西湖区样例路8号'
+  const requested: string[] = []
   t.mock.method(globalThis, 'fetch', async (target: string | URL, init?: RequestInit) => {
     const url = new URL(target)
-    if (url.pathname === '/rest/v1/rpc/fishing_list_spot_leads') {
-      assert.deepEqual(JSON.parse(String(init?.body)), { city_name: '武汉市' })
-      return Response.json(published)
-    }
-    if (url.pathname === '/rest/v1/rpc/fishing_discovery_ticket') return Response.json(true)
-    if (url.pathname === '/rest/v1/rpc/fishing_art_ai_client_token') return Response.json('a'.repeat(64))
-    if (url.hostname === 'api.search.brave.com') {
-      const query = url.searchParams.get('q') || ''
-      searched.push(query)
-      return Response.json({ web: { results: query.includes('site:douyin.com') ? [
-        { title: '武汉样例湖', url: 'https://www.douyin.com/video/12345',
-          description: '此处禁钓。岸边干净。' }
-      ] : [
-        { title: '武汉样例园垂钓区', url: 'https://news.hubeidaily.net/mobile/c_12345.html',
-          description: address + '。适合亲子垂钓。', page_age: '2026-10-03' }
-      ] } })
-    }
-    assert.equal(url.href, 'https://ckbftoopuyophiebamwy.supabase.co/functions/v1/ai-service')
-    const body = JSON.parse(String(init?.body))
-    const [{ number }] = body.input.candidates
-    return Response.json({ model: 'selected-in-art', result: { items: [{
-      number, name: '样例园垂钓区', district: '东西湖区', poiQuery: '样例园', sourceAddress: address,
-      longitude: 100, latitude: 40, labels: { family: '适合亲子垂钓。', quiet: '这里人少。' }
-    }] } })
+    requested.push(url.pathname)
+    assert.equal(url.hostname, 'fake-supabase.example')
+    assert.equal(url.pathname, '/rest/v1/rpc/fishing_list_spot_leads')
+    assert.deepEqual(JSON.parse(String(init?.body)), { city_name: '武汉市' })
+    return Response.json(published)
   })
   const original = Object.getOwnPropertyDescriptor(globalThis, 'Deno')
   Object.defineProperty(globalThis, 'Deno', {
@@ -166,19 +146,10 @@ test('external discovery searches social and editorial sources and retains only 
     if (original) Object.defineProperty(globalThis, 'Deno', original)
     else Reflect.deleteProperty(globalThis, 'Deno')
   })
-  const leads = await discoverSpotLeads('test-account', '武汉市')
-  assert.ok(searched.some(query => query.includes('site:bilibili.com')))
-  assert.ok(searched.some(query => query.includes('site:hubeidaily.net')))
-  assert.deepEqual(leads.items, [{
-    name: '样例园垂钓区', city: '武汉市', district: '东西湖区', poiQuery: '样例园',
-    sourceAddress: address, waterType: '钓场', sourceDate: '2026-10-03',
-    labels: { family: '适合亲子垂钓。' },
-    source: { platform: 'media', url: 'https://news.hubeidaily.net/mobile/c_12345.html', publisher: '湖北日报' }
-  }])
-
-  published = leads.items
-  delete environment.SPOT_WEB_SEARCH_API_KEY
-  const searchCount = searched.length
+  assert.deepEqual(await discoverSpotLeads('test-account', '武汉市'), { items: [], status: 'ready' })
+  published = [{ name: '样例园垂钓区', city: '武汉市', waterType: '钓场', sourceDate: '2026-11-20', labels: {},
+    evidence: '开展休闲垂钓', source: { platform: 'media', url: 'https://news.hubeidaily.net/pc/c_123456.html', publisher: '湖北日报' } }]
   assert.deepEqual(await discoverSpotLeads('test-account', '武汉市'), { items: published, status: 'ready' })
-  assert.equal(searched.length, searchCount)
+  assert.equal(requested.length, 2)
+  await assert.rejects(discoverSpotLeads('test-account', 'unsafe-city'), { message: 'INVALID_INPUT' })
 })

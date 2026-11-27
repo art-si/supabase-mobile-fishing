@@ -7,7 +7,6 @@ const { prepareMobileCore } = await loadMobilePro(applicationRoot)
 prepareMobileCore(applicationRoot)
 const fixture = {
   ...process.env,
-  VITE_DATA_MODE: 'live',
   VITE_SUPABASE_URL: 'https://jupuypvmgjpnpntfetqv.supabase.co',
   VITE_SUPABASE_KEY: 'sb_publishable_contract_fixture',
   VITE_PHONE_AUTH_ENABLED: 'true',

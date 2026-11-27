@@ -1,7 +1,6 @@
-import { isDemo } from '@/config'
 import { normalizeReportEmailContact, validateReportEmailContact, type ReportEmailContact } from '@/domain/report-email'
 
-const key = (owner: string) => `dyj.${isDemo ? 'demo' : 'live'}.draft.${owner}.report-email-contact`
+const key = (owner: string) => `dyj.live.draft.${owner}.report-email-contact`
 export function readReportEmailContact(owner: string): ReportEmailContact | null {
   if (!owner) return null
   const value = uni.getStorageSync(key(owner))

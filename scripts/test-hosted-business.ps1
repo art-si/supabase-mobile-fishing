@@ -2,7 +2,7 @@
 # Admin credentials stay in this PowerShell process; business requests use real user tokens.
 # The ignored journal records only exact test identities, never credentials or private bodies.
 [CmdletBinding()]
-param([ValidateSet('h5-amap','avatar','spot-discussion','h5-spot-photos','video','all','core','social','report','orientation','photo-capacity','photo-guard','h5-large-photo','h5-media','h5-social','h5-chat-attachments','h5-realtime','h5-zones','h5-trip-catches','h5-comments','h5-comment-moderation','h5-notifications','h5-composition','h5-content-updates','h5-report','h5-report-manual')][string]$Suite='all', [string]$CleanupRun, [switch]$SessionsRevoked)
+param([ValidateSet('h5-amap','avatar','spot-discussion','h5-spot-photos','video','all','core','private-core','social','report','orientation','photo-capacity','photo-guard','h5-large-photo','h5-media','h5-social','h5-chat-attachments','h5-realtime','h5-zones','h5-trip-catches','h5-comments','h5-comment-moderation','h5-notifications','h5-composition','h5-content-updates','h5-report','h5-report-manual')][string]$Suite='all', [string]$CleanupRun, [switch]$SessionsRevoked)
 $ErrorActionPreference = 'Stop'
 $ProgressPreference = 'SilentlyContinue'
 $fishingRoot = Split-Path -Parent $PSScriptRoot
@@ -454,7 +454,7 @@ try {
       }
     } finally { $browserTest.Dispose(); $browserInput=$null; $browserOut=$null; $browserErr=$null }
   }
-  if ($Suite -in @('all','core')) {
+  if ($Suite -in @('all','core','private-core')) {
   $photo = Upload $a (New-Photo $false) 'image/png'
   Check ($photo.width -eq 96 -and $photo.height -eq 64 -and $photo.path.StartsWith($a.id+'/')) 'real PNG upload and metadata persisted'
   $signed = Require-Ok (Sign-Photo $a $photo.path) 'owner photo signature'
@@ -470,10 +470,14 @@ try {
   $rows = Require-Ok (Call-Api GET "/rest/v1/posts?id=eq.$($base.id)&select=id" -Token $b.token) 'private table check'
   Check (@($rows).Count -eq 0) 'direct REST table read also enforces private post RLS'
   Denied $b write save_post $base 'FORBIDDEN' 'other user cannot reuse owner post ID'
-  $pending = $base.Clone(); $pending.id=[guid]::NewGuid().ToString();$pending.audience='public';$pending.media=@()
-  $saved = Success $a write save_post $pending
-  Check ($saved.status -eq 'pending') 'shared post requires moderation'
-  Denied $null read post @{id=$pending.id} 'NOT_FOUND' 'pending post is hidden from anonymous visitors'
+  if ($Suite -ne 'private-core') {
+    # Historical moderation acceptance is separate from the release batch. The
+    # private-core batch never creates a publicly visible synthetic post.
+    $pending = $base.Clone(); $pending.id=[guid]::NewGuid().ToString();$pending.audience='public';$pending.media=@()
+    $saved = Success $a write save_post $pending
+    Check ($saved.status -eq 'pending') 'shared post requires moderation'
+    Denied $null read post @{id=$pending.id} 'NOT_FOUND' 'pending post is hidden from anonymous visitors'
+  }
   }
   if ($Suite -in @('all','social')) {
   Denied $a write conversation @{id=$b.id} 'NOT_FRIENDS' 'chat cannot start before friendship'

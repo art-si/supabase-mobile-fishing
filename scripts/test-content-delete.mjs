@@ -1,0 +1,145 @@
+// Production H5 interactions with isolated auth, GPS and API fixtures. No real content is deleted.
+import assert from 'node:assert/strict'
+import { chromium } from 'playwright'
+import { mkdir, writeFile } from 'node:fs/promises'
+const base=process.env.FISHING_H5_URL||'http://127.0.0.1:5178',output='artifacts/content-delete'
+assert.ok(['localhost','127.0.0.1'].includes(new URL(base).hostname))
+await mkdir(output,{recursive:true})
+const owner='11111111-1111-4111-8111-111111111111',other='33333333-3333-4333-8333-333333333333'
+const profile={id:owner,nickname:'删除验收本人',handle:'TEST',city:'武汉市',bio:'',method:''},otherProfile={...profile,id:other,nickname:'其他钓友'}
+const post=(id,title,author=profile)=>({id,title,author,body:'隔离接口样本，长按只打开确认。',kind:'experience',species:'',method:'',bait:'',audience:'public',status:'published',created_at:new Date().toISOString(),like_count:0,comment_count:0,liked:false,saved:true,review_revision:1,media:[]})
+const postA=post('22222222-2222-4222-8222-222222222222','本人鱼情甲'),postB=post('44444444-4444-4444-8444-444444444444','本人鱼情乙'),otherPost=post('55555555-5555-4555-8555-555555555555','他人鱼情',otherProfile)
+const trip={id:postA.id,title:'同号私人日志',body:'日志删除不能误删同号鱼情。',occurred_on:'2026-11-23',species:'鲫鱼',method:'台钓',bait:'蚯蚓',weight_kg:1,count:1,created_at:new Date().toISOString(),media:[]}
+const spot={id:postB.id,name:'同号本人钓位',author:profile,city:'武汉市',water_type:'自然水域',description:'隔离钓位',species:'鲫鱼',audience:'private',precision:'exact',longitude:114.3,latitude:30.5,status:'published',observed_on:'2026-11-23'}
+const otherSpot={...spot,id:'66666666-6666-4666-8666-666666666666',name:'他人收藏钓位',author:otherProfile,audience:'public'}
+const removed={post:new Set(),spot:new Set(),trip:new Set()},writes=[],escaped=[],errors=[],checks=[]
+let failNext=false
+const browser=await chromium.launch({channel:'chrome',headless:true}),context=await browser.newContext({viewport:{width:375,height:812},isMobile:true,hasTouch:true,locale:'zh-CN',permissions:['geolocation'],geolocation:{longitude:114.3,latitude:30.5}})
+await context.addInitScript(owner=>localStorage.setItem('dyj.auth.v1',JSON.stringify({type:'object',data:{access_token:'isolated-content-delete',refresh_token:'fixture',expires_at:Date.now()/1000+3600,user:{id:owner}}})),owner)
+await context.routeWebSocket(/supabase\.co/,socket=>socket.close())
+await context.route('**/*',async route=>{
+ const req=route.request(),url=new URL(req.url())
+ if(url.origin===base||!url.protocol.startsWith('http'))return route.continue()
+ if(url.origin!=='https://jupuypvmgjpnpntfetqv.supabase.co'){escaped.push(url.origin+url.pathname);return route.abort()}
+ const headers={'access-control-allow-origin':'*','access-control-allow-headers':'*','access-control-allow-methods':'*'},reply=(json,status=200)=>route.fulfill({status,json,headers})
+ if(req.method()==='OPTIONS')return reply({})
+ if(url.pathname==='/auth/v1/user')return reply({id:owner})
+ const body=req.postDataJSON()||{},data=body.payload||{},posts=[postA,postB,otherPost].filter(item=>!removed.post.has(item.id)),spots=[spot,otherSpot].filter(item=>!removed.spot.has(item.id))
+ if(url.pathname.endsWith('fishing_read')){
+  if(body.action==='feed')return reply({items:posts,next:null})
+  if(body.action==='library_posts')return reply({items:posts.filter(item=>data.type==='saved'||item.author.id===owner),next:null})
+  if(body.action==='library_trips')return reply({items:removed.trip.has(trip.id)?[]:[trip],next:null})
+  if(body.action==='library_spots')return reply({items:spots.filter(item=>data.type==='saved'||item.author.id===owner),next:null})
+  if(body.action==='post')return reply({post:posts.find(item=>item.id===data.id),comments:[],comments_next:null})
+  if(body.action==='edit_content'&&data.type==='trip')return reply({item:trip,revision:1})
+  if(body.action==='profile')return reply({profile:data.id===other?otherProfile:profile,following:false,blocked:false,posts:posts.filter(item=>item.author.id===data.id),posts_next:null})
+  return reply({items:[],next:null,profile,posts:[],spots:[],trips:[],counts:{}})
+ }
+ if(url.pathname.endsWith('fishing_write')){
+  writes.push(body)
+  assert.equal(body.action,'delete_content')
+  assert.ok(['post','spot','trip'].includes(data.type))
+  assert.ok(![otherPost.id,otherSpot.id].includes(data.id),'Never write another author’s target')
+  if(failNext){failNext=false;return reply({message:'temporarily unavailable'},503)}
+  removed[data.type].add(data.id)
+  return reply(true)
+ }
+ if(url.pathname.endsWith('fishing_spot_community'))return reply([])
+ if(url.pathname.endsWith('fishing_moderation'))return reply({allowed:false})
+ if(url.pathname.endsWith('spot-discovery'))return reply({items:[],next:null})
+ escaped.push(`${req.method()} ${url.pathname}`);return route.abort()
+})
+const page=await context.newPage(),cdp=await context.newCDPSession(page)
+page.setDefaultTimeout(20000);page.on('pageerror',error=>errors.push(error.message))
+const postCard=name=>page.locator('.post-card').filter({hasText:name}),spotCard=name=>page.locator('.spot-card').filter({hasText:name}),dialog=()=>page.getByRole('alertdialog',{name:'删除这条鱼情？',exact:true})
+async function hold(locator,duration=650){
+ await locator.scrollIntoViewIfNeeded();const bounds=await locator.boundingBox();assert.ok(bounds)
+ await cdp.send('Input.dispatchTouchEvent',{type:'touchStart',touchPoints:[{x:bounds.x+Math.min(bounds.width/2,70),y:bounds.y+Math.min(bounds.height/2,30)}]})
+ await page.waitForTimeout(duration)
+ await cdp.send('Input.dispatchTouchEvent',{type:'touchEnd',touchPoints:[]})
+}
+async function back(){await page.getByRole('button',{name:'返回上一页',exact:true}).click()}
+async function shot(name){await page.getByText(/^已删除(?:鱼情|钓位|日志)$/).waitFor({state:'hidden'});await page.waitForTimeout(300);await page.screenshot({path:`${output}/${name}.png`})}
+try{
+ await page.goto(`${base}/#/pages/home/index`,{waitUntil:'domcontentloaded'})
+ await postCard(postA.title).waitFor();await postCard(otherPost.title).waitFor()
+ assert.equal(await page.locator('.post-card .content-delete__action').count(),0)
+ await shot('post-list-375')
+ await hold(postCard(postA.title).locator('.post-content'));await dialog().waitFor()
+ assert.ok(new URL(page.url()).hash.includes('/pages/home/index'));assert.equal(writes.length,0)
+ await dialog().getByRole('button',{name:'保留鱼情',exact:true}).click();await dialog().waitFor({state:'hidden'})
+ checks.push('touch long-press opens only the owner confirmation, suppresses opening the post and cancellation writes nothing')
+ await hold(postCard(postA.title).locator('.post-content'));await dialog().waitFor()
+ await shot('post-confirm-375')
+ failNext=true;await dialog().getByRole('button',{name:'删除鱼情',exact:true}).click()
+ await dialog().getByText('服务暂时不可用，请稍后重试',{exact:true}).waitFor()
+ assert.equal(await postCard(postA.title).count(),1)
+ await shot('post-failure-375')
+ await dialog().getByRole('button',{name:'保留鱼情',exact:true}).click();await dialog().waitFor({state:'hidden'})
+ checks.push('main post lists contain no delete buttons; long-press uses owner confirmation and failed writes preserve the card with a retryable error')
+ await page.getByText('我的',{exact:true}).click();await page.getByText('我的记录',{exact:true}).click()
+ await page.getByRole('heading',{name:'我的记录',exact:true}).waitFor();await page.locator('.trip-card').waitFor()
+ assert.equal(await page.locator('.trip-card .content-delete__action').count(),0)
+ await page.locator('.trip-card').getByRole('button',{name:'编辑日志',exact:true}).click()
+ await page.getByRole('heading',{name:'编辑出钓日志',exact:true}).waitFor()
+ const tripEditorDelete=page.getByRole('button',{name:'删除日志',exact:true})
+ await tripEditorDelete.waitFor();await tripEditorDelete.scrollIntoViewIfNeeded();await shot('trip-edit-tools-375')
+ await tripEditorDelete.click()
+ const tripDialog=page.getByRole('alertdialog',{name:'删除这条日志？',exact:true});await tripDialog.waitFor()
+ await tripDialog.getByRole('button',{name:'保留日志',exact:true}).click();await tripDialog.waitFor({state:'hidden'})
+ await back()
+ const draftChoice=page.getByRole('dialog',{name:'草稿已保留',exact:true});await draftChoice.waitFor()
+ await draftChoice.getByRole('button',{name:'保留并退出',exact:true}).click()
+ await page.locator('.trip-card').waitFor()
+ await hold(page.locator('.trip-card').getByText(trip.title,{exact:true}))
+ await tripDialog.waitFor()
+ await shot('trip-confirm-375')
+ await tripDialog.getByRole('button',{name:'删除日志',exact:true}).click();await page.locator('.trip-card').waitFor({state:'detached'})
+ assert.equal(await postCard(postA.title).count(),1)
+ await hold(postCard(postA.title).locator('.post-content'));await dialog().waitFor()
+ await dialog().getByRole('button',{name:'删除鱼情',exact:true}).click();await postCard(postA.title).waitFor({state:'detached'})
+ assert.equal(await postCard(postB.title).count(),1)
+ await back();await page.getByText('钓友圈',{exact:true}).click();await postCard(otherPost.title).waitFor()
+ assert.equal(await postCard(postA.title).count(),0)
+ checks.push('private journal long-press deletion preserves a post with the same UUID; deleting that post updates the already-mounted home feed and retains other cards')
+ await page.getByText('我的',{exact:true}).click();await page.getByText('我的收藏',{exact:true}).click()
+ await spotCard(spot.name).waitFor();await postCard(postB.title).waitFor()
+ assert.equal(await spotCard(otherSpot.name).getByRole('button',{name:/删除钓位/}).count(),0)
+ assert.equal(await page.locator('.spot-card .content-delete__action').count(),0)
+ await shot('saved-list-375')
+ const spotDialog=page.getByRole('alertdialog',{name:'删除这个钓位？',exact:true})
+ const beforeSpotHold=writes.length
+ await hold(spotCard(spot.name).getByText(spot.name,{exact:true}),2100)
+ await spotDialog.waitFor()
+ await page.waitForTimeout(600)
+ assert.equal(writes.length,beforeSpotHold,'a long hold plus release must never confirm a deletion')
+ await spotDialog.waitFor()
+ await shot('spot-confirm-375')
+ await spotDialog.getByRole('button',{name:'删除钓位',exact:true}).click();await spotCard(spot.name).waitFor({state:'detached'})
+ assert.equal(await postCard(postB.title).count(),1);assert.equal(await spotCard(otherSpot.name).count(),1)
+ checks.push('saved spot lists contain no delete buttons; a 2.1-second hold opens owner confirmation, release stays open for 600ms without writing, and same-UUID posts are preserved')
+ await postCard(postB.title).getByRole('button',{name:`查看${profile.nickname}的主页`,exact:true}).click()
+ await page.getByRole('heading',{name:'钓友主页',exact:true}).waitFor();await hold(postCard(postB.title).locator('.post-content'));await dialog().waitFor()
+ await dialog().getByRole('button',{name:'保留鱼情',exact:true}).click();await back()
+ await postCard(postB.title).locator('.post-content').click()
+ await page.getByRole('heading',{name:'鱼情详情',exact:true}).waitFor()
+ assert.equal(await page.locator('.post-card .content-delete__action').count(),0)
+ const tools=page.locator('.content-detail-tools')
+ await tools.getByRole('button',{name:'编辑',exact:true}).waitFor()
+ await tools.getByRole('button',{name:'撤回',exact:true}).waitFor()
+ const detailDelete=tools.getByRole('button',{name:'删除鱼情',exact:true})
+ await detailDelete.scrollIntoViewIfNeeded();await shot('post-detail-tools-375')
+ await detailDelete.focus();await page.keyboard.press('Enter');await dialog().waitFor()
+ await page.setViewportSize({width:320,height:812});await page.emulateMedia({colorScheme:'dark'})
+ await shot('post-confirm-dark-320')
+ await dialog().getByRole('button',{name:'删除鱼情',exact:true}).click()
+ await page.getByRole('heading',{name:'我的收藏',exact:true}).waitFor();assert.equal(await postCard(postB.title).count(),0)
+ assert.equal(await postCard(otherPost.title).count(),1)
+ checks.push('profile cards retain long-press only; post detail groups compact edit, withdraw and delete outside the card using spot-detail tools; keyboard deletion returns to the prior list and fits 320px dark appearance')
+ assert.equal(writes.length,5);assert.deepEqual(errors,[]);assert.deepEqual(escaped,[])
+ await writeFile(`${output}/result.json`,JSON.stringify({passed:true,checks,errors,escaped,fixtureWrites:writes.map(({action,payload})=>({action,type:payload.type})),boundary:'All auth/GPS/API responses are isolated fixtures; no real login, deletion, backend write or provider call.'},null,2))
+ console.log(JSON.stringify({checks,errors,escaped,fixtureWrites:writes.length},null,2))
+}catch(error){
+ await writeFile(`${output}/result.json`,JSON.stringify({passed:false,checks,errors,escaped,failure:String(error.message||error).slice(0,600),boundary:'Isolated auth/GPS/API fixtures; no real content deletion.'},null,2))
+ await page.screenshot({path:`${output}/failure.png`}).catch(()=>{});throw error
+}finally{await browser.close()}

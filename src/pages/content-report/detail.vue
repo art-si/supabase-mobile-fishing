@@ -4,7 +4,7 @@ import { onLoad, onShow, onHide, onUnload } from '@dcloudio/uni-app'
 import FishingShell from '@/components/FishingShell.vue'
 import FishingPhotos from '@/components/FishingPhotos.vue'
 import FishingEmptyState from '@/components/FishingEmptyState.vue'
-import FishingLoadingStatus from '@/components/FishingLoadingStatus.vue'
+import MobileSkeleton from '@mobile-core/components/MobileSkeleton.vue'
 import MobileAction from '@mobile-core/components/MobileAction.vue'
 import MobileLoadError from '@mobile-core/components/MobileLoadError.vue'
 import MobileBottomSheet from '@mobile-core/components/MobileBottomSheet.vue'
@@ -185,7 +185,7 @@ onUnload(() => {
           >返回举报列表</MobileAction
         >
       </FishingEmptyState>
-      <FishingLoadingStatus v-if="loading" label="正在读取举报与最新内容…" />
+      <MobileSkeleton v-else-if="loading" label="正在读取举报与最新内容…" />
       <MobileLoadError v-if="error" title="无法读取举报" :message="error" @retry="load()" />
       <template v-if="item">
         <text v-if="notice" class="notice" role="status">{{ notice }}</text>

@@ -7,7 +7,7 @@ import MobileField from '@mobile-core/components/MobileField.vue'
 import { useAuthStore } from '@/stores/auth'
 import { contentReports } from '@/services/content-reports'
 import { errorText } from '@/domain/rules'
-defineOptions({ options: { styleIsolation: 'apply-shared' } })
+defineOptions({ options: { virtualHost: true, styleIsolation: 'apply-shared' } })
 const props = defineProps<{
   id: string
   type: 'post' | 'spot' | 'comment'
@@ -68,6 +68,10 @@ async function submit() {
     notice.value = result.duplicate
       ? '你已提交过这条内容，可在我的社区举报查看进度。'
       : '举报已提交，可在我的社区举报查看进度。'
+    uni.showToast({
+      title: result.duplicate ? '已提交过此举报' : '举报已提交',
+      icon: result.duplicate ? 'none' : 'success'
+    })
   } catch (e) {
     if (current === version) error.value = errorText(e)
   } finally {

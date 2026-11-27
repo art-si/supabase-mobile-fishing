@@ -106,7 +106,17 @@ try{
  assert.equal(writes.length,0)
  assert.equal(await page.getByRole('dialog',{name:'选择举报机构'}).count(),0)
  async function chooseWater(name,longitude,latitude){
-  await page.evaluate(async point=>{let c=document.querySelector('.fishing-content').__vueParentComponent;while(c&&!c.setupState.applySelectedPlace)c=c.parent;await c.setupState.applySelectedPlace(point)},{name,longitude,latitude})
+  await page.getByRole('button',{name:'水域地图选点',exact:true}).click()
+  await page.waitForURL('**/pages/map/index?**')
+  const requestId=new URLSearchParams(new URL(page.url()).hash.split('?')[1]).get('requestId')
+  assert.ok(requestId)
+  // Isolate only the selected map result through the real request-scoped return contract.
+  // Returning through navigation must execute the report page's actual onShow handler.
+  await page.evaluate(({requestId,name,longitude,latitude})=>{
+   localStorage.setItem(`dyj.map.selection.${requestId}`,JSON.stringify({type:'object',data:{name,longitude,latitude,kind:'water',crs:'GCJ-02',created_at:Date.now()}}))
+  },{requestId,name,longitude,latitude})
+  await page.getByRole('button',{name:'返回上一页',exact:true}).click()
+  await page.locator('#report-region').waitFor()
  }
  const safety=page.getByRole('note',{name:'现场安全提醒',exact:true})
  const guide=page.getByRole('note',{name:'上报去向',exact:true})
@@ -145,7 +155,7 @@ try{
  const dial=page.getByRole('dialog',{name:'打开拨号？'});await dial.waitFor()
  assert.match(await dial.innerText(),/0719-12345/)
  await dial.getByRole('button',{name:'取消',exact:true}).click()
- await page.evaluate(async()=>{let component=document.querySelector('.fishing-content').__vueParentComponent;while(component && !component.setupState.applySelectedPlace)component=component.parent;await component.setupState.applySelectedPlace({longitude:121.55,latitude:29.87,name:'宁波选中的河段'})})
+ await chooseWater('宁波选中的河段',121.55,29.87)
  await page.waitForFunction(()=>document.querySelector('#report-region')?.textContent.includes('海曙区') && document.querySelector('input[aria-label="具体水域与位置"]')?.value==='宁波选中的河段')
  assert.match(await page.locator('#report-region').innerText(),/浙江省.*宁波市.*海曙区/)
  await selectedContacts.click()
@@ -233,6 +243,15 @@ try{
  assert.equal(await page.locator('input[aria-label="具体水域与位置"]').inputValue(),saved.location_label)
  await page.waitForFunction(()=>window.locationCalls===1)
  assert.match(await page.locator('#report-region').innerText(),/雨花区/)
+ await session.context.close()
+ const textOnly={...saved,province:'',city:'',district:'',location_label:''}
+ session=await open('success',textOnly,true);page=session.page
+ await page.waitForFunction(()=>document.querySelector('#report-region')?.textContent.includes('阳新县'))
+ assert.equal(await page.getByRole('textbox',{name:'现场情况'}).inputValue(),textOnly.description)
+ assert.equal(await page.locator('input[aria-label="具体水域与位置"]').inputValue(),'')
+ assert.equal(await page.getByText(/^已选位置：/).count(),0)
+ await page.screenshot({path:`${output}/report-empty-region-draft-375.png`})
+ checks.push('an existing text draft with no incident location receives the current region while preserving its body and leaving the water point unselected')
  await session.context.close()
  session=await open('denied');page=session.page
  await page.getByText('暂未获取当前位置，请选择事发地区。',{exact:true}).waitFor()

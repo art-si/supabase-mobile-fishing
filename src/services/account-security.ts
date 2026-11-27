@@ -11,9 +11,19 @@ import {
 import { normalizePhone } from '@/domain/rules'
 import { authSessionFromResponse } from '@/domain/auth-errors'
 import { passwordIssue, normalizeLoginIdentifier } from '@/domain/account-security'
-import { config, isDemo } from '@/config'
+import { config } from '@/config'
 import { smsLoginUnavailable } from '@/domain/auth-errors'
 import { rememberedLogin } from './login-memory'
+
+export async function accountPasswordConfigured() {
+  const result = await sessionRequest<unknown>('/rest/v1/rpc/fishing_password_configured', {
+    method: 'POST',
+    data: {}
+  })
+  if (typeof result !== 'boolean')
+    throw new ApiError('暂时无法确认密码状态，请重试', 502, 'PASSWORD_STATE_INVALID')
+  return result
+}
 
 export async function accountIdentity() {
   const owner = session.value?.user.id
@@ -32,7 +42,6 @@ export async function passwordLogin(identifier: string, password: string, isActi
     if (!isActive()) throw new ApiError('已取消登录', 0, 'AUTH_CANCELLED')
   }
   check()
-  if (isDemo) throw new ApiError('当前为体验模式，请使用体验入口', 0, 'DEMO_AUTH_DISABLED')
   if (!password) throw new ApiError('请输入登录密码', 0, 'PASSWORD_REQUIRED')
   const normalized = normalizeLoginIdentifier(identifier)
   const account = normalized.startsWith('DY')
@@ -81,7 +90,7 @@ export function createAccountSecurityFlow(owner = '', isActive = () => true) {
   }
   const available = () => {
     check()
-    const unavailable = smsLoginUnavailable({ isDemo, ...config })
+    const unavailable = smsLoginUnavailable(config)
     if (unavailable) throw new ApiError(unavailable.message, 0, unavailable.code)
   }
   const checkedSession = (data: unknown, expectedId = owner, expectedPhone = '') => {

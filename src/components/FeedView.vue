@@ -1,13 +1,14 @@
 <script setup lang="ts">
 defineOptions({ options: { styleIsolation: 'apply-shared' } })
 import { computed, onScopeDispose, ref, watch } from 'vue'
+import { onHide, onShow } from '@dcloudio/uni-app'
 import MobileAction from '@mobile-core/components/MobileAction.vue'
 import MobileSegmented from '@mobile-core/components/MobileSegmented.vue'
 import MobileSearch from '@mobile-core/components/MobileSearch.vue'
 import MobileLoadError from '@mobile-core/components/MobileLoadError.vue'
 import MobileEmptyState from '@/components/FishingEmptyState.vue'
 import MobileListFooter from '@mobile-core/components/MobileListFooter.vue'
-import MobileLoadingStatus from '@/components/FishingLoadingStatus.vue'
+import MobileSkeleton from '@mobile-core/components/MobileSkeleton.vue'
 import MobileIcon from '@mobile-core/components/MobileIcon.vue'
 import FishingCityPicker from './FishingCityPicker.vue'
 import { cityOption, cityOptions } from '@/domain/cities'
@@ -19,6 +20,7 @@ import { useMutation } from '@/composables/useMutation'
 import { useLoginAction } from '@/composables/useLoginAction'
 import { useAuthStore } from '@/stores/auth'
 import { read, write } from '@/services/repository'
+import { onContentDeleted } from '@/services/content-deletion'
 import type { Page, Post } from '@/domain/models'
 const auth = useAuthStore(),
   filter = ref('recommended'),
@@ -46,6 +48,16 @@ const { data, loading, error, load, invalidate } = useResource(
 )
 const mutation = useMutation()
 const more = useMutation()
+let active = true
+onHide(() => { active = false })
+onShow(() => { active = true })
+onContentDeleted(value => {
+  if (value.type !== 'post') return
+  const reload = loading.value
+  invalidate()
+  data.value = { ...data.value, items: data.value.items.filter(post => post.id !== value.id) }
+  if (reload && active) void load()
+})
 watch(
   query,
   invalidate,
@@ -158,7 +170,11 @@ async function loadMore() {
 function reachBottom() {
   if (!more.error.value) void loadMore()
 }
-defineExpose({ refresh: load, reachBottom })
+async function refresh() {
+  more.error.value = ''
+  await load()
+}
+defineExpose({ refresh, reachBottom })
 </script>
 <template>
   <view class="stack">
@@ -184,7 +200,7 @@ defineExpose({ refresh: load, reachBottom })
     </view>
     <MobileLoadError v-if="error" title="鱼情暂未加载" :message="error" @retry="load" />
     <text v-if="mutation.error.value && !error" class="error" role="alert">{{ mutation.error.value }}</text>
-    <MobileLoadingStatus v-if="loading && !data.items.length && !followingRequiresLogin" label="正在寻找新鱼情…" />
+    <MobileSkeleton v-if="loading && !data.items.length && !followingRequiresLogin" label="正在寻找新鱼情…" />
     <PostCard
       v-for="post in data.items"
       :key="post.id"

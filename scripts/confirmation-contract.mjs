@@ -32,8 +32,8 @@ export async function confirmationContract({ page, go, visible, pass, screenshot
     await page.emulateMedia({ colorScheme: scheme })
     for (const [skin, name] of [
       ['lake', '湖畔青'],
-      ['ocean', '深海蓝'],
-      ['stone', '岩石灰']
+      ['ocean', '日出橙'],
+      ['stone', '莓果红']
     ]) {
       await go('/pages/settings/index')
       await page.getByRole('button', { name, exact: true }).click()
@@ -72,12 +72,15 @@ export async function confirmationContract({ page, go, visible, pass, screenshot
 
   await go('/pages/mine/library?type=trips')
   const copy = page.locator('.panel').filter({ hasText: '用于确认删除的出钓日志' })
-  await copy.getByRole('button', { name: '删除日志', exact: true }).click()
-  const deletion = page.getByRole('alertdialog', { name: '删除这条记录？', exact: true })
-  await deletion.getByRole('button', { name: '取消', exact: true }).click()
+  await copy.click({ button: 'right', position: { x: 24, y: 24 } })
+  const deletion = page.getByRole('alertdialog', { name: '删除这条日志？', exact: true })
+  await deletion.getByRole('button', { name: '保留日志', exact: true }).click()
+  await deletion.waitFor({ state: 'hidden' })
+  // A long press keeps a 500ms release-click guard; start a fresh gesture after it.
+  await page.waitForTimeout(550)
   assert.ok(await copy.isVisible())
-  await copy.getByRole('button', { name: '删除日志', exact: true }).click()
-  await deletion.getByRole('button', { name: '删除记录', exact: true }).click()
+  await copy.click({ button: 'right', position: { x: 24, y: 24 } })
+  await deletion.getByRole('button', { name: '删除日志', exact: true }).click()
   await copy.waitFor({ state: 'detached' })
   await visible('空军也值得记下')
   pass('log deletion respects cancellation and removes only the confirmed record')

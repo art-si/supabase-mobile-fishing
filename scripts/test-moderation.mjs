@@ -2,7 +2,6 @@ import { spawnSync } from 'node:child_process'
 // Deliberately isolated fixtures. Never changes .env.local or calls hosted services.
 const env = {
   ...process.env,
-  VITE_DATA_MODE: 'live',
   VITE_SUPABASE_KEY: 'sb_publishable_contract_fixture',
   VITE_PHONE_AUTH_ENABLED: 'true',
   VITE_AUTH_CAPTCHA_ENABLED: 'false',

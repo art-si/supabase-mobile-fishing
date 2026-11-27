@@ -40,7 +40,6 @@ function deferred<T>() {
 function harness(
   request: (...args: any[]) => Promise<any> = async () => ({}),
   {
-    isDemo = false,
     native = false,
     secure = new Map<string, string>(),
     secureRead = undefined as undefined | (() => Promise<string | null>),
@@ -54,7 +53,6 @@ function harness(
   const source = readFileSync(new URL('../src/services/session.ts', import.meta.url), 'utf8')
   const dependencies: Record<string, unknown> = {
     vue: { ref },
-    '@/config': { isDemo },
     './http': { request, ApiError },
     './entry-location': { waitForEntryLocation },
     '@/domain/private-storage': { privateStorageKey },
@@ -208,6 +206,15 @@ test('session hydration validates all persisted credentials and expiry fields', 
   assert.equal(api.session.value.user.id, ids.A, 'expired persisted sessions can still refresh')
 })
 
+test('retired local identity is ignored and cannot restore a real session', async () => {
+  const { api, storage } = harness(async () => assert.fail('Unexpected network request'))
+  storage.set('dyj.demo.signed-in', true)
+  storage.set('dyj.demo.session', session('A'))
+  await api.hydrateSession()
+  assert.equal(api.session.value, null)
+  assert.equal(api.sessionNotice.value, '')
+})
+
 test('a fresh guest with no stored session has no restoration error', async () => {
   const { api, storage } = harness()
   storage.set('dyj.auth.v1', '')
@@ -252,7 +259,7 @@ test('a hydrated expired access token renews through its persisted refresh token
   assert.equal(calls, 1)
   assert.ok(storage.get('dyj.auth.v1').expires_at > Date.now() / 1000)
 })
-test('foreground resume makes no requests for guests, valid sessions or demo mode', async () => {
+test('foreground resume makes no requests for guests or valid sessions', async () => {
   let calls = 0
   const request = async () => {
     calls++
@@ -262,9 +269,6 @@ test('foreground resume makes no requests for guests, valid sessions or demo mod
   await api.resumeSession()
   api.saveSession(session('A'))
   await api.resumeSession()
-  const demo = harness(request, { isDemo: true })
-  demo.api.saveSession(session('A', 1))
-  await demo.api.resumeSession()
   assert.equal(calls, 0)
 })
 

@@ -3,7 +3,6 @@ import { computed, onUnmounted, ref, watch } from 'vue'
 import MobileAction from '@mobile-core/components/MobileAction.vue'
 import { useAuthStore } from '@/stores/auth'
 import { moderation } from '@/services/moderation'
-import { isDemo } from '@/config'
 import type { ContentStatus, ContentUpdateInfo } from '@/domain/models'
 import { reviewLabels, type ReviewType, type OwnReviewStatus } from '@/domain/moderation'
 defineOptions({ options: { styleIsolation: 'apply-shared' } })
@@ -33,7 +32,7 @@ async function load() {
   reason.value = ''
   failed.value = false
   loading.value = false
-  if (!baseShown.value || isDemo) return
+  if (!baseShown.value) return
   loading.value = true
   try {
     const result = await moderation<OwnReviewStatus>('own_status', {
@@ -77,11 +76,9 @@ onUnmounted(() => {
       update.reason
     }}</text>
     <text class="caption">{{
-      isDemo
-        ? '本机体验不提供审核。修改稿保留在本机，可继续编辑或取消。'
-        : update?.status === 'pending'
-          ? '通过后替换当前版本，其他钓友暂时看到的仍是当前版本。'
-          : '当前版本仍按当前分享范围展示。你可以继续编辑，也可以取消这次修改。'
+      update?.status === 'pending'
+        ? '通过后替换当前版本，其他钓友暂时看到的仍是当前版本。'
+        : '当前版本仍按当前分享范围展示。你可以继续编辑，也可以取消这次修改。'
     }}</text>
   </view>
 </template>

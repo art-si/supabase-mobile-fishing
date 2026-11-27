@@ -1,4 +1,5 @@
 import { parseShareSource, readSpotSharePosition, type SpotLead } from '../_shared/discovery-contract.ts'
+import { publicArticleSource } from '../_shared/spot-publishers.ts'
 import type { FishingAi } from '../_shared/fishing-ai.ts'
 import { FishingError, readFishingInput } from '../_shared/fishing-edge.ts'
 import { json } from '../_shared/http.ts'
@@ -11,11 +12,24 @@ interface ImportDependencies {
   publish: (items: SpotLead[], callerToken: string) => Promise<number>
 }
 
+/** Automatic extraction supplies name hints; only operators provide reviewed quotes. */
+export function stageSourceEntries(items: readonly SpotLead[]) {
+  const entries = new Map<string, { city: string; url: string; places: { name: string; query?: string }[] }>()
+  for (const item of items) for (const source of [item.source, ...item.relatedSources || []]) {
+    const key = JSON.stringify([item.city, source.url])
+    const entry = entries.get(key) || { city: item.city, url: source.url, places: [] }
+    if (!entry.places.some(place => place.name === item.name && place.query === item.poiQuery))
+      entry.places.push({ name: item.name, query: item.poiQuery })
+    entries.set(key, entry)
+  }
+  return [...entries.values()]
+}
+
 function importDocument(value: unknown): SpotSourceDocument {
   if (!value || typeof value !== 'object' || Array.isArray(value))
     throw new FishingError('INVALID_SOURCE', 400)
   const row = value as Record<string, unknown>
-  const source = typeof row.url === 'string' ? parseShareSource(row.url.trim()) : null
+  const source = typeof row.url === 'string' ? parseShareSource(row.url.trim()) || publicArticleSource(row.url.trim()) : null
   const location = typeof row.location === 'string' ? row.location.trim() : undefined
   const poiName = typeof row.poiName === 'string' ? row.poiName.trim() : undefined
   const poiQuery = typeof row.poiQuery === 'string' ? row.poiQuery.trim() : undefined
@@ -49,8 +63,8 @@ export function createSpotSourceImportHandler({ loadAi, publish }: ImportDepende
       const analyzed = await analyzeSpotSources(city, documents, ask)
       if (!analyzed) throw new FishingError('ANALYSIS_FAILED', 502)
       const items = mergeSpotLeadSources(analyzed)
-      const published = !body.preview && items.length ? await publish(items, token) : 0
-      return json({ received: documents.length, published, items })
+      const queued = !body.preview && items.length ? await publish(items, token) : 0
+      return json({ received: documents.length, published: 0, queued, items })
     } catch (error) {
       return error instanceof FishingError
         ? json({ code: error.code }, error.status)

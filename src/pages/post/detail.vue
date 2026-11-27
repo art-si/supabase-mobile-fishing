@@ -5,15 +5,20 @@ import FishingShell from '@/components/FishingShell.vue'
 import PostCard from '@/components/PostCard.vue'
 import ContentReviewStatus from '@/components/ContentReviewStatus.vue'
 import ContentOwnerActions from '@/components/ContentOwnerActions.vue'
+import ContentDetailTools from '@/components/ContentDetailTools.vue'
+import ContentDeleteAction from '@/components/ContentDeleteAction.vue'
 import ContentReportAction from '@/components/ContentReportAction.vue'
 import PostComments from './components/PostComments.vue'
 import MobileLoadError from '@mobile-core/components/MobileLoadError.vue'
-import MobileLoadingStatus from '@/components/FishingLoadingStatus.vue'
+import MobileSkeleton from '@mobile-core/components/MobileSkeleton.vue'
 import { useResource } from '@/composables/useResource'
+import { useListRefresh } from '@/composables/useListRefresh'
 import { useMutation } from '@/composables/useMutation'
 import { useLoginAction } from '@/composables/useLoginAction'
 import { useAuthStore } from '@/stores/auth'
 import { read, write } from '@/services/repository'
+import { onContentDeleted } from '@/services/content-deletion'
+import { preserveCommentCameraPage, resumeCommentCameraPage } from '@/platforms/comment-camera'
 import type { Post, Comment } from '@/domain/models'
 const id = ref(''),
   auth = useAuthStore()
@@ -25,7 +30,22 @@ const { data, loading, error, load, invalidate } = useResource(
   null as PostDetail | null
 )
 const mutation = useMutation()
-onHide(invalidate)
+onContentDeleted(value => {
+  if (value.type === 'post' && value.id === id.value) { invalidate(); data.value = null }
+})
+function deleted() {
+  uni.navigateBack({ fail: () => uni.reLaunch({ url: '/pages/home/index' }) })
+}
+useListRefresh(load, () => !mutation.busy.value && commentList.value?.canRefresh() !== false)
+onHide(() => {
+  // #ifdef H5
+  if (document.visibilityState === 'hidden' && preserveCommentCameraPage()) return
+  // #endif
+  // #ifdef MP-WEIXIN
+  if (preserveCommentCameraPage()) return
+  // #endif
+  invalidate()
+})
 // A failed permission/read must not reappear from stale state when the user retries.
 watch(
   error,
@@ -39,6 +59,7 @@ onLoad((options) => {
   void load()
 })
 onShow(() => {
+  if (resumeCommentCameraPage()) return
   if (id.value) void load()
 })
 type Reaction = { id: string; kind: 'like' | 'bookmark'; enabled: boolean }
@@ -89,14 +110,14 @@ function showComments() {
   heading.scrollIntoView({ block: 'center', behavior: reduceMotion ? 'instant' : 'smooth' })
   // #endif
   // #ifndef H5
-  uni.pageScrollTo({ selector: '#comments', duration: 0 })
+  void commentList.value?.reveal()
   // #endif
 }
 </script>
 <template>
   <FishingShell title="鱼情详情" back>
     <view class="fishing-content stack">
-      <MobileLoadingStatus v-if="loading" label="正在读取这份鱼情…" /><MobileLoadError
+      <MobileSkeleton v-if="loading" label="正在读取这份鱼情…" /><MobileLoadError
         v-if="error"
         :message="error"
         @retry="load"
@@ -115,16 +136,21 @@ function showComments() {
           :busy="mutation.busy.value"
           @react="react"
           @open="showComments"
+          @deleted="deleted"
         />
-        <ContentOwnerActions
+        <ContentDetailTools v-if="data.post.author.id === auth.userId">
+          <ContentOwnerActions
           :id="data.post.id"
           type="post"
           :owner="data.post.author.id"
           :audience="data.post.audience"
           :revision="data.post.review_revision"
           :update="data.post.content_update"
+          compact
           @changed="load"
-        />
+          />
+          <ContentDeleteAction :id="data.post.id" type="post" :owner="data.post.author.id" compact :disabled="mutation.busy.value" @deleted="deleted" />
+        </ContentDetailTools>
         <PostComments
           ref="commentList"
           :post="data.post.id"

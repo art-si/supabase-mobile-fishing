@@ -1,11 +1,13 @@
 <script setup lang="ts">
 import noFishingStamp from '@/brand/no-fishing-stamp.png'
+import { useAppearanceStore } from '@/stores/appearance'
 
 defineOptions({ options: { styleIsolation: 'apply-shared' } })
 defineProps<{ prohibited?: boolean }>()
+const theme = useAppearanceStore()
 </script>
 <template>
-  <view v-if="prohibited" class="spot-status-stamp" role="img" aria-label="禁钓">
+  <view v-if="prohibited" class="spot-status-stamp" :class="{ 'spot-status-stamp--dark': theme.dark }" role="img" aria-label="禁钓">
     <image class="spot-status-stamp__icon" :src="noFishingStamp" mode="aspectFit" aria-hidden="true" />
   </view>
 </template>
@@ -22,9 +24,7 @@ defineProps<{ prohibited?: boolean }>()
   width: 100%;
   height: 100%;
 }
-@media (prefers-color-scheme: dark) {
-  .spot-status-stamp__icon {
-    filter: brightness(1.75) saturate(0.85);
-  }
+.spot-status-stamp--dark .spot-status-stamp__icon {
+  filter: brightness(1.75) saturate(0.85);
 }
 </style>

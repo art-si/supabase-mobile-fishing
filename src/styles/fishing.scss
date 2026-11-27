@@ -16,6 +16,17 @@
     // Uni sets an inline rem base. Use the browser's text preference for typography.
     font-size: 100% !important;
   }
+  // A classic desktop scrollbar must not steal 15px from the mobile layout.
+  // Wide layouts retain Pro's stable gutter and visible scrollbar.
+  @media (max-width: 600px) {
+    html {
+      scrollbar-gutter: auto;
+      scrollbar-width: none;
+    }
+    html::-webkit-scrollbar {
+      display: none;
+    }
+  }
   html,
   body {
     margin: 0;
@@ -162,6 +173,7 @@
     justify-content: center;
     gap: 8px;
     min-height: var(--tms-control-height);
+    min-width: var(--fishing-target);
     padding: 8px;
     font-size: var(--fishing-label-size);
     line-height: 1.45;
@@ -243,16 +255,23 @@
   }
   .name {
     color: var(--ink);
-    font-size: var(--fishing-label-size);
+    font-size: var(--fishing-name-size);
     font-weight: 650;
     line-height: 1.4;
     overflow-wrap: anywhere;
   }
   .section-head {
     display: flex;
+    flex-wrap: wrap;
     align-items: center;
     justify-content: space-between;
-    gap: 12px;
+    gap: 8px 12px;
+    min-width: 0;
+  }
+  .media-count {
+    flex: none;
+    white-space: nowrap;
+    font-variant-numeric: tabular-nums;
   }
   .divider {
     height: 1px;
@@ -291,10 +310,17 @@
     min-height: var(--fishing-target);
   }
   .fishing-page .bottom-nav .bottom-nav__label {
-    font-size: var(--fishing-small-size);
+    font-size: var(--fishing-nav-size);
   }
   .fishing-page,
   .wd-root-portal {
+    .mobile-action--icon {
+      min-width: var(--fishing-target);
+      min-height: var(--fishing-target);
+    }
+    .mobile-segmented .mobile-action.mobile-segmented__option {
+      min-height: var(--fishing-target);
+    }
     .mobile-field .mobile-field__label {
       font-size: var(--fishing-label-size);
     }
@@ -315,8 +341,9 @@
       font-size: var(--fishing-action-size);
     }
   }
-  .mobile-field__control--textarea {
-    min-height: 140px;
+  .mobile-field:not(.mobile-field--plain) .mobile-field__control--textarea {
+    height: var(--fishing-multiline-height, max(102px, calc(4.2em + 22px)));
+    min-height: 0;
   }
   .mobile-field__placeholder {
     color: var(--reed);
@@ -333,6 +360,8 @@
     color: var(--reed);
     font-size: var(--fishing-caption-size);
     line-height: 1.55;
+    min-width: 0;
+    overflow-wrap: anywhere;
   }
   .fish-facts__main {
     color: var(--ink);
@@ -343,6 +372,7 @@
     align-items: center;
     gap: 8px;
     min-width: 0;
+    max-width: 100%;
   }
   .mobile-action.post-title {
     display: block;
@@ -379,8 +409,14 @@
     align-items: center;
     justify-content: center;
     gap: 6px;
+    flex-wrap: wrap;
+    padding: 8px 4px;
     font-size: var(--fishing-caption-size);
     color: var(--discussion-name);
+  }
+  .post-actions .mobile-action text {
+    min-width: 0;
+    overflow-wrap: anywhere;
   }
   .post-actions .mobile-action.is-active {
     color: var(--discussion-name);
@@ -488,6 +524,9 @@ body::after {
   animation: none !important;
   background-image: none !important;
 }
+/* Match the H5 selection sheet on Android WebView, including the space below its header. */
+.mobile-select__option-list { padding-top: 8px; }
+.mobile-select__option.mobile-action { border-top: 0; }
 /* #endif */
 .fishing-sheet-content {
   padding: 8px max(16px, var(--mobile-safe-right, 0px)) 20px max(16px, var(--mobile-safe-left, 0px));

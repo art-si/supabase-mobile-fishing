@@ -1,8 +1,11 @@
 <script setup lang="ts">
+
 import { computed, ref, watch } from 'vue'
 import { onLoad, onShow, onHide, onUnload } from '@dcloudio/uni-app'
 import FishingShell from '@/components/FishingShell.vue'
 import ContentEditState from '@/components/ContentEditState.vue'
+import ContentDetailTools from '@/components/ContentDetailTools.vue'
+import ContentDeleteAction from '@/components/ContentDeleteAction.vue'
 import TripCatchesEditor from '@/components/TripCatchesEditor.vue'
 import CatchWeightField from '@/components/CatchWeightField.vue'
 import { useContentEdit } from '@/composables/useContentEdit'
@@ -15,6 +18,7 @@ import MobileMultiChoice from '@mobile-core/components/MobileMultiChoice.vue'
 import MobileComboField from '@mobile-core/components/MobileComboField.vue'
 import MobileDateTimeField from '@mobile-core/components/MobileDateTimeField.vue'
 import MobileMediaUploader from '@mobile-core/components/MobileMediaUploader.vue'
+import { preserveMediaPickerPage, resumeMediaPickerPage } from '@mobile-core/media-picker-session'
 import MobilePickerTrigger from '@mobile-core/components/MobilePickerTrigger.vue'
 import MobileSelect from '@mobile-core/components/MobileSelect.vue'
 import MobileSegmented from '@mobile-core/components/MobileSegmented.vue'
@@ -41,10 +45,9 @@ import {
 } from '@/domain/fishing-presets'
 import { validSelection } from '@/domain/map'
 import { pickMap } from '@/platforms/map-navigation'
-import { canCapturePostLocation, capturePostLocation } from '@/platforms/post-location'
+import { capturePostLocation } from '@/platforms/post-location'
 import { catchNumber } from '@/domain/catch-measurements'
 import { write } from '@/services/repository'
-import { isDemo } from '@/config'
 import { takeTripDraft } from '@/services/draft-handoff'
 import { useDraftOwner } from '@/composables/useDraftOwner'
 import { sessionScope, assertSession } from '@/services/session'
@@ -84,7 +87,6 @@ let locationVersion = 0,
   attemptedLocationDraft = ''
 async function startPostLocation() {
   if (
-    !canCapturePostLocation ||
     mode.value !== 'post' ||
     editor.editing.value ||
     !available.value ||
@@ -102,7 +104,7 @@ async function startPostLocation() {
   locationBusy.value = true
   locationNotice.value = ''
   try {
-    const place = await capturePostLocation()
+    const place = await capturePostLocation({ detailedLabel: true })
     if (
       !active ||
       version !== locationVersion ||
@@ -223,7 +225,7 @@ async function loadEdit(discard = false) {
   }
 }
 const draftKey = computed(
-  () => `dyj.${isDemo ? 'demo' : 'live'}.draft.${owner.value || 'guest'}.${mode.value}`
+  () => `dyj.live.draft.${owner.value || 'guest'}.${mode.value}`
 )
 function restore() {
   if (!owner.value || editor.editing.value) return
@@ -258,6 +260,9 @@ function askDraftChoice(kind: 'replace' | 'leave') {
   })
 }
 onHide(() => {
+  // #ifdef MP-WEIXIN
+  if (preserveMediaPickerPage()) return
+  // #endif
   pageVisible.value = false
   locationVersion++
   locationBusy.value = false
@@ -320,6 +325,9 @@ watch(
 )
 onShow(() => {
   pageVisible.value = true
+  // #ifdef MP-WEIXIN
+  if (resumeMediaPickerPage()) return
+  // #endif
   receiveLocation()
   void startPostLocation()
 
@@ -379,7 +387,8 @@ async function submit() {
   if (mode.value === 'trip') ensureTripCatches(draft.value)
   submitted.value = true
   errors.value = formErrors()
-  if (Object.keys(errors.value).some((key) => !['title', 'body'].includes(key)))
+  if (Object.keys(errors.value).some((key) =>
+    ['count', 'length', 'weight', 'occurred_on', 'catches'].includes(key) || key.startsWith('catch-')))
     detailsOpen.value = true
   if (Object.keys(errors.value).length) {
     void revealControl('compose-errors')
@@ -401,6 +410,13 @@ async function submit() {
     else if (editor.editing.value) uni.redirectTo({ url: `/pages/post/detail?id=${result.id}` })
     else uni.reLaunch({ url: '/pages/home/index?tab=feed' })
   })
+}
+function tripDeleted() {
+  saved.value = true
+  const key = `dyj.live.draft.${owner.value}.edit.trip.${editor.id.value}`
+  editor.reset()
+  try { uni.removeStorageSync(key) } catch { /* the deleted record cannot be saved again */ }
+  uni.redirectTo({ url: '/pages/mine/library?type=trips' })
 }
 async function confirmBack() {
   if (!available.value) return true
@@ -472,6 +488,7 @@ async function confirmBack() {
           v-if="mode === 'post'"
           v-model="draft.kind"
           label="记录类型"
+          :disabled="busy"
           :options="[
             { value: 'catch', label: '晒渔获' },
             { value: 'experience', label: '分享心得' }
@@ -485,6 +502,7 @@ async function confirmBack() {
             :placeholder="mode === 'trip' ? '本次出钓标题' : '选填'"
             :maxlength="compositionLimits.title"
             :error="errors.title"
+            :disabled="busy"
             :required="mode === 'trip'"
           />
           <MobileField
@@ -506,16 +524,17 @@ async function confirmBack() {
                 : '写写今天的鱼情、作钓过程…'
             "
             :error="errors.body"
+            :disabled="busy"
             :hint="
-              mode === 'trip'
+              errors.body ? '' : mode === 'trip'
                 ? '可留空，先记下日期和标题也可以。'
                 : '文字、图片或视频，至少提供一项。'
             "
           />
           <view id="media" class="compose-media" tabindex="-1">
-            <view class="row row--between"
+            <view class="section-head"
               ><text class="name">图片 / 视频</text
-              ><text class="caption">{{ photos.length }} / 9</text></view
+              ><text class="caption media-count">{{ photos.length }} / 9</text></view
             >
             <MobileMediaUploader
               v-model="photos"
@@ -535,11 +554,7 @@ async function confirmBack() {
               @login="uploadLogin"
             />
             <text v-if="errors.media" class="error" role="alert">{{ errors.media }}</text>
-            <text class="caption">{{
-              isDemo
-                ? '体验图片仅存本机。视频请在正式环境上传。'
-                : '照片和视频可混合添加，最多 9 项。'
-            }}</text>
+            <text class="caption">照片和视频可混合添加，最多 9 项。</text>
           </view>
           <MobileComboField
             v-if="mode === 'post' && draft.kind === 'experience'"
@@ -550,6 +565,7 @@ async function confirmBack() {
             :options="experienceTopicOptions"
             :maxlength="40"
             :error="errors.topic"
+            :disabled="busy"
           />
         </view>
         <view v-if="mode === 'trip' || draft.kind === 'catch'" class="panel stack">
@@ -557,13 +573,14 @@ async function confirmBack() {
             class="row row--between details-toggle"
             :aria-label="mode === 'trip' ? '渔获与钓法' : '鱼情详情'"
             :aria-expanded="detailsOpen"
+            :disabled="busy"
             aria-controls="catch-details"
             @click="detailsOpen = !detailsOpen"
           >
-            <text class="name">{{
-              mode === 'trip' ? '渔获与钓法（选填）' : '鱼情详情（选填）'
-            }}</text
-            ><text class="caption">{{ detailsOpen ? '收起' : '展开' }}</text>
+            <view class="details-toggle__label"><text class="name">{{
+              mode === 'trip' ? '渔获与钓法' : '鱼情详情'
+            }}</text><text class="caption">选填</text></view>
+            <text class="caption">{{ detailsOpen ? '收起' : '展开' }}</text>
           </MobileAction>
           <view v-if="detailsOpen" id="catch-details" class="stack" tabindex="-1">
             <TripCatchesEditor
@@ -578,6 +595,7 @@ async function confirmBack() {
                 v-model="draft.species"
                 field="species"
                 label="鱼种"
+                :disabled="busy"
                 :options="fishSpeciesOptions"
                 :maxlength="60"
               />
@@ -585,6 +603,7 @@ async function confirmBack() {
                 v-model="draft.method"
                 field="method"
                 label="钓法"
+                :disabled="busy"
                 :options="fishingMethodOptions"
                 :max-selected="6"
                 :maxlength="40"
@@ -593,6 +612,7 @@ async function confirmBack() {
                 v-model="draft.bait"
                 field="bait"
                 label="饵料"
+                :disabled="busy"
                 :options="fishingBaitOptions"
                 :maxlength="60"
               />
@@ -600,6 +620,7 @@ async function confirmBack() {
                 v-model="draft.additives"
                 field="additives"
                 label="小药"
+                :disabled="busy"
                 :options="fishingAdditiveOptions"
                 :maxlength="60"
                 :max-selected="6"
@@ -609,8 +630,10 @@ async function confirmBack() {
                 v-model="draft.count"
                 field="count"
                 label="尾数"
+                :disabled="busy"
                 inputmode="numeric"
-                placeholder="未知留空，空军填 0"
+                placeholder="选填"
+                hint="未知留空，空军填 0"
                 :maxlength="8"
                 :error="errors.count"
                 @update:model-value="checkCount"
@@ -620,8 +643,10 @@ async function confirmBack() {
                 v-model="draft.length"
                 field="length"
                 label="鱼长（cm）"
+                :disabled="busy"
                 inputmode="decimal"
-                placeholder="多尾可填最长的一尾"
+                placeholder="选填"
+                hint="多尾可填最长的一尾"
                 :maxlength="24"
                 :error="errors.length"
               />
@@ -640,6 +665,7 @@ async function confirmBack() {
                 v-model:time="draft.occurred_time"
                 field="occurred_on"
                 label="出钓时间"
+                :disabled="busy"
                 :error="errors.occurred_on"
               />
             </view>
@@ -653,6 +679,7 @@ async function confirmBack() {
                 field="audience"
                 label="分享范围"
                 placeholder="选择分享范围"
+                :disabled="busy"
                 :options="audienceOptions(draft.audience)" /></MobileField
             ><MobileField
               field="post-location"
@@ -675,7 +702,7 @@ async function confirmBack() {
             ><MobileIcon name="shield" :size="18" /><text>{{
               mode === 'trip'
                 ? '这份日志仅自己可见。之后分享时，会另建一份草稿，不会自动带出私人钓位。'
-                : `发布范围：${audienceLabels[draft.audience]}。展示所选地点的大致位置。${isDemo ? '体验内容仅存本机。' : ''}`
+                : `发布范围：${audienceLabels[draft.audience]}。展示所选地点的大致位置。`
             }}</text></view
           >
         </view>
@@ -683,6 +710,7 @@ async function confirmBack() {
         <MobileAction
           class="primary compose-submit"
           :disabled="busy || uploading || editor.conflict.value"
+          :aria-busy="busy || undefined"
           @click="submit"
           >{{
             busy
@@ -694,9 +722,11 @@ async function confirmBack() {
                 : mode === 'trip'
                   ? '保存私人日志'
                   : '保存并发布'
-          }}</MobileAction
-        >
+          }}</MobileAction>
         <text class="caption" style="text-align: center">草稿自动保存到本机</text>
+        <ContentDetailTools v-if="editor.editing.value && mode === 'trip'">
+          <ContentDeleteAction :id="draft.id" type="trip" :owner="owner" :disabled="busy || uploading" @deleted="tripDeleted" />
+        </ContentDetailTools>
       </template>
     </view>
     <view v-else class="fishing-content stack">
@@ -735,8 +765,16 @@ async function confirmBack() {
   grid-column: 1 / -1;
 }
 .details-toggle.mobile-action {
-  min-height: 48px;
+  min-height: var(--fishing-target);
   text-align: left;
+}
+.details-toggle__label {
+  display: flex;
+  flex: 1;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 4px 8px;
+  min-width: 0;
 }
 .details-toggle .caption {
   flex-shrink: 0;
@@ -747,9 +785,7 @@ async function confirmBack() {
 }
 .compose-story {
   gap: 24px;
-}
-.compose-story :deep(.mobile-field__control--textarea) {
-  min-height: 180px;
+  --fishing-multiline-height: max(202px, calc(7em + 22px));
 }
 .compose-media .caption {
   font-size: var(--fishing-label-size);

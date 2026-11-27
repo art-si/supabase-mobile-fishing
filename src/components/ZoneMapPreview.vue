@@ -25,7 +25,16 @@ const fences = computed(() => {
     dashed: zone.source !== 'official'
   }]
 })
-function ready(instance: AmapMap) { map = instance; instance.on('complete', () => panel.value?.fitFences()); panel.value?.fitFences() }
+function ready(instance: AmapMap) {
+  map = instance
+  error.value = ''
+  instance.on('complete', () => {
+    if (map !== instance) return
+    error.value = ''
+    panel.value?.fitFences()
+  })
+  panel.value?.fitFences()
+}
 function zoom(delta: number) { if (map) map.setZoom(Math.max(8, Math.min(19, map.getZoom()+delta))) }
 </script>
 <template>

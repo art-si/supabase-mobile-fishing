@@ -1,4 +1,5 @@
 <script setup lang="ts">
+
 import { ref, watch } from 'vue'
 import { onShow, onHide, onUnload } from '@dcloudio/uni-app'
 import FishingShell from '@/components/FishingShell.vue'
@@ -12,7 +13,6 @@ import MobileBottomSheet from '@mobile-core/components/MobileBottomSheet.vue'
 import MobileConfirmDialog from '@mobile-core/components/MobileConfirmDialog.vue'
 import { useAuthStore } from '@/stores/auth'
 import { useMutation } from '@/composables/useMutation'
-import { isDemo } from '@/config'
 import {
   sessionRequest,
   saveSession,
@@ -35,7 +35,7 @@ function clearAccess() {
 }
 async function checkAccess() {
   clearAccess()
-  if (!auth.signedIn || isDemo) return
+  if (!auth.signedIn) return
   const current = accessVersion
   try {
     const result = await moderation<{ allowed: boolean }>('access')
@@ -68,7 +68,6 @@ async function logout() {
 async function deleteAccount() {
   await run(async () => {
     if (confirmText.value !== '注销') throw new Error('请填写“注销”确认')
-    if (isDemo) throw new Error('体验模式没有线上账号，不执行账号注销。可以退出体验。')
     const owner = auth.userId
     await sessionRequest('/functions/v1/account-delete', {
       method: 'POST',
@@ -99,12 +98,12 @@ async function deleteAccount() {
           <view class="settings-nav-copy"><text class="name">我的邮箱资料</text><text class="caption">官方渠道邮件联系</text></view>
           <MobileIcon class="settings-link-arrow" name="chevron" :size="16" />
         </MobileAction>
-        <MobileAction v-if="!isDemo" class="list-row" @click="uni.navigateTo({ url: '/pages/notifications/index?settings=1' })">
+        <MobileAction class="list-row" @click="uni.navigateTo({ url: '/pages/notifications/index?settings=1' })">
           <MobileIcon name="message" :size="22" />
           <view class="settings-nav-copy"><text class="name">通知设置</text><text class="caption">点赞 · 评论与回复</text></view>
           <MobileIcon class="settings-link-arrow" name="chevron" :size="16" />
         </MobileAction>
-        <MobileAction v-if="!isDemo" class="list-row" @click="uni.navigateTo({ url: '/pages/account/security' })">
+        <MobileAction class="list-row" @click="uni.navigateTo({ url: '/pages/account/security' })">
           <MobileIcon name="shield" :size="22" />
           <view class="settings-nav-copy"><text class="name">账号与安全</text><text class="caption">手机号 · 密码</text></view>
           <MobileIcon class="settings-link-arrow" name="chevron" :size="16" />
@@ -140,16 +139,12 @@ async function deleteAccount() {
           ><MobileIcon class="settings-link-arrow" name="chevron" :size="16" /></MobileAction
       ></view>
       <template v-if="auth.signedIn"
-        ><MobileAction class="secondary" :disabled="busy" @click="logoutOpen = true">{{
-          isDemo ? '退出本机体验' : '退出登录'
-        }}</MobileAction
+        ><MobileAction class="secondary" :disabled="busy" @click="logoutOpen = true">退出登录</MobileAction
         ><MobileAction
-          v-if="!isDemo"
           class="text-action settings-delete"
           :disabled="busy"
           @click="deletion = true"
-          >注销账号</MobileAction
-        ></template
+          >注销账号</MobileAction></template
       ><text v-if="error" class="error" role="alert">{{ error }}</text
       ><view class="settings-brand">
         <FishMark :size="32" tone="muted" />
@@ -179,7 +174,7 @@ async function deleteAccount() {
       ></MobileBottomSheet
     ><MobileConfirmDialog
       v-model="logoutOpen"
-      :title="isDemo ? '退出本机体验？' : '退出登录？'"
+      title="退出登录？"
       message="退出会清除这台设备上当前账号未提交的鱼情、钓位和水域线索草稿。已保存的记录不会删除，其他设备不受影响。"
       confirm-text="清除草稿并退出"
       @confirm="logout"
@@ -195,10 +190,9 @@ async function deleteAccount() {
   flex: 1;
   min-inline-size: 0;
   display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  justify-content: space-between;
-  gap: 4px 12px;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 4px;
 }
 .settings-privacy {
   padding: var(--fishing-gap) var(--fishing-inset);

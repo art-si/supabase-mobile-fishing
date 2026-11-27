@@ -2,22 +2,20 @@
 import { computed, ref, watch } from 'vue'
 import { onLoad, onShow, onHide, onReachBottom } from '@dcloudio/uni-app'
 import FishingShell from '@/components/FishingShell.vue'
-import FishingLoadingStatus from '@/components/FishingLoadingStatus.vue'
+import MobileSkeleton from '@mobile-core/components/MobileSkeleton.vue'
 import PostCard from '@/components/PostCard.vue'
 import SpotCard from '@/components/SpotCard.vue'
 import SpotCommentsSheet from '@/components/SpotCommentsSheet.vue'
-import FishFacts from '@/components/FishFacts.vue'
-import TripCatchList from '@/components/TripCatchList.vue'
-import FishingPhotos from '@/components/FishingPhotos.vue'
+import TripCard from '@/components/TripCard.vue'
 import MobileAction from '@mobile-core/components/MobileAction.vue'
-import MobileConfirmDialog from '@mobile-core/components/MobileConfirmDialog.vue'
 import MobileLoadError from '@mobile-core/components/MobileLoadError.vue'
 import MobileListFooter from '@mobile-core/components/MobileListFooter.vue'
 import MobileEmptyState from '@/components/FishingEmptyState.vue'
 import { read, write } from '@/services/repository'
+import { onContentDeleted } from '@/services/content-deletion'
 import { useResource } from '@/composables/useResource'
+import { useListRefresh } from '@/composables/useListRefresh'
 import { useMutation } from '@/composables/useMutation'
-import { isDemo } from '@/config'
 import { useAuthStore } from '@/stores/auth'
 import { useSpotCommunity } from '@/composables/useSpotCommunity'
 import { leadCommunityKey, savedSpotLeads } from '@/services/spot-community'
@@ -39,14 +37,9 @@ const auth = useAuthStore(),
   mutation = useMutation()
 const emptyPage = <T,>(): Page<T> => ({ items: [], next: null })
 const initial = { posts: emptyPage<Post>(), spots: emptyPage<Spot>(), trips: emptyPage<Trip>(), leads: [] as SpotLead[] }
-const { data, error, loading, load } = useResource(async () => {
+const { data, error, loading, load, invalidate } = useResource(async () => {
   if (!auth.signedIn) return initial
   const category = type.value
-  if (isDemo) {
-    const local = await read<{ posts: Post[]; spots: Spot[]; trips: Trip[] }>('library', { type: category })
-    return { posts: { ...initial.posts, items: local.posts }, spots: { ...initial.spots, items: local.spots },
-      trips: { ...initial.trips, items: local.trips }, leads: [] }
-  }
   const [posts, spots, trips, leads] = await Promise.all([
     category === 'posts' || category === 'saved' ? read<Page<Post>>('library_posts', { type: category }) : initial.posts,
     category === 'spots' || category === 'saved' ? read<Page<Spot>>('library_spots', { type: category }) : initial.spots,
@@ -55,6 +48,15 @@ const { data, error, loading, load } = useResource(async () => {
   ])
   return { posts, spots, trips, leads }
 }, initial)
+let active = true
+onHide(() => { active = false })
+onContentDeleted(value => {
+  const reload = loading.value
+  invalidate()
+  const list = value.type === 'post' ? 'posts' : value.type === 'spot' ? 'spots' : 'trips'
+  data.value = { ...data.value, [list]: { ...data.value[list], items: data.value[list].items.filter(item => item.id !== value.id) } }
+  if (reload && active) void load()
+})
 const more = useMutation()
 const hasMore = computed(() => Boolean(data.value.posts.next || data.value.spots.next || data.value.trips.next))
 const itemCount = computed(() => data.value.posts.items.length + data.value.spots.items.length +
@@ -84,6 +86,7 @@ async function loadMore() {
   })
 }
 onReachBottom(() => { if (!more.error.value) void loadMore() })
+useListRefresh(async () => { more.error.value = ''; await load() }, () => !mutation.busy.value && !commentsOpen.value)
 watch([type, () => auth.context], () => { more.error.value = '' })
 const { summaries, busy: communityBusy, apply: updateCommunity, react: reactToSpot,
   openComments, commentsOpen, commentTarget } = useSpotCommunity(
@@ -102,7 +105,7 @@ onLoad((options) => {
   type.value = libraryTypes.find((kind) => kind === options?.type) ?? 'trips'
   void load()
 })
-onShow(() => void load())
+onShow(() => { active = true; void load() })
 const empty = computed(() =>
   type.value === 'trips'
     ? !data.value.trips.items.length
@@ -140,34 +143,6 @@ function useTrip(trip: Trip, intent: 'repeat' | 'share') {
     }
   })
 }
-const deleteOpen = ref(false)
-watch(
-  () => auth.context,
-  () => {
-    deleteOpen.value = false
-    pendingDelete = undefined
-  },
-  { flush: 'sync' }
-)
-let pendingDelete: { id: string; type: string } | undefined
-onHide(() => {
-  deleteOpen.value = false
-  pendingDelete = undefined
-})
-function remove(id: string, kind: string) {
-  if (mutation.busy.value) return
-  pendingDelete = { id, type: kind }
-  deleteOpen.value = true
-}
-async function confirmDelete() {
-  const target = pendingDelete
-  pendingDelete = undefined
-  if (!target) return
-  await mutation.run(async () => {
-    await write('delete_content', target)
-    await load()
-  })
-}
 </script>
 <template>
   <FishingShell :title="title" back>
@@ -182,18 +157,18 @@ async function confirmDelete() {
     </view>
     <view v-else class="fishing-content stack">
       <MobileLoadError v-if="error" :message="error" @retry="load" />
-      <FishingLoadingStatus v-if="loading && empty" label="正在翻阅你的出钓记录…" />
+      <MobileSkeleton v-if="loading && empty" label="正在翻阅你的出钓记录…" />
       <template v-if="type === 'posts' || type === 'saved'"
         ><view v-for="post in data.posts.items" :key="post.id" class="stack stack--tight"
           ><PostCard
             :post="post"
+            :busy="mutation.busy.value"
             @react="react(post, $event)"
             @open="uni.navigateTo({ url: `/pages/post/detail?id=${post.id}` })"
           >
             <template v-if="type === 'posts' && post.author.id === auth.userId" #management>
               <view class="mobile-action-group publication-management">
                 <MobileAction class="secondary" @click="uni.navigateTo({ url: editRoute('post', post.id) })">编辑发布</MobileAction>
-                <MobileAction class="danger publication-delete" @click="remove(post.id, 'post')">删除</MobileAction>
               </view>
             </template>
           </PostCard></view
@@ -201,38 +176,12 @@ async function confirmDelete() {
       >
       <template v-if="type === 'trips' || (type === 'posts' && data.trips.items.length)"
         ><view v-if="data.trips.items.length" class="notice">以前的出钓日志仍仅自己可见。新的记录统一在“记录鱼情”里保存。</view
-        ><view v-for="trip in data.trips.items" :key="trip.id" class="panel stack"
-          ><text class="caption">{{ trip.occurred_on }} · 私人日志</text
-          ><text class="heading">{{ trip.title }}</text
-          ><text class="body">{{ trip.body }}</text
-          ><FishingPhotos
-            v-if="trip.media?.length"
-            :media="trip.media"
-            :label="`${trip.title}的照片`"
-          /><FishFacts :method="trip.method" :bait="trip.bait" /><TripCatchList :trip="trip" />
-          <view class="mobile-action-group"
-            ><MobileAction
-              class="text-action"
-              @click="uni.navigateTo({ url: editRoute('trip', trip.id) })"
-              >编辑日志</MobileAction
-            ><MobileAction class="text-action" @click="useTrip(trip, 'repeat')"
-              >再记一次</MobileAction
-            ><MobileAction class="text-action" @click="useTrip(trip, 'share')"
-              >生成分享草稿</MobileAction
-            ><MobileAction class="text-action" @click="remove(trip.id, 'trip')"
-              >删除日志</MobileAction
-            ></view
-          ></view
-        ></template
+        ><TripCard v-for="trip in data.trips.items" :key="trip.id" :trip="trip" :owner="auth.userId" :busy="mutation.busy.value" @use="useTrip(trip,$event)" />
+        </template
       >
       <template v-if="type === 'spots' || type === 'saved'"
         ><view v-for="spot in data.spots.items" :key="spot.id" class="stack stack--tight"
-          ><SpotCard :spot="spot" /><MobileAction
-            v-if="type === 'spots'"
-            class="text-action"
-            @click="remove(spot.id, 'spot')"
-            >删除这个钓位</MobileAction
-          ></view
+          ><SpotCard :spot="spot" :busy="mutation.busy.value" /></view
         ></template
       >
       <template v-if="type === 'saved'">
@@ -262,14 +211,6 @@ async function confirmDelete() {
         mutation.error.value
       }}</text>
     </view>
-    <MobileConfirmDialog
-      v-model="deleteOpen"
-      title="删除这条记录？"
-      message="删除后不再显示，请确认你不再需要它。"
-      confirm-text="删除记录"
-      @confirm="confirmDelete"
-      @cancel="pendingDelete = undefined"
-    />
   </FishingShell>
 </template>
 <style scoped>

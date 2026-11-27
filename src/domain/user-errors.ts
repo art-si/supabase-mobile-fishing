@@ -8,6 +8,9 @@ export const serviceErrorMessages: Readonly<Record<string, string>> = {
   DISCOVERY_LIMIT: '推荐次数已达上限，请稍后再试。',
   DISCOVERY_INVALID_SHARE: '请检查分享的钓位名称、公开链接和摘录。',
   FENCE_INVALID_NOTICE: '请填写有效的政府公告链接和禁钓条款。',
+  SPOT_LOCATION_PROHIBITED: '此位置已标记为禁钓，不能创建钓位。请更换位置。',
+  SPOT_LOCATION_REQUIRED: '请先确认实际钓位位置，再保存。',
+  SPOT_BAN_CHECK_UNAVAILABLE: '禁钓范围暂未核对，请稍后重试。',
   FENCE_AI_UNAVAILABLE: '暂时无法分析公告，可返回地图手动圈选。',
   SOCIAL_UNAVAILABLE: '该平台暂不支持绑定。',
   SOCIAL_EXPIRED: '本次授权已失效，请重新发起绑定。',
@@ -24,6 +27,7 @@ export const serviceErrorMessages: Readonly<Record<string, string>> = {
   PHONE_UNCHANGED: '新手机号不能与原手机号相同',
   NEW_PHONE_CODE_REQUIRED: '请先获取新手机号的验证码',
   NETWORK_ERROR: '网络连接中断，请检查网络后重试',
+  REQUEST_TIMEOUT: '请求超时，请稍后重试',
   VIDEO_TOO_LARGE: '视频不能超过 20MB，请选择较小的视频',
   VIDEO_UNSUPPORTED: '这个视频的格式或编码暂时无法读取，请重新选择视频',
   VIDEO_CONVERSION_UNAVAILABLE: '当前设备无法处理此视频格式，请导出为兼容的 MP4 后重选；原片未改动',
@@ -33,6 +37,11 @@ export const serviceErrorMessages: Readonly<Record<string, string>> = {
   POST_LOCATION_REQUIRED: '选择所在位置后再发布',
   MEDIA_LIMIT: '最多添加 9 项图片或视频，请减少后重选',
   MEDIA_SELECTION_FAILED: '暂时无法读取所选内容，请检查相册权限',
+  MEDIA_SELECTION_IN_PROGRESS: '文件选择正在进行，请完成后再试',
+  MEDIA_SELECTION_UNAVAILABLE: '当前微信暂不支持选择图片或视频，请更新微信后重试',
+  MEDIA_PERMISSION_DENIED: '未取得相机或相册权限，请在微信设置中允许后重试',
+  MEDIA_PRIVACY_REQUIRED: '微信隐私授权未完成，请重新打开小程序并同意隐私说明后再试',
+  MEDIA_PRIVACY_UNDECLARED: '图片与视频选择暂未开放，请联系运营者完善小程序隐私说明',
   VIDEO_NOT_ALLOWED: '这里只支持照片，请在记录鱼情中分享视频',
   IMAGE_INPUT_TOO_LARGE: '图片文件过大，请选择 8MB 以内的图片',
   IMAGE_DIMENSIONS_TOO_LARGE: '照片分辨率过高，请先缩小照片后重试',
@@ -46,15 +55,12 @@ export const serviceErrorMessages: Readonly<Record<string, string>> = {
   MAP_RESPONSE_INVALID: '地图预览未能加载，请重试',
   MAP_LOCATION_HIDDEN: '作者未开放可预览的位置，可以查看钓位说明',
   MAP_BACKEND_UNAVAILABLE: '地图暂时无法使用，请稍后重试；仍可查看钓位列表',
-  MAP_DEMO_UNAVAILABLE: '体验模式不提供真实地点搜索和地图预览，可继续查看示例钓位',
   MAP_LOAD_FAILED: '地图未能加载，请检查网络后重试；仍可查看钓位列表',
   MAP_LOCATION_UNAVAILABLE: '暂时无法取得位置，可以搜索地点或手动选点',
   WEATHER_UNAVAILABLE: '天气暂时无法查询，请检查网络后重试',
   WEATHER_RESPONSE_INVALID: '这次没有取得完整的天气资料，请稍后重试',
   WEATHER_REGION_UNAVAILABLE: '未能识别天气区域，请搜索并选择附近的城市或地点',
-  WEATHER_DEMO_UNAVAILABLE: '体验模式不提供真实天气，请在正式环境查询',
   ZONE_EXPIRED: '这条提醒已经过期，请重新核实后再提交',
-  ZONE_DEMO: '体验模式不提交真实禁钓提醒',
   NOT_AUTHENTICATED: '请先登录，草稿会保留',
   NOT_FOUND: '内容不存在或你暂时无权查看',
   NOT_FRIENDS: '双方成为好友后才能发送消息',
@@ -78,7 +84,6 @@ export const serviceErrorMessages: Readonly<Record<string, string>> = {
   AUTH_REQUIRED: '请先登录，草稿会保留',
   SELF_REVIEW: '不能审核自己的内容，请由另一位审核员处理',
   SELF_REPORT_REVIEW: '自己提交的举报或涉及自己的内容，请由另一位审核员处理',
-  CONTENT_REPORT_DEMO: '体验模式不提交真实社区举报',
   RECENT_PHONE_VERIFICATION_REQUIRED: '请先退出并用短信重新登录，再于 5 分钟内完成注销',
   MEDIA_CLEANUP_FAILED: '图片清理未完成，账号尚未删除，请稍后重试',
   CLEANUP_REQUIRES_RETRY: '图片正在分批清理，请再次确认注销以继续',
@@ -92,7 +97,6 @@ export const serviceErrorMessages: Readonly<Record<string, string>> = {
   PHONE_AUTH_UNAVAILABLE: '本机号码登录暂时不可用，请使用短信登录',
   PHONE_AUTH_PROOF_INVALID: '本机号码登录未完成，请重试或使用短信登录',
   AUTH_SECURITY_UNAVAILABLE: '短信验证暂时不可用，请稍后再试',
-  DEMO_AUTH_DISABLED: '当前为体验模式，请使用体验入口'
 }
 
 export function serviceErrorMessage(code: string): string | undefined {
@@ -133,8 +137,6 @@ const localMessages = new Set([
   '微信手机号登录暂时不可用，请使用短信登录',
   '微信登录暂时不可用，请重试',
   '同意协议后可检测本机号码登录是否可用',
-  '本机体验不提供审核权限',
-  '体验模式没有线上账号，不执行账号注销。可以退出体验。',
   '暂时无法读取照片，请检查相册权限',
   '请先登录再上传照片',
   '未能确认照片上传结果，请重试',
@@ -182,8 +184,6 @@ export function userErrorText(error: unknown): string {
     if (localMessages.has(value.message)) return value.message
     // This local validation has one numeric parameter, not arbitrary server text.
     if (/^请填写 0–\d{1,6}(?:\.\d{1,2})? 之间的数字$/.test(value.message)) return value.message
-    if (value.message === '正式模式不能使用体验账号')
-      return '体验账号不能用于真实服务，请使用手机号登录'
   }
   if (typeof value.code === 'string') {
     const known = serviceErrorMessage(value.code)

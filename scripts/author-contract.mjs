@@ -51,7 +51,7 @@ export async function authorContract({
     id: 'b1111111-1111-4111-8111-111111111111',
     author,
     name: '芦苇岸边',
-    city: '苏州市',
+    city: '武汉市',
     water_type: '自然水域',
     species: '鲫鱼',
     description: '接口测试钓位',
@@ -60,9 +60,9 @@ export async function authorContract({
     observed_on: '2026-11-18',
     audience: 'public',
     precision: 'exact',
-    location_label: '苏州市 · 仅用于接口验收的钓位',
-    longitude: 120.123456,
-    latitude: 31.123456,
+    location_label: '北太子湖 · 仅用于接口验收的钓位',
+    longitude: 114.191333,
+    latitude: 30.516943,
     status: 'published',
     review_revision: 1,
     saved: false,
@@ -94,6 +94,7 @@ export async function authorContract({
     const req = route.request(),
       url = new URL(req.url())
     if (url.origin === base || !url.protocol.startsWith('http')) return route.continue()
+    if (url.origin === 'https://tiles.openfreemap.org') return route.abort()
     if (url.origin !== 'https://jupuypvmgjpnpntfetqv.supabase.co') {
       escaped.push(url.href)
       return route.abort()
@@ -111,6 +112,10 @@ export async function authorContract({
     if (req.method() === 'OPTIONS') return reply({})
     const body = req.postDataJSON() || {},
       uid = req.headers().authorization?.includes('author-B') ? other : owner
+    if (url.pathname === '/functions/v1/amap')
+      return body.action === 'region'
+        ? reply({ province: '湖北省', city: '武汉市', district: '汉阳区', adcode: '420105' })
+        : reply({ code: 'MAP_SERVICE_UNAVAILABLE' }, 503)
     if (url.pathname === '/rest/v1/rpc/fishing_moderation')
       return reply(
         body.action === 'own_status' ? { status: post.status, reason: '' } : { allowed: false }
@@ -129,6 +134,12 @@ export async function authorContract({
           return reply(spot)
         case 'library':
           return reply({ posts: [post], trips: [trip], spots: [spot] })
+        case 'library_posts':
+          return reply({ items: [post], next: null })
+        case 'library_trips':
+          return reply({ items: [trip], next: null })
+        case 'library_spots':
+          return reply({ items: [spot], next: null })
         case 'profile':
           return reply({
             profile: author,

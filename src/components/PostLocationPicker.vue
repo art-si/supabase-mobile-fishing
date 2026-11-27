@@ -1,19 +1,19 @@
 <script setup lang="ts">
+defineOptions({ options: { styleIsolation: 'apply-shared' } })
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import MobileSearch from '@mobile-core/components/MobileSearch.vue'
 import MobileListFooter from '@mobile-core/components/MobileListFooter.vue'
 import MobileField from '@mobile-core/components/MobileField.vue'
 import FishingCityPicker from './FishingCityPicker.vue'
 import MobileAction from '@mobile-core/components/MobileAction.vue'
-import { activateActionKey, preventActionKey } from '@mobile-core/action-keyboard'
+
 import MobileIcon from '@mobile-core/components/MobileIcon.vue'
-import MobileLoadingStatus from '@/components/FishingLoadingStatus.vue'
+import MobileSkeleton from '@mobile-core/components/MobileSkeleton.vue'
 import { useAuthStore } from '@/stores/auth'
 import { errorText } from '@/domain/rules'
 import { placeDistanceLabel } from '@/domain/place-distance'
 import { validSelection, type MapPlace, type SelectedPlace } from '@/domain/map'
 import {
-  canCapturePostLocation,
   capturePostLocation,
   findPostPlaces,
   findNearbyPostPlaces
@@ -135,7 +135,7 @@ defineExpose({ reachBottom: () => {
 } })
 
 async function locateCurrent() {
-  if (!canCapturePostLocation || locating.value || disposed) return
+  if (locating.value || disposed) return
   const version = ++locationVersion
   locating.value = true
   locationError.value = ''
@@ -187,7 +187,7 @@ onMounted(() => {
   const stored = uni.getStorageSync(key)
   uni.removeStorageSync(key)
   if (validSelection(stored)) initial.value = stored
-  if (canCapturePostLocation) void locateCurrent()
+  void locateCurrent()
 })
 onBeforeUnmount(() => {
   disposed = true
@@ -214,12 +214,10 @@ onBeforeUnmount(() => {
         @dismiss="resetSearch"
       />
       <MobileAction
-        class="location-filter"
-        variant="link"
+        class="mobile-action--link location-filter"
         :aria-pressed="cityOpen"
         @click="cityOpen = !cityOpen"
-        >{{ cityOpen ? '收起城市筛选' : city ? `城市：${city}` : '全部城市' }}</MobileAction
-      >
+        >{{ cityOpen ? '收起城市筛选' : city ? `城市：${city}` : '全部城市' }}</MobileAction>
       <MobileField
         v-if="cityOpen"
         field="post-place-city"
@@ -248,17 +246,11 @@ onBeforeUnmount(() => {
 
     <template v-if="!hasQuery">
       <view v-if="initial || current" class="panel place-list">
-        <button
+        <MobileAction
           v-if="initial && !currentSelected"
-          role="button"
-          :tabindex="canChoose ? 0 : -1"
-          :aria-disabled="!canChoose || undefined"
-          class="mobile-action place-row"
-          hover-class="mobile-action--pressed"
+          class="place-row"
           :disabled="!canChoose"
           @click="choose(initial)"
-          @keydown="preventActionKey"
-          @keyup="activateActionKey($event, () => initial && choose(initial))"
         >
           <MobileIcon name="location" :size="22" />
           <view class="place-copy"
@@ -266,18 +258,12 @@ onBeforeUnmount(() => {
             ><text class="caption">当前选择 · 大致位置</text></view
           >
           <MobileIcon name="check" :size="22" />
-        </button>
-        <button
+        </MobileAction>
+        <MobileAction
           v-if="current"
-          role="button"
-          :tabindex="canChoose ? 0 : -1"
-          :aria-disabled="!canChoose || undefined"
-          class="mobile-action place-row"
-          hover-class="mobile-action--pressed"
+          class="place-row"
           :disabled="!canChoose"
           @click="choose(current)"
-          @keydown="preventActionKey"
-          @keyup="activateActionKey($event, () => current && choose(current))"
         >
           <MobileIcon name="location" :size="22" />
           <view class="place-copy"
@@ -285,22 +271,17 @@ onBeforeUnmount(() => {
             ><text class="caption">{{ currentCaption }}</text></view
           >
           <MobileIcon :name="currentSelected ? 'check' : 'chevron'" :size="22" />
-        </button>
+        </MobileAction>
       </view>
-      <view v-if="canCapturePostLocation && (locating || locationError)" class="stack stack--tight">
-        <MobileLoadingStatus v-if="locating" label="正在定位当前位置…" />
+      <view v-if="locating || locationError" class="stack stack--tight">
+        <MobileSkeleton v-if="locating" label="正在定位当前位置…" />
         <text v-if="locationError" class="muted" role="status">{{ locationError }}</text>
         <MobileAction
           v-if="locationError && !locating"
-          class="location-filter"
-          variant="link"
+          class="mobile-action--link location-filter"
           @click="locateCurrent"
-          >重新定位</MobileAction
-        >
+          >重新定位</MobileAction>
       </view>
-      <text v-if="!canCapturePostLocation" class="caption"
-        >搜索城市或附近水域，选择要展示的地点。</text
-      >
 
       <view
         v-if="current || nearby.length || nearbyLoading || nearbyError"
@@ -309,28 +290,21 @@ onBeforeUnmount(() => {
         <view class="row row--between row--wrap">
           <text class="name">附近地点</text>
           <MobileAction
-            v-if="canCapturePostLocation"
             variant="link"
             :disabled="locating || nearbyLoading"
             @click="locateCurrent"
             >刷新位置</MobileAction
           >
         </view>
-        <MobileLoadingStatus v-if="nearbyLoading" label="正在查找附近地点…" />
+        <MobileSkeleton v-if="nearbyLoading" label="正在查找附近地点…" />
         <text v-if="nearbyError" class="muted" role="status">附近地点暂未加载，可以直接搜索。</text>
         <view v-if="nearby.length" class="panel place-list">
-          <button
+          <MobileAction
             v-for="place in nearby"
             :key="place.id"
-            role="button"
-            :tabindex="canChoose ? 0 : -1"
-            :aria-disabled="!canChoose || undefined"
-            class="mobile-action place-row"
-            hover-class="mobile-action--pressed"
+            class="place-row"
             :disabled="!canChoose"
             @click="choose(place)"
-            @keydown="preventActionKey"
-            @keyup="activateActionKey($event, () => choose(place))"
           >
             <text v-if="distance(place)" class="place-distance">{{ distance(place) }}</text>
             <view class="place-copy"
@@ -338,7 +312,7 @@ onBeforeUnmount(() => {
               ><text v-if="place.address" class="caption">{{ place.address }}</text></view
             >
             <MobileIcon name="chevron" :size="18" />
-          </button>
+          </MobileAction>
         </view>
       </view>
     </template>

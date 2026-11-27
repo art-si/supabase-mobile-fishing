@@ -4,7 +4,6 @@ import { onShow, onHide, onUnload } from '@dcloudio/uni-app'
 import FishingShell from '@/components/FishingShell.vue'
 import AccountPhoneVerification from '@/components/AccountPhoneVerification.vue'
 import MobileAction from '@mobile-core/components/MobileAction.vue'
-import { isDemo } from '@/config'
 import { accountIdentity, createAccountSecurityFlow } from '@/services/account-security'
 import { hydrateSession } from '@/services/session'
 import { maskPhone } from '@/domain/account-security'
@@ -37,7 +36,6 @@ watch(
   }
 )
 async function open() {
-  if (isDemo) return
   const current = ++version
   active.value = true
   step.value = 1
@@ -100,8 +98,7 @@ function restart() {
 <template>
   <FishingShell title="更换手机号" back narrow :confirm-back="async () => !busy">
     <view class="fishing-content account-content">
-      <text v-if="isDemo" class="notice">体验账号无需绑定手机号。手机号换绑在正式账号内完成。</text>
-      <text v-else-if="loading" class="caption" role="status">正在读取手机号…</text>
+      <text v-if="loading" class="caption" role="status">正在读取手机号…</text>
       <template v-else-if="step === 3">
         <view class="account-heading" role="status"
           ><text class="account-title" role="heading" aria-level="1">手机号已换绑</text

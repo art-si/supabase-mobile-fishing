@@ -10,6 +10,7 @@ import { appForeground } from '@/services/app-activity'
 import { homeTabs, reportsRoute, takeHomeTab } from '@/services/primary-navigation'
 import { useAuthStore } from '@/stores/auth'
 import { usePageActivity } from '@mobile-core/page-activity'
+import { useListRefresh } from '@/composables/useListRefresh'
 type Tab = (typeof homeTabs)[number]
 const active = ref<Tab>('feed')
 const visited = ref<Partial<Record<Tab, boolean>>>({ feed: true })
@@ -111,10 +112,11 @@ onMounted(() => window.addEventListener('hashchange', syncRouteTab))
 onUnload(() => window.removeEventListener('hashchange', syncRouteTab))
 // #endif
 function refresh() {
-  ;({ feed: feed.value, spots: spots.value, mine: mine.value })[
+  return ({ feed: feed.value, spots: spots.value, mine: mine.value })[
     active.value
   ]?.refresh()
 }
+useListRefresh(refresh, () => !restoring)
 onLoad((options) => {
   if (options?.tab === 'reports' || options?.tab === 'messages') {
     uni.redirectTo({ url: reportsRoute })

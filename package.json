@@ -11,16 +11,12 @@
     "brand:generate": "tsx scripts/generate-brand.mjs",
     "prepare:core": "mobile-pro prepare",
     "dev:h5": "mobile-pro uni -p h5 --host 0.0.0.0 --port 5178",
-    "dev:demo": "mobile-pro uni -p h5 --mode demo --host 0.0.0.0 --port 5178",
     "preview:h5": "mobile-pro vite preview --host 0.0.0.0 --port 5178 --strictPort --outDir dist/build/h5",
     "preview:docs": "node scripts/preview-docs.mjs",
-    "preview:demo": "mobile-pro vite preview --host 0.0.0.0 --port 5178 --strictPort --outDir dist/demo/h5",
     "dev:mp-weixin": "mobile-pro uni -p mp-weixin",
     "build:h5": "mobile-pro uni build -p h5",
     "build:docs": "node scripts/build-docs.mjs",
-    "build:demo": "mobile-pro uni build -p h5 --mode demo --outDir dist/demo/h5",
     "build:mp-weixin": "mobile-pro uni build -p mp-weixin && node scripts/check-miniapp-package.mjs",
-    "build:mp-demo": "mobile-pro uni build -p mp-weixin --mode demo --outDir dist/demo/mp-weixin",
     "typecheck": "mobile-pro typecheck --noEmit --pretty false",
     "test": "mobile-pro prepare && tsx --test tests/*.test.ts",
     "test:account": "node scripts/test-login.mjs --profile=active && node scripts/test-account-security.mjs",
@@ -38,15 +34,16 @@
     "test:visual": "node scripts/smoke-h5.mjs --visual-audit-only",
     "test:remote": "pwsh -NoProfile -File tests/remote-readonly.ps1",
     "check:miniapp": "node scripts/check-miniapp-package.mjs",
+    "check:miniapp:wxml": "node scripts/check-miniapp-wxml.mjs",
     "check:edge": "node scripts/check-edge.mjs",
     "format": "prettier --write --no-error-on-unmatched-pattern src scripts tests *.json *.ts *.mjs *.html *.yaml",
     "check": "pnpm typecheck && pnpm test && pnpm test:db",
     "native:add": "mobile-pro cap add",
     "native:sync": "pnpm build:h5 && mobile-pro cap sync",
-    "native:sync:demo": "pnpm build:demo && node scripts/native-demo.mjs",
     "android:open": "mobile-pro cap open android",
     "ios:open": "mobile-pro cap open ios",
-    "release:check": "node scripts/release-check.mjs"
+    "release:check": "node scripts/release-check.mjs",
+    "release:weixin": "node scripts/release-miniapp.mjs"
   },
   "dependencies": {
     "@aparajita/capacitor-secure-storage": "8.0.1",
@@ -59,7 +56,7 @@
     "libheif-js": "1.23.5",
     "mediabunny": "1.66.2",
     "pbf": "5.2.0",
-    "supabase-mobile-pro": "https://gitee.com/art-si/supabase-mobile-pro/repository/archive/3b61ba1c4cfc07baf8f3ed88fc1e42f6ed2b42aa.tar.gz"
+    "supabase-mobile-pro": "https://gitee.com/art-si/supabase-mobile-pro/repository/archive/4d09f98a0b77734e64960a1638a32b3b9dd35f2a.tar.gz"
   },
   "devDependencies": {
     "@capacitor/ios": "8.6.2",

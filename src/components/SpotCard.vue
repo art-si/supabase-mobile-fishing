@@ -1,27 +1,36 @@
 <script setup lang="ts">
+import MobileAction from '@mobile-core/components/MobileAction.vue'
+
 defineOptions({ options: { styleIsolation: 'apply-shared' } })
-import { computed, ref } from 'vue'
+import { computed, ref, watch } from 'vue'
 import { onHide } from '@dcloudio/uni-app'
+import { useLongPressAction } from '@mobile-core/long-press-action'
+import { useAuthStore } from '@/stores/auth'
+import ContentDeleteAction from './ContentDeleteAction.vue'
 import type { Spot } from '@/domain/models'
 import type { MapPlace } from '@/domain/map'
 import { distanceLabel } from '@/domain/place-distance'
-import MobileAction from '@mobile-core/components/MobileAction.vue'
 import MobileBottomSheet from '@mobile-core/components/MobileBottomSheet.vue'
+import MobileMediaGallery from '@mobile-core/components/MobileMediaGallery.vue'
+import { config } from '@/config'
 import FishingPlaceLink from './FishingPlaceLink.vue'
 import SpotStatusStamp from './SpotStatusStamp.vue'
 import SpotReactionBar from './SpotReactionBar.vue'
 import SpotSourceActions from './SpotSourceActions.vue'
 import type { SpotCommunitySummary, SpotReaction } from '@/services/spot-community'
 import { governmentNoticeUrl, leadSourceName, mediaSource, parseShareSource, preferences, preferenceKeys, shareSources,
-  type LeadSource, type SpotLabels } from '../../supabase/functions/_shared/discovery-contract'
+  type LeadSource, type SpotLead, type SpotLabels } from '../../supabase/functions/_shared/discovery-contract'
 type CardSpot = Pick<Spot, 'id' | 'city' | 'name' | 'water_type' | 'observed_on'> &
-  Partial<Pick<Spot, 'description' | 'status' | 'distance_m' | 'distance_approximate' | 'fishing_status' | 'species' | 'fee_note'>>
+  Partial<Pick<Spot, 'author' | 'description' | 'status' | 'distance_m' | 'distance_approximate' | 'fishing_status' | 'species' | 'fee_note'>>
 const props = defineProps<{
   spot: CardSpot
   labels?: SpotLabels
   lead?: LeadSource
   relatedSources?: LeadSource[]
   leadEvidence?: string
+  leadVerifiedAt?: string
+  catchFrame?: SpotLead['catchFrame']
+  locationScope?: SpotLead['locationScope']
   place?: MapPlace
   sourceAddress?: string
   community?: SpotCommunitySummary
@@ -29,7 +38,13 @@ const props = defineProps<{
   rank?: number
   busy?: boolean
 }>()
-defineEmits<{ react: [kind: SpotReaction]; comments: [] }>()
+const emit = defineEmits<{ react: [kind: SpotReaction]; comments: [] }>()
+const auth = useAuthStore(), card = ref<unknown>(), deletion = ref<InstanceType<typeof ContentDeleteAction>>()
+const longPress = useLongPressAction(() => deletion.value?.open(), () => !props.lead && Boolean(auth.userId) && props.spot.author?.id === auth.userId && !props.busy, card)
+watch(() => [props.spot.id, auth.context], longPress.reset, { flush: 'sync' })
+function open() { if (longPress.allowClick()) uni.navigateTo({ url: `/pages/spot/detail?id=${props.spot.id}` }) }
+function react(kind: SpotReaction) { if (longPress.allowClick()) emit('react', kind) }
+function comments() { if (longPress.allowClick()) emit('comments') }
 const medals = ['🥇', '🥈', '🥉'] as const
 const medal = computed(() => props.rank ? medals[props.rank - 1] : undefined)
 const tags = computed(() => preferenceKeys.filter(key => props.labels?.[key]))
@@ -45,6 +60,14 @@ const placeHint = computed(() => {
   return `${source} ${place.name} · 经度 ${Number(place.longitude.toFixed(6))} · 纬度 ${Number(place.latitude.toFixed(6))}`
 })
 const sourcesOpen = ref(false)
+const frame = computed(() => {
+  const item = props.catchFrame
+  if (!item || item.sourceUrl !== props.lead?.url || !/^[a-f0-9]{64}\.jpg$/.test(item.key) ||
+      !Number.isInteger(item.seconds) || item.seconds < 0 || item.seconds > 86400) return
+  const stamp = [Math.floor(item.seconds / 60), item.seconds % 60].map(n => String(n).padStart(2, '0')).join(':')
+  return { stamp, label: '视频鱼获，' + item.description, media: [{ id: item.key,
+    url: config.supabaseUrl + '/storage/v1/object/public/fishing-catch-frames/' + item.key }] }
+})
 const sources = computed(() => {
   if (!props.lead) return []
   const links = new Map<string, LeadSource>()
@@ -55,10 +78,11 @@ const sources = computed(() => {
   }
   return [...links.values()]
 })
-onHide(() => { sourcesOpen.value = false })
+onHide(() => { sourcesOpen.value = false; longPress.reset() })
 </script>
 <template>
   <view
+    ref="card" @longpress="longPress.hold" @touchend="longPress.release" @touchcancel="longPress.release"
     :class="[
       'panel stack spot-card',
       { 'spot-card--prohibited': spot.fishing_status === 'prohibited' }
@@ -89,15 +113,15 @@ onHide(() => { sourcesOpen.value = false })
       <MobileAction v-else
         class="post-title spot-card__muted-content"
         :aria-label="`查看钓位：${spot.name}`"
-        @click="uni.navigateTo({ url: `/pages/spot/detail?id=${spot.id}` })"
-        ><text class="heading">{{ spot.name }}</text></MobileAction
-      >
+        @click="open"
+        ><text class="heading">{{ spot.name }}</text></MobileAction>
       <FishingPlaceLink v-if="place || sourceAddress"
         class="spot-card__muted-content"
         :label="sourceAddress || place?.address || place?.name || ''"
         :longitude="place?.longitude" :latitude="place?.latitude"
         :approximate="!place" :hint="placeHint || '按公开资料中的地址搜索。'"
       />
+      <MobileMediaGallery v-if="frame" :media="frame.media" :label="frame.label" compact />
       <view
         v-if="
           spot.fishing_status === 'prohibited' ||
@@ -121,13 +145,20 @@ onHide(() => { sourcesOpen.value = false })
       </view>
     </view>
     <SpotReactionBar v-if="interactive" class="spot-card__actions" :community="community"
-      :title="spot.name" :busy="busy" @react="kind => $emit('react', kind)" @comments="$emit('comments')" />
+      :title="spot.name" :busy="busy" @react="react" @comments="comments" />
+    <ContentDeleteAction v-if="!lead" ref="deletion" :id="spot.id" type="spot" :owner="spot.author?.id || ''" :title="spot.name" compact :show-button="false" :disabled="busy" />
   </view>
   <MobileBottomSheet v-if="lead && sources.length" v-model="sourcesOpen" :title="spot.name"
     close-label="关闭钓位详情" root-portal>
     <view class="stack stack--tight spot-source-details">
       <text v-if="leadEvidence" class="body">{{ leadEvidence }}</text>
+      <text v-if="locationScope && place" class="caption muted">{{ locationScope === 'entrance' ? '导航入口' : '岸段参考点' }} · {{ place.name }} · 经度 {{ place.longitude }}，纬度 {{ place.latitude }}（高德）</text>
+      <template v-if="frame">
+        <MobileMediaGallery :media="frame.media" :label="frame.label" compact />
+        <text class="caption muted">原视频 {{ frame.stamp }} · {{ catchFrame?.description }}</text>
+      </template>
       <text v-if="spot.observed_on" class="caption muted">来源日期 · {{ spot.observed_on }}</text>
+      <text v-if="leadVerifiedAt" class="caption muted">原文核验 · {{ leadVerifiedAt.slice(0, 10) }}，出行前请确认开放情况</text>
       <SpotSourceActions v-if="sourcesOpen" :sources="sources" />
     </view>
   </MobileBottomSheet>
@@ -212,7 +243,6 @@ onHide(() => { sourcesOpen.value = false })
   overflow-wrap: anywhere;
 }
 .spot-card--prohibited {
-  --spot-muted-color: #151515;
   background: transparent;
 }
 .spot-card--prohibited::before {
@@ -226,7 +256,6 @@ onHide(() => { sourcesOpen.value = false })
   pointer-events: none;
 }
 .spot-card--prohibited .spot-card__body {
-  --ink: var(--spot-muted-color);
   --reed: var(--ink);
   --lake: var(--ink);
   z-index: 1;
@@ -236,17 +265,14 @@ onHide(() => { sourcesOpen.value = false })
   flex-wrap: nowrap;
 }
 .spot-card--prohibited .spot-card__muted-content,
-.spot-card--prohibited .spot-card__footer > .fish-facts,
+.spot-card--prohibited .spot-card__footer > .fish-facts {
+  filter: grayscale(1);
+  opacity: 0.72;
+}
 .spot-card--prohibited .spot-card__actions {
   filter: grayscale(1);
-  opacity: 0.62;
 }
 .spot-card--prohibited .heading {
   font-weight: 550;
-}
-@media (prefers-color-scheme: dark) {
-  .spot-card--prohibited {
-    --spot-muted-color: #eeeeee;
-  }
 }
 </style>

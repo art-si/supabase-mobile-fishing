@@ -12,7 +12,7 @@ test('logout cleanup is scoped to account drafts and transient locations, not co
     'dyj.live.spot-draft.guest',
     'dyj.map.selection.request'
   ])
-    assert.equal(privateStorageKey(key, 'live', owner), true, key)
+    assert.equal(privateStorageKey(key, owner), true, key)
   for (const key of [
     'dyj.live.draft.account-ab.post',
     'dyj.live.draft.account-b.post',
@@ -23,6 +23,6 @@ test('logout cleanup is scoped to account drafts and transient locations, not co
     'dyj.feed.city',
     'dyj.auth.v1'
   ])
-    assert.equal(privateStorageKey(key, 'live', owner), false, key)
-  assert.equal(privateStorageKey('dyj.live.draft.guest.post', 'live', ''), false)
+    assert.equal(privateStorageKey(key, owner), false, key)
+  assert.equal(privateStorageKey('dyj.live.draft.guest.post', ''), false)
 })

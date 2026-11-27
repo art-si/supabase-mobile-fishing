@@ -2,6 +2,9 @@ import { wgs84ToGcj02 } from '@mobile-core/coordinates'
 import type { MapPoint } from '@mobile-core/map'
 import { containsWaterPoint, indexWaterSurfaces, matchWater, waterQueryPoint, type WaterSurface } from '@/domain/water-geometry'
 import { nearestWater } from '@/domain/water-surfaces'
+// #ifdef MP-WEIXIN
+import { readBundledWaterIndex } from './bundled-water-index'
+// #endif
 
 const cellSize = 0.25
 const cacheSize = 16
@@ -11,6 +14,16 @@ export const hasRemoteWaterIndex = /^https:\/\/[a-z0-9.-]+(?:\/[a-z0-9_.\/-]+)?$
 const tileCache = new Map<string, Promise<ReturnType<typeof indexWaterSurfaces>>>()
 let manifestPromise: Promise<{ version: string; tiles: Set<string> }> | undefined
 let manifestExpiresAt = 0
+let bundledIndexReader: ((path: string) => unknown) | undefined
+// #ifdef MP-WEIXIN
+bundledIndexReader=readBundledWaterIndex
+// #endif
+
+// Registered by the map subpackage, so public geometry is delivered through
+// normal compiled module dependencies instead of unreadable raw package files.
+export function registerBundledWaterIndex(reader: (path: string) => unknown) {
+  bundledIndexReader = reader
+}
 
 // The index uses original OSM coordinates. The map and matching geometry use GCJ-02.
 function tileKey(point: MapPoint) {
@@ -49,8 +62,10 @@ async function readIndexFile(path: string) {
     clearTimeout(timeout)
   }
   // #endif
-  // #ifndef H5
-  throw new Error('Water index unavailable')
+  // #ifdef MP-WEIXIN
+  const data = bundledIndexReader?.(path)
+  if (!data) throw new Error('Water index unavailable')
+  return data
   // #endif
 }
 
@@ -101,9 +116,6 @@ export async function lookupWaterIndex(point: MapPoint, maxDistanceM: number) {
 export async function lookupMappedWater(point: MapPoint, maxDistanceM: number) {
   const local = nearestWater(point, maxDistanceM)
   if (local?.distance === 0 && local.surface.name) return local
-  // #ifdef MP-WEIXIN
-  if (!hasRemoteWaterIndex) return local
-  // #endif
   try {
     const indexed = await lookupWaterIndex(point, maxDistanceM)
     if (!indexed) return local

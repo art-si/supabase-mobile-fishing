@@ -1,28 +1,23 @@
 import { computed } from 'vue'
 import { defineStore } from 'pinia'
-import { isDemo, config } from '@/config'
+import { config } from '@/config'
 import {
-  demoUser,
   session,
   hydrateSession,
   saveSession,
   signOut,
   sessionScope,
   sessionNotice,
-  assertSession,
-  enterDemoSession
+  assertSession
 } from '@/services/session'
 import { request, ApiError } from '@/services/http'
 import { normalizePhone } from '@/domain/rules'
 import { authSessionFromResponse, smsLoginUnavailable } from '@/domain/auth-errors'
-export const DEMO_USER_ID = '11111111-1111-4111-8111-111111111111'
 export const useAuthStore = defineStore('fishing-auth', () => {
-  const userId = computed(() =>
-    isDemo ? (demoUser.value ? DEMO_USER_ID : '') : session.value?.user.id || ''
-  )
+  const userId = computed(() => session.value?.user.id || '')
   const signedIn = computed(() => Boolean(userId.value))
   function assertSmsAvailable() {
-    const unavailable = smsLoginUnavailable({ isDemo, ...config })
+    const unavailable = smsLoginUnavailable(config)
     if (unavailable) throw new ApiError(unavailable.message, 0, unavailable.code)
   }
   async function sendCode(phone: string) {
@@ -55,10 +50,6 @@ export const useAuthStore = defineStore('fishing-auth', () => {
     sessionNotice.value = ''
     await saveSession(nextSession)
   }
-  function enterDemo() {
-    if (!isDemo) throw new Error('正式模式不能使用体验账号')
-    enterDemoSession()
-  }
   function requireLogin() {
     if (signedIn.value) return true
     uni.navigateTo({ url: '/pages/login/index' })
@@ -71,7 +62,6 @@ export const useAuthStore = defineStore('fishing-auth', () => {
     hydrate: hydrateSession,
     sendCode,
     verify,
-    enterDemo,
     signOut,
     requireLogin
   }

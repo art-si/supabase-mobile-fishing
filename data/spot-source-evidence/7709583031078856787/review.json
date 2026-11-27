@@ -1,0 +1,28 @@
+{
+  "reviewedOn": "2026-11-26",
+  "title": "钓鱼佬集合！琴台大道张之洞遛鱼城市钓场",
+  "card": {
+    "name": "张之洞遛鱼城市钓场",
+    "city": "武汉市",
+    "district": "汉阳区",
+    "labels": {},
+    "source": {
+      "platform": "douyin",
+      "url": "https://www.douyin.com/video/7709583031078856787",
+      "kind": "视频",
+      "author": "张之洞遛鱼城市钓场"
+    },
+    "waterType": "钓场",
+    "evidence": "琴台大道张之洞遛鱼城市钓场",
+    "sourceDate": "2026-11-19",
+    "sourceAddress": "武汉市汉阳区琴台大道 · 张之洞遛鱼城市钓场",
+    "poiId": "B0H3MD9QG1",
+    "poiQuery": "汉阳张之洞遛鱼城市钓场",
+    "positionSource": "amap",
+    "sourcePosition": {
+      "crs": "GCJ-02",
+      "longitude": 114.241566,
+      "latitude": 30.561916
+    }
+  }
+}

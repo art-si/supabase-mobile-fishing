@@ -55,12 +55,8 @@ onUnmounted(() => {
 @use './styles/fishing.scss';
 @use './styles/fish-identity.css';
 @use './styles/account.scss';
-/* #ifndef MP-WEIXIN */
-@include mobile.apply('tms');
-/* #endif */
-/* #ifdef MP-WEIXIN */
+// Use the same platform font stack on H5 and WeChat. The shared icon font remains embedded.
 @include mobile.apply('tms', $embed-body-font: false);
-/* #endif */
 @include workspace.apply('fishing');
 @include grouped.styles();
 @include theme.tokens();

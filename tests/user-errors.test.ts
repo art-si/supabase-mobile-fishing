@@ -6,6 +6,7 @@ import ts from 'typescript'
 import { errorText, normalizePhone, optionalNumber, validCoordinates } from '../src/domain/rules'
 import * as userErrors from '../src/domain/user-errors'
 import * as weatherDomain from '../src/domain/weather'
+import { amapServiceHost } from '../src/platforms/amap-service-host'
 import * as waterPlaces from '../supabase/functions/_shared/water-places'
 import { authErrorMessage } from '../src/domain/auth-errors'
 
@@ -41,8 +42,6 @@ test('local validation and business recovery messages survive the safe boundary'
     '有照片尚未上传，请重试或移除后保存',
     '请先登录，原账号草稿会保留',
     '这条记录已有新版本，你的修改已保留',
-    '本机体验不提供审核权限',
-    '体验模式没有线上账号，不执行账号注销。可以退出体验。'
   ])
     assert.equal(errorText(new Error(message)), message)
   assert.equal(
@@ -120,7 +119,6 @@ function moduleHarness(file: string, dependencies: Record<string, unknown>, glob
 
 function browserMap(
   options: {
-    isDemo?: boolean
     key?: string
     proxy?: string
     window?: object
@@ -131,7 +129,6 @@ function browserMap(
     'platforms/amap.ts',
     {
       '@/config': {
-        isDemo: !!options.isDemo,
         config: {
           amapKey: options.key ?? 'public-fixture',
           amapServiceHost: options.proxy ?? 'https://map.invalid/_AMapService'
@@ -139,6 +136,7 @@ function browserMap(
       },
       '@/domain/user-errors': userErrors,
       '@/domain/weather': weatherDomain,
+      './amap-service-host': { amapServiceHost },
       '../../supabase/functions/_shared/water-places': waterPlaces,
       '@/domain/rules': { validCoordinates },
       '@capacitor/core': { Capacitor: { isNativePlatform: () => false } },
@@ -169,10 +167,6 @@ test('browser map configuration failures offer a fallback, not developer instruc
       return true
     })
   }
-  await assert.rejects(browserMap({ isDemo: true }).loadAmap(), (error: unknown) => {
-    assert.match(errorText(error), /体验模式不提供真实地点搜索和地图预览/)
-    return true
-  })
 })
 
 test('browser map load and location failures remain actionable and never become success', async () => {
@@ -214,7 +208,7 @@ test('browser map load and location failures remain actionable and never become 
   })
 })
 
-test('static map demo never reaches the real service and invalid images reject safely', async () => {
+test('static map uses the API and rejects invalid images safely', async () => {
   let requests = 0
   class ApiError extends Error {
     constructor(
@@ -228,6 +222,7 @@ test('static map demo never reaches the real service and invalid images reject s
   const dependencies = {
     './http': { ApiError },
     './session': {
+      sessionScope: { value: 0 },
       sessionRequest: async () => {
         requests++
         return { image: 'private diagnostic' }
@@ -235,10 +230,7 @@ test('static map demo never reaches the real service and invalid images reject s
     },
     '@/domain/user-errors': userErrors
   }
-  const demo = moduleHarness('services/amap.ts', { ...dependencies, '@/config': { isDemo: true } })
-  await assert.rejects(demo.searchMapPlaces('河', ''), { code: 'MAP_DEMO_UNAVAILABLE' })
-  assert.equal(requests, 0)
-  const live = moduleHarness('services/amap.ts', { ...dependencies, '@/config': { isDemo: false } })
+  const live = moduleHarness('services/amap.ts', dependencies)
   await assert.rejects(live.getStaticPreview({ kind: 'spot', id: 'fixture' }, 12), (error: any) => {
     assert.equal(error.code, 'MAP_RESPONSE_INVALID')
     assert.equal(errorText(error), '地图预览未能加载，请重试')

@@ -14,7 +14,7 @@ pnpm preview:docs
 
 `build:docs` 使用独立 pages 环境执行生产构建，在 `dist/pages/h5/` 完成构建和密钥检查，再将生成文件同步到 `docs/`。依据 `docs/.pages-assets.json` 清理上一版的生成文件；已有 Markdown、`CNAME` 和其他非生成文件会保留。不要手动改生成清单或生成资源，也不要直接执行 `uni build --outDir docs`，以免清空项目文档。
 
-继承 Pro 的相对资源路径 `base: './'` 和 `.nojekyll`，沿用 `src/manifest.json` 的 Hash 路由。详情链接格式为 `https://art-si.github.io/supabase-mobile-fishing/#/pages/settings/index`，刷新无需服务端重写，也不需要伪造 `404.html`。`build:h5`、`build:demo` 和原生同步继续使用原有 `dist` 目录。
+继承 Pro 的相对资源路径 `base: './'` 和 `.nojekyll`，沿用 `src/manifest.json` 的 Hash 路由。详情链接格式为 `https://art-si.github.io/supabase-mobile-fishing/#/pages/settings/index`，刷新无需服务端重写，也不需要伪造 `404.html`。`build:h5` 和原生同步继续使用原有 `dist` 目录。
 
 ## 环境配置
 
@@ -44,7 +44,7 @@ pnpm preview:docs
 
 ## 高德地图代理
 
-GitHub Pages 只能托管静态文件，无法执行本机 `/_AMapService` 代理。`.env.pages` 现在直接指定现有 `amap-js` 云函数的完整 HTTPS 地址，无需另配代理域名或服务器。真实 JS SDK 验证确认请求会保留整个路径前缀；此前前端将所有多级路径判为无效，导致 SDK 尚未加载就显示地图不可用，现已允许已确认项目的这一精确路径。自定义代理仍要求一级 `/_AMapService`。高德安全码继续只在云函数中注入，不进入浏览器。[高德安全密钥与代理说明](https://lbs.amap.com/api/javascript-api-v2/guide/abc/jscode)
+GitHub Pages 只能托管静态文件。`.env.pages` 中的云函数完整 HTTPS 地址是上游，不能直接作为 JS SDK 的 `serviceHost`：即使瓦片能显示，WebView 仍可能弹出“代理服务请以 _AMapService 作为一级路由”。构建在入口旁放置 `amap-service-worker.js`；它只处理本应用发往同源 `/_AMapService/` 的 GET 子资源，将其交给固定上游，不缓存位置，也不转发账号凭据。在 HTTPS 或本机安全上下文中，首次打开等待该脚本受控再加载 SDK。自有一级 HTTPS 反向代理和 Vite 同源代理不需要该脚本。禁用 Service Worker 或不支持它的原生 scheme 应配置已有的一级 HTTPS 代理，否则走界面的地点搜索降级。高德安全码始终只在服务端注入。[高德安全密钥与代理说明](https://lbs.amap.com/api/javascript-api-v2/guide/abc/jscode)
 
 `deploy/amap-proxy.nginx.conf` 保留为已有 Nginx 的可选部署方式；默认 Pages 配置不依赖它。
 
@@ -65,7 +65,7 @@ node scripts/test-pages-map-live.mjs
 
 该脚本使用固定浏览器测试坐标通过现有位置门槛，拦截外部网络，只验证静态交付和页面交互；没有模拟登录成功、短信、地图或远端业务数据。它不能替代真实 GPS、GitHub 线上访问、高德代理、真实短信、小程序或原生真机验收。
 
-`test-pages-map-live.mjs` 使用真实高德 SDK、真实底图和地点接口，以及真实公开后端读取。`--local` 仅将 `docs` 静态文件放到浏览器中的 Pages 来源下作发布前验证；无参数时直接访问 GitHub Pages。两种模式都不替换地图/API响应，仅固定浏览器测试坐标，并阻止业务写入。检查底图数据、拖动缩放、搜索、选点、逆地理编码、深链刷新和多种视口，截图与去除查询参数的网络记录位于 `artifacts/pages-map-live/`。
+`test-pages-map-live.mjs --local` 从静态服务器加载实际仓库子路径，只在独立测试浏览器中将已经获准的 `http://localhost:5178` 指到该本机端口，不占用开发服务器，不冒充生产来源。无参数时直接访问 GitHub Pages。地图/API 响应不替换，位置为固定测试坐标，并阻止业务写入。验收底图、手势、搜索、选点、逆地理编码和深链刷新，也检查是否出现 SDK 技术弹窗。
 
 2026-11-24 本机验收：218 个生成文件约 5.04 MiB，根路径及仓库子路径均通过；懒加载、深链刷新、217 个公开资源、焦点归还及上述视口截图通过，没有资源 404 或未捕获浏览器异常。已回看实际截图，布局与现有主题保持一致；检查依据为 Apple `layout.md` 的适配、`accessibility.md` 的大字、`sheets.md` 的关闭规则，以及 UI UX Pro Max 的视口和溢出规则。TypeScript 和独立目录微信构建通过，微信鱼形资源继续使用 `/static` 路径。
 

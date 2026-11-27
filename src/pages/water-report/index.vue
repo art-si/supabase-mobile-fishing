@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, nextTick, ref, watch } from 'vue'
+import { computed, nextTick, onMounted, ref, watch } from 'vue'
 import { onLoad, onShow, onHide, onUnload, onReachBottom } from '@dcloudio/uni-app'
 import FishingShell from '@/components/FishingShell.vue'
 import FishingPrimaryNav from '@/components/FishingPrimaryNav.vue'
@@ -14,8 +14,10 @@ import MobileSelect from '@mobile-core/components/MobileSelect.vue'
 import MobileConfirmDialog from '@mobile-core/components/MobileConfirmDialog.vue'
 import MobileDateTimeField from '@mobile-core/components/MobileDateTimeField.vue'
 import MobileMediaUploader from '@mobile-core/components/MobileMediaUploader.vue'
+import { preserveMediaPickerPage, resumeMediaPickerPage } from '@mobile-core/media-picker-session'
 import MobileSegmented from '@mobile-core/components/MobileSegmented.vue'
 import ReportRecords from '@/components/ReportRecords.vue'
+import { useListRefresh } from '@/composables/useListRefresh'
 import type { MediaUploadEntry } from '@mobile-core/media-upload'
 import {
   freshWaterReport,
@@ -38,10 +40,9 @@ import { canLocateReport,locateReport,describeReportLocation, type ReportLocatio
 import { errorText, createId, validCoordinates } from '@/domain/rules'
 import { pickMap, consumeSelection } from '@/platforms/map-navigation'
 import { formatMapCoordinates } from '@/domain/map'
-import { sampleWaterPoints } from '@/domain/water-surfaces'
 import { regionLabel, type RegionNames } from '@/domain/regions'
-import { isDemo } from '@/config'
 import { updateWaterReportPayload } from '@/domain/report-edit'
+import { waterAt } from '@/platforms/water-location'
 
 const auth = useAuthStore(),
   draft = ref(freshWaterReport()),
@@ -65,11 +66,12 @@ const submissionNextStep = computed(() => {
     return `请按现场情况选择${choices}，到官网提交。`
   }
   if (first.kind === 'website') return `可到「${first.name}」填写并提交。`
-  if (first.province && first.kind === 'phone') return `可联系${first.name}或全国渔政举报热线。`
+  if (first.province && first.kind === 'phone') return `可联系${first.name}，按当地官方方式提交。`
   return '可拨打全国渔政举报热线，也可在微信「中国渔政」提交。'
 })
 onReachBottom(() => records.value?.reachBottom())
 const recordsBusy=ref(false), editConflict=ref(false),reloadEditOpen=ref(false)
+useListRefresh(() => records.value?.refresh(), () => tab.value === 'records' && !recordsBusy.value)
 const storageNotice=ref('')
 const currentPosition = ref<{ longitude: number; latitude: number } | null>(null)
 const currentRegion=ref<{province:string;city:string;district:string}|null>(null)
@@ -77,7 +79,8 @@ function rememberCurrentLocation(value:ReportLocation){
  currentPosition.value={longitude:value.longitude,latitude:value.latitude}
  currentRegion.value={province:value.province,city:value.city,district:value.district}
 }
-let applying = false, edited = false, formVersion = 0, initialized = false
+let applying = false, edited = false, formVersion = 0, initialized = false, prepared = false
+let mounted = false, pageOptionsLoaded = false, preparation = 0
 let submitId = '', submitSignature = '', editBaseRevision=1
 const copied = ref(''),
   errors = ref<Record<string, string>>({}),
@@ -96,7 +99,7 @@ function rememberUnfinishedMedia(){
  try{uni.setStorageSync(draftKey(),{...draft.value,_edited:true,...(editing.value?{_baseRevision:editBaseRevision}:{})})}catch{storageNotice.value='本机草稿暂时无法保存，请不要关闭页面。'}
 }
 const uploader=ref<InstanceType<typeof MobileMediaUploader>>()
-const locating=ref(false),locationMessage=ref('')
+const locating=ref(false),locationMessage=ref(''),locationError=ref('')
 const selectedRegion=ref<ReportLocation|null>(null)
 let pinLookup=0
 const incidentPoint=computed(()=>{
@@ -108,7 +111,6 @@ const resolvedRegion=computed(()=>{
   const place=selectedRegion.value, point=incidentPoint.value
   return point && place?.longitude===point.longitude && place.latitude===point.latitude ? place : null
 })
-const demoWaters = isDemo ? sampleWaterPoints() : []
 const coordinatesText = computed(() => {
   const { longitude, latitude } = draft.value
   return longitude != null && latitude != null && validCoordinates(longitude, latitude)
@@ -119,9 +121,23 @@ const observedTime=computed({get:()=>draft.value.observed_local.slice(11,16),set
 const tabbed = ref(false)
 // Public directory filters never restore or expose an account's private report draft.
 const publicRegion = ref({ province: '', city: '', district: '' })
-const active = ref(true)
+const active = ref(false)
 let locationVersion=0, locationAttempted=false
-function cancelLocation(){locationVersion++;locating.value=false;locationMessage.value=''}
+function cancelLocation(){locationVersion++;locating.value=false;locationMessage.value='';locationError.value=''}
+function canFillCurrentRegion(){
+ const value=draft.value
+ return !id.value && !editing.value &&
+  ![value.province,value.city,value.district].some(value=>value?.trim())
+}
+function resumeCurrentLocation(){
+ if(!mounted || !prepared || !active.value || locating.value || tab.value!=='publish' || id.value || editing.value)return
+ const fill=canFillCurrentRegion()
+ if(currentRegion.value && fill && !validCoordinates(draft.value.longitude,draft.value.latitude)){
+  applying=true;Object.assign(draft.value,currentRegion.value);applying=false
+  return
+ }
+ if(!currentRegion.value || fill)void currentLocation(fill)
+}
 watch(draft,()=>{if(!applying)edited=true}, {deep:true,flush:'sync'})
 watch(()=>[draft.value.province,draft.value.city,draft.value.district],(_next,previous)=>{
  if(applying || !previous[0] || !previous[1] || !validCoordinates(draft.value.longitude,draft.value.latitude))return
@@ -132,6 +148,9 @@ watch(()=>[draft.value.province,draft.value.city,draft.value.district],(_next,pr
 watch(()=>[draft.value.province,draft.value.city,draft.value.district,draft.value.location_label,draft.value.longitude,draft.value.latitude],()=>{if(!applying)formVersion++},{flush:'sync'})
 watch(publicRegion,()=>{if(!applying)formVersion++}, {deep:true,flush:'sync'})
 onHide(() => {
+  // #ifdef MP-WEIXIN
+  if (preserveMediaPickerPage()) return
+  // #endif
   active.value = false
   cancelLocation()
   copyOpen.value = false
@@ -140,13 +159,14 @@ onHide(() => {
 })
 onUnload(() => {
   active.value = false
+  mounted = false;preparation++
   cancelLocation()
   releaseLocalMedia()
 })
 const { busy, error, run } = useMutation()
 const { owner, available, resetting } = useDraftOwner(() => {
   cancelLocation();locationAttempted=false
-  currentPosition.value=null;currentRegion.value=null;editing.value=null;initialized=false;edited=false;formVersion++
+  currentPosition.value=null;currentRegion.value=null;editing.value=null;initialized=false;prepared=false;edited=false;formVersion++
   releaseLocalMedia()
   applying=true;draft.value = freshWaterReport();applying=false
   photos.value = []
@@ -158,7 +178,7 @@ const { owner, available, resetting } = useDraftOwner(() => {
   else void prepareDraft()
 })
 const draftKey = () =>
-  `dyj.${isDemo ? 'demo' : 'live'}.draft.${owner.value || 'guest'}.water-report${editing.value ? '.edit.'+editing.value.id : ''}`
+  `dyj.live.draft.${owner.value || 'guest'}.water-report${editing.value ? '.edit.'+editing.value.id : ''}`
 watch(
   () => auth.context,
   () => {
@@ -193,33 +213,73 @@ async function restore() {
 }
 async function prepareDraft(){
  if(initialized)return
- initialized=true
+ initialized=true;prepared=false
+ const current=++preparation,scope=sessionScope.value,draftOwner=owner.value
  const restored=await restore()
+ if(current!==preparation || scope!==sessionScope.value || draftOwner!==owner.value)return
  if(!restored){
   applying=true;draft.value={...freshWaterReport(),...currentRegion.value};applying=false;edited=false
   locationMessage.value=''
  }
- if(!locationAttempted)void currentLocation(!restored && !id.value)
+ prepared=true
+ resumeCurrentLocation()
 }
 async function currentLocation(fillDraft=false){
  if(!canLocateReport || locating.value)return
  locationAttempted=true
  const current=++locationVersion,scope=sessionScope.value,locationOwner=auth.userId,draftId=draft.value.id,version=formVersion
- locating.value=true;locationMessage.value=''
+ const point=fillDraft && canFillCurrentRegion() && validCoordinates(draft.value.longitude,draft.value.latitude)
+  ? [draft.value.longitude!,draft.value.latitude!] as [number,number] : undefined
+ locating.value=true;locationMessage.value='';locationError.value=''
  try{
   const value=await locateReport()
   if(current!==locationVersion || (scope!==sessionScope.value && Boolean(locationOwner || auth.userId)) || !active.value)return
   rememberCurrentLocation(value)
+  // A retained incident point belongs to its own region, even when the user is elsewhere now.
+  const draftRegion=point?await describeReportLocation(point):value
+  if(current!==locationVersion || (scope!==sessionScope.value && Boolean(locationOwner || auth.userId)) || !active.value)return
   if(version===formVersion){
    applying=true
-   if(!available.value)Object.assign(publicRegion.value,currentRegion.value)
-   else if(fillDraft && !validCoordinates(draft.value.longitude,draft.value.latitude) && draft.value.id===draftId && !id.value && !editing.value)Object.assign(draft.value,currentRegion.value)
+   if(!available.value){
+    if(!Object.values(publicRegion.value).some(value=>value.trim()))Object.assign(publicRegion.value,currentRegion.value)
+   }
+   else if(fillDraft && canFillCurrentRegion() && draft.value.id===draftId)Object.assign(draft.value,{province:draftRegion.province,city:draftRegion.city,district:draftRegion.district})
    applying=false
   }
- }catch{
-  if(current===locationVersion && active.value)locationMessage.value='暂未获取当前位置，请选择事发地区。'
+  // Resolve a default only for a blank new incident. A location lookup must never
+  // overwrite a typed description, a saved pin, or a different chosen region.
+  const blankWater=()=>available.value && !id.value && !editing.value &&
+   !draft.value.location_label.trim() && !validCoordinates(draft.value.longitude,draft.value.latitude) &&
+   (['province','city','district'] as const).every(key=>!draft.value[key] || draft.value[key]===value[key])
+  if(version===formVersion && blankWater()){
+   try{
+    const water=await waterAt([value.longitude,value.latitude])
+    const area=await describeReportLocation([water.longitude,water.latitude])
+    if(current!==locationVersion || scope!==sessionScope.value || !active.value ||
+     draft.value.id!==draftId || version!==formVersion || !blankWater())return
+    applying=true
+    Object.assign(draft.value,{province:area.province,city:area.city,district:area.district,
+     longitude:water.longitude,latitude:water.latitude,location_label:water.name})
+    selectedRegion.value=area
+    applying=false
+   }catch{
+    // Region-only reporting remains available when no verified nearby water exists.
+   }
+  }
+ }catch(failure){
+  if(current===locationVersion && active.value){
+   const code=(failure as {code?:unknown}|null)?.code
+   locationError.value=typeof code==='string'&&/^[A-Z][A-Z0-9_]{1,63}$/.test(code)?code:''
+   locationMessage.value=code==='MAP_QUOTA_EXCEEDED'?'地区查询暂时繁忙，请稍后重试或手动选择事发地区。':'暂未获取当前位置，请选择事发地区。'
+  }
  }finally{if(current===locationVersion)locating.value=false}
 }
+// Read-only acceptance state: no body, attachments, account ID or coordinates are exposed.
+defineExpose({reportLocationState:()=>({mounted,prepared,initialized,active:active.value,locationAttempted,
+ locating:locating.value,locationError:locationError.value,locationMessage:locationMessage.value,
+ region:{province:draft.value.province,city:draft.value.city,district:draft.value.district},
+ regionCached:Boolean(currentRegion.value),hasLocationLabel:Boolean(draft.value.location_label?.trim()),
+ hasPoint:validCoordinates(draft.value.longitude,draft.value.latitude),ownerReady:available.value,formVersion})})
 async function loadReport() {
   if (busy.value) return
   const target=id.value
@@ -229,12 +289,23 @@ async function loadReport() {
     if(target===id.value && tab.value==='records' && active.value)report.value=value
   })
 }
-onLoad((options) => {
+function loadPage(options?:Record<string,string|undefined>){
+  pageOptionsLoaded=true
   tabbed.value = options?.tabbed === '1'
   id.value = options?.id || ''
   tab.value=id.value || options?.tab==='records'?'records':'publish'
   if (id.value) void loadReport()
   else void prepareDraft()
+}
+onLoad(loadPage)
+onMounted(() => {
+  mounted=true
+  // Native first onShow can precede the Vue page's initial mount/onLoad delivery.
+  if(!pageOptionsLoaded){
+    const page=(typeof getCurrentPages==='function'?getCurrentPages().at(-1):undefined) as {options?:Record<string,string|undefined>}|undefined
+    loadPage(page?.options)
+  }
+  resumeCurrentLocation()
 })
 watch(
   draft,
@@ -250,7 +321,10 @@ watch(
 )
 onShow(() => {
   active.value = true
-  if (!available.value) return
+  // #ifdef MP-WEIXIN
+  if (resumeMediaPickerPage()) return
+  // #endif
+  if (!available.value) {resumeCurrentLocation();return}
   if (id.value) {
     void loadReport()
     return
@@ -259,7 +333,9 @@ onShow(() => {
   if (selected && tab.value==='publish') {
     requestId.value = ''
     void applySelectedPlace(selected)
+    return
   }
+  resumeCurrentLocation()
 })
 async function applySelectedPlace(selected:{longitude:number;latitude:number;name:string}, region?:RegionNames){
  cancelLocation()
@@ -294,12 +370,6 @@ async function applySelectedPlace(selected:{longitude:number;latitude:number;nam
 }
 function selectLocation() {
   if (auth.requireLogin()) requestId.value = pickMap('water')
-}
-function selectDemoWater(id: string) {
-  const water = demoWaters.find(water => water.id === id)
-  if (!water) return
-  const [longitude, latitude] = water.point
-  void applySelectedPlace({ name: water.name, longitude, latitude }, { province: '湖北省', city: '武汉市', district: '' })
 }
 function syncMedia() {
   draft.value.media = photos.value.flatMap((p) => (p.asset ? [p.asset] : []))
@@ -408,9 +478,6 @@ function copyMaterial() {
         </view>
       </view>
       <text v-if="storageNotice" class="notice" role="status">{{ storageNotice }}</text>
-      <text v-if="isDemo" class="notice"
-        >本机体验 · 材料只保存在本机，不上传云端、不联系官方。</text
-      >
       <template v-if="tab==='records' && !report">
         <ReportRecords ref="records" :key="`${auth.context}-${recordsVersion}`" @open="viewReport" @edit="editReport" @create="selectTab('publish')" @busy="recordsBusy=$event" />
       </template>
@@ -496,8 +563,7 @@ function copyMaterial() {
             required
           />
           <text v-if="(!coordinatesText && locating) || locationMessage" class="caption" role="status">{{ locating && !coordinatesText ? '正在获取当前位置…' : locationMessage }}</text>
-          <MobileSelect v-if="isDemo" field="report-demo-water" label="选择示例水域" placeholder="选择示例水域" :options="demoWaters" :model-value="draft.location_label" :disabled="busy" @update:model-value="selectDemoWater" />
-          <MobileAction v-else class="secondary" :disabled="busy" @click="selectLocation"
+          <MobileAction class="secondary" :disabled="busy" @click="selectLocation"
             >水域地图选点</MobileAction
           >
           <text v-if="coordinatesText" class="caption" role="status">已选位置：{{ coordinatesText }}</text>
@@ -519,7 +585,7 @@ function copyMaterial() {
           />
         </view>
         <view class="panel stack">
-          <view class="row row--between"><text class="name">现场图片 / 视频</text><text class="caption">{{ photos.length }} / 6</text></view>
+          <view class="section-head"><text class="name">现场图片 / 视频</text><text class="caption media-count">{{ photos.length }} / 6</text></view>
           <MobileMediaUploader ref="uploader" v-model="photos" :scope="auth.context" :active="active" :accept="['image','video']" :limit="6" :max-image-bytes="8*1024*1024" :max-video-bytes="20*1024*1024" :upload-image="uploadPhoto" :upload-video="uploadVideo" :error-text="errorText" :recovery="uploadRecovery" :disabled="busy" upload-label="添加图片 / 视频" @change="syncMedia" />
           <text v-if="errors.media" class="error" role="alert">{{ errors.media }}</text>
           <text class="caption">最多 6 项，图片每张 8 MB，视频每段 20 MB。</text>
@@ -532,12 +598,11 @@ function copyMaterial() {
             <MobileIcon name="info" size="1.125rem" color="var(--lake)" />
             <view class="report-notice__copy">
               <text id="report-submit-title" class="report-notice__title">上报去向</text>
-              <text v-if="isDemo" id="report-submit-help">材料保存在本机的「我的上报记录」。下一步可预览官方举报渠道。</text>
-              <text v-else id="report-submit-help">材料存入「我的上报记录」后，会弹出可选举报机构。{{ submissionNextStep }}办理情况以接收部门回复为准。</text>
+              <text id="report-submit-help">材料存入「我的上报记录」后，会弹出可选举报机构。{{ submissionNextStep }}办理情况以接收部门回复为准。</text>
             </view>
           </view>
         </view>
-        <ReportChannels ref="contactDirectory" compact :province="incidentPoint ? draft.province : ''" :city="incidentPoint ? draft.city : ''" :district="incidentPoint ? draft.district : ''"
+        <ReportChannels ref="contactDirectory" compact :province="draft.province" :city="draft.city" :district="draft.district"
           :incident-point="draft.province ? incidentPoint : null" :resolved-region="resolvedRegion" :category="draft.category" />
       </template>
       <view v-else-if="tab==='publish' && !available" class="stack">

@@ -14,6 +14,76 @@
       "ref": "902bf616a0cc590d3f89f233f0c4e00072e549f0",
       "skillPath": ".claude/skills/ui-ux-pro-max/SKILL.md",
       "installMode": "copy"
+    },
+    "ponytail": {
+      "source": "art-si/supabase-mobile-note",
+      "sourceType": "local-repository",
+      "ref": "858be04d9eac4d3d73abc76995a4197547d5608b",
+      "skillPath": ".agents/skills/ponytail/SKILL.md",
+      "installMode": "copy",
+      "sourceSha256": "46a57e26a2632e7fa40eae6a3cf3011ccdc4d8db19d8f8617907d6b5deef055e",
+      "adaptedFor": "supabase-mobile-fishing",
+      "importedOn": "2026-11-25"
+    },
+    "ponytail-review": {
+      "source": "art-si/supabase-mobile-note",
+      "sourceType": "local-repository",
+      "ref": "858be04d9eac4d3d73abc76995a4197547d5608b",
+      "skillPath": ".agents/skills/ponytail-review/SKILL.md",
+      "installMode": "copy",
+      "sourceSha256": "6c8b7e5c897a406b66da6aabda7fa6509e8d1d447e73e602265d7986497445d1",
+      "adaptedFor": "supabase-mobile-fishing",
+      "importedOn": "2026-11-25"
+    },
+    "ponytail-audit": {
+      "source": "art-si/supabase-mobile-note",
+      "sourceType": "local-repository",
+      "ref": "858be04d9eac4d3d73abc76995a4197547d5608b",
+      "skillPath": ".agents/skills/ponytail-audit/SKILL.md",
+      "installMode": "copy",
+      "sourceSha256": "49e835c96313009179ec162d80ccc9d91625e387c8af7cd3975c531ba105b2d5",
+      "adaptedFor": "supabase-mobile-fishing",
+      "importedOn": "2026-11-25"
+    },
+    "project-code-quality": {
+      "source": "art-si/supabase-mobile-note",
+      "sourceType": "local-repository",
+      "ref": "858be04d9eac4d3d73abc76995a4197547d5608b",
+      "skillPath": ".agents/skills/project-code-quality/SKILL.md",
+      "installMode": "copy",
+      "sourceSha256": "35e8f14ac4977a1184adb77b02d0dc149b008df038334e51d1f63cc876274efc",
+      "adaptedFor": "supabase-mobile-fishing",
+      "importedOn": "2026-11-25"
+    },
+    "professional-ui-quality": {
+      "source": "art-si/supabase-mobile-note",
+      "sourceType": "local-repository",
+      "ref": "858be04d9eac4d3d73abc76995a4197547d5608b",
+      "skillPath": ".agents/skills/professional-ui-quality/SKILL.md",
+      "installMode": "copy",
+      "sourceSha256": "dfe7bcb6956c8df7fcfbfc08c499181b1378afd0c38a1bde157851c962f4523d",
+      "adaptedFor": "supabase-mobile-fishing",
+      "importedOn": "2026-11-25"
+    },
+    "web-design-guidelines": {
+      "source": "art-si/supabase-mobile-note",
+      "sourceType": "local-repository",
+      "ref": "858be04d9eac4d3d73abc76995a4197547d5608b",
+      "skillPath": ".agents/skills/web-design-guidelines/SKILL.md",
+      "installMode": "copy",
+      "sourceSha256": "0f5c92de0ec56e699d1a0549946d241e96d9c0c011b634c552344908390e249a",
+      "adaptedFor": "supabase-mobile-fishing",
+      "importedOn": "2026-11-25"
+    },
+    "wot-ui-v2": {
+      "source": "art-si/supabase-mobile-note",
+      "sourceType": "local-repository",
+      "ref": "858be04d9eac4d3d73abc76995a4197547d5608b",
+      "skillPath": ".agents/skills/wot-ui-v2/SKILL.md",
+      "installMode": "copy",
+      "sourceSha256": "5622d6fb2115a6b3186e72d237e9c60fee3fb2069eac533cf1dfe7fe1ac57c88",
+      "adaptedFor": "supabase-mobile-fishing",
+      "importedOn": "2026-11-25"
     }
   }
 }

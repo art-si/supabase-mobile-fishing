@@ -20,7 +20,6 @@ const projectUrl = (env.VITE_SUPABASE_URL || 'https://jupuypvmgjpnpntfetqv.supab
 )
 if (projectUrl !== 'https://jupuypvmgjpnpntfetqv.supabase.co')
   failures.push('Supabase URL 不是已确认的目标项目')
-if (env.VITE_DATA_MODE === 'demo') failures.push('生产构建不能使用 demo 数据')
 for (const name of ['VITE_SUPABASE_KEY', 'VITE_AMAP_KEY', 'VITE_AMAP_SERVICE_HOST'])
   if (!env[name]) failures.push(`${name} 未配置`)
 if (env.VITE_AMAP_SERVICE_HOST) {

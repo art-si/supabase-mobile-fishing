@@ -1,4 +1,4 @@
-import { config, isDemo, backendReady } from '@/config'
+import { config, backendReady } from '@/config'
 import { authSessionFromResponse } from '@/domain/auth-errors'
 import {
   isPhoneLoginCancelled,
@@ -50,7 +50,6 @@ function operatorEntry() {
   pluginAvailable = Capacitor.isNativePlatform() && Capacitor.isPluginAvailable('FishingPhoneAuth')
   // #endif
   return operatorEntryCapability({
-    isDemo,
     backendReady,
     enabled: config.operatorPhone,
     platform: platform(),
@@ -64,7 +63,6 @@ export function operatorEntryAvailable() {
 
 export function wechatPhoneAvailable() {
   return wechatPhoneCapability({
-    isDemo,
     backendReady,
     enabled: config.wechatPhone,
     platform: platform(),

@@ -2,7 +2,6 @@ import { spawnSync } from 'node:child_process'
 // Never erase the working .env.local to test a missing key.
 const env = {
   ...process.env,
-  VITE_DATA_MODE: 'live',
   VITE_SUPABASE_KEY: '',
   VITE_PHONE_AUTH_ENABLED: 'false',
   VITE_AMAP_KEY: '',

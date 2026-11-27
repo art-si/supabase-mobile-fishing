@@ -14,7 +14,12 @@ const variants = [
   '/pages/post/compose?mode=trip',
   '/pages/settings/legal?type=terms',
   '/pages/mine/library?type=saved',
-  '/pages/map/search?pick=1&requestId=visual-audit'
+  '/pages/map/search?pick=1&requestId=visual-audit',
+  '/pages/map/bridge?pick=1&requestId=visual-audit&context=water',
+  '/pages/map/marks?review=1',
+  '/pages/content-report/index?review=1',
+  '/pages/content-report/detail?id=missing-fixture',
+  '/pages/moderation/detail?update=1'
 ]
 
 const samples = {
@@ -26,9 +31,20 @@ const samples = {
 }
 
 const redirects = {
-  '/pages/map/bridge': '/pages/map/search',
-  '/pages/spot/discover': home,
-  '/pages/water-report/history': '/pages/water-report/index'
+  '/pages/map/bridge': '/pages/map/index',
+  '/pages/map/bridge?pick=1&requestId=visual-audit&context=water': '/pages/map/index?pick=1&requestId=visual-audit&context=water',
+  '/pages/spot/discover': home + '?tab=spots',
+  '/pages/water-report/history': '/pages/water-report/index?tab=records'
+}
+
+const guestStates = {
+  '/pages/moderation/index': '仅审核员可访问',
+  '/pages/moderation/detail?update=1': '缺少审核记录',
+  '/pages/content-report/index': '登录后查看举报进度',
+  '/pages/content-report/index?review=1': '仅审核员可访问',
+  '/pages/content-report/detail': '缺少举报编号',
+  '/pages/map/marks': '登录后查看自己提交的禁钓提醒。',
+  '/pages/map/marks?review=1': '请登录已获审核权限的账号。'
 }
 
 const viewports = [
@@ -37,7 +53,8 @@ const viewports = [
   ['440', 440, 956, 'light', 16],
   ['landscape', 844, 390, 'light', 16],
   ['wide', 1280, 900, 'light', 16],
-  ['320-dark-200', 320, 740, 'dark', 32]
+  ['320-dark-200', 320, 740, 'dark', 32],
+  ['320', 320, 740, 'light', 16]
 ]
 
 function placeholderContrast(placeholder, field) {
@@ -55,8 +72,14 @@ function placeholderContrast(placeholder, field) {
   }, field)
 }
 
-// Isolated demo build. A redirect is checked by its destination and never counted as a new page state.
-export async function visualAudit({ page, go, visible, overflow, screenshot, pass }) {
+// A redirect is checked by its destination and never counted as a new page state.
+async function setView(page, [, width, height, colorScheme, text]) {
+  await page.setViewportSize({ width, height })
+  await page.emulateMedia({ colorScheme })
+  await setH5TextScale(page, text)
+}
+
+export async function routeLayoutAudit({ page, go, overflow, screenshot }, profiles = viewports) {
   const manifest = JSON.parse(readFileSync('src/pages.json', 'utf8'))
   const routes = [
     ...manifest.pages.map(({ path }) => '/' + path),
@@ -64,50 +87,49 @@ export async function visualAudit({ page, go, visible, overflow, screenshot, pas
       pages.map(({ path }) => '/' + root + '/' + path)
     )
   ]
-  const expanded = new Set([
-    home,
-    ...variants.slice(0, 3),
-    settings,
-    '/pages/post/compose',
-    '/pages/spot/create',
-    '/pages/map/index',
-    '/pages/water-report/index',
-    '/pages/account/password'
-  ])
-
-  async function setView([, width, height, colorScheme, text]) {
-    await page.setViewportSize({ width, height })
-    await page.emulateMedia({ colorScheme })
-    await setH5TextScale(page, text)
-  }
-
+  const results = []
   for (const route of [...routes, ...variants]) {
-    await setView(viewports[0])
-    await go(samples[route] ?? route)
+    const requested = samples[route] ?? route
+    await go(requested)
     await page.reload()
-    const path = route.split('?')[0]
-    const expected = (redirects[path] ?? path).slice(1)
+    const [path, search = ''] = (redirects[route] ?? requested).split('?')
     await page.waitForFunction(
-      (value) =>
-        [...document.querySelectorAll('uni-page')].at(-1)?.getAttribute('data-page') === value,
-      expected
+      ({ path, search }) => {
+        const actual = [...document.querySelectorAll('uni-page')].at(-1)?.getAttribute('data-page')
+        const query = new URLSearchParams(location.hash.split('?')[1])
+        return actual === path.slice(1) && [...new URLSearchParams(search)].every(([key, value]) => query.get(key) === value)
+      }, { path, search }
     )
-    await page.locator('uni-page').last().locator('.fishing-page').waitFor()
-    for (const viewport of expanded.has(route) ? viewports : viewports.slice(0, 2)) {
-      await setView(viewport)
+    const shell = page.locator('uni-page').last().locator('.fishing-page')
+    await shell.waitFor()
+    if (guestStates[route]) {
+      await shell.getByText(guestStates[route], { exact: true }).waitFor()
+      assert.equal(await shell.getByRole('button', { name: /重试|刷新列表/ }).count(), 0)
+    }
+    for (const viewport of profiles) {
+      if (viewport.length > 1) await setView(page, viewport)
       const name = route.slice(1).replace(/[^a-z\d-]+/gi, '-')
+      const file = 'visual-' + name + '-' + viewport[0] + '.png'
       await overflow('visual ' + name + ' ' + viewport[0])
-      await screenshot('visual-' + name + '-' + viewport[0] + '.png', viewport[0] !== 'landscape')
+      await screenshot(file, viewport[0] === '375' || viewport[0] === '320-dark-200')
+      results.push({ requested, destination: new URL(page.url()).hash.slice(1), profile: viewport[0], file })
     }
   }
+  return { registered: routes.length, variants: variants.length, results }
+}
 
-  await setView(viewports[0])
-  for (const skin of ['湖畔青', '深海蓝', '岩石灰']) {
+export async function visualAudit({ page, go, visible, overflow, screenshot, pass }) {
+  await setView(page, viewports[0])
+  for (const skin of ['湖畔青', '日出橙', '莓果红']) {
     await go(settings)
     await page.getByRole('button', { name: skin, exact: true }).click()
     for (const colorScheme of ['light', 'dark']) {
       await page.emulateMedia({ colorScheme })
       await go(home)
+      await page.waitForFunction((scheme) => {
+        const root = document.documentElement
+        return root.style.colorScheme === scheme && root.style.getPropertyValue('--fishing-canvas') === document.querySelector('meta[name="theme-color"]')?.content
+      }, colorScheme)
       const search = page.locator('.mobile-search__placeholder').first()
       assert.ok((await placeholderContrast(search, '.mobile-search')) >= 4.5, skin + ' search')
       await go('/pages/post/compose')
@@ -117,7 +139,7 @@ export async function visualAudit({ page, go, visible, overflow, screenshot, pas
     }
   }
 
-  await setView(['short', 375, 480, 'light', 16])
+  await setView(page, ['short', 375, 480, 'light', 16])
   await go(home)
   // Start the tab flow from a mounted home route after the palette page visits.
   await page.reload()
@@ -129,7 +151,7 @@ export async function visualAudit({ page, go, visible, overflow, screenshot, pas
   await nav.getByRole('link', { name: '钓友圈', exact: true }).click()
   assert.equal(await following.getAttribute('aria-pressed'), 'true')
   await page.getByRole('button', { name: '推荐', exact: true }).click()
-  await visible('秋天的鲫鱼，藏在这片芦苇边')
+  await page.locator('.post-card').first().waitFor()
   const before = await page.evaluate(async () => {
     window.scrollTo(0, 240)
     await new Promise((done) => requestAnimationFrame(done))
@@ -181,7 +203,7 @@ export async function visualAudit({ page, go, visible, overflow, screenshot, pas
   await screenshot('visual-comment-focus-reduced-motion.png', false)
   pass('reduced motion jumps directly to the comment heading and focuses it')
 
-  await setView(viewports[1])
+  await setView(page, viewports[1])
   await go(settings)
   const email = page.getByRole('button', { name: /我的邮箱资料/ })
   await email.focus()
@@ -200,12 +222,5 @@ export async function visualAudit({ page, go, visible, overflow, screenshot, pas
   await visible('缺少举报编号')
   await page.getByRole('button', { name: '返回举报列表', exact: true }).click()
   await page.waitForURL((url) => url.hash === '#/pages/content-report/index?review=1')
-  await go('/pages/map/index')
-  await page.getByRole('button', { name: '浏览示例钓位', exact: true }).click()
-  await page.getByRole('navigation', { name: '主导航' })
-    .getByRole('link', { name: '找钓位', exact: true })
-    .and(page.locator('[aria-current="page"]'))
-    .waitFor()
-  await visible('芦苇湾 · 示例水域')
-  pass('missing report and offline map states provide a working next action')
+  pass('missing report provides a working return action')
 }

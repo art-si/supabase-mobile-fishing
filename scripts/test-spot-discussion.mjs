@@ -7,7 +7,7 @@ import { setH5TextScale } from './h5-text-scale.mjs'
 
 const base = process.env.FISHING_H5_URL || 'http://127.0.0.1:5178'
 assert.ok(['localhost', '127.0.0.1'].includes(new URL(base).hostname))
-const output = 'artifacts/spot-discussion'
+const output = process.env.UI_OUTPUT_DIR || 'artifacts/spot-discussion'
 await mkdir(output, { recursive: true })
 const fixture = new URL('../tests/fixtures/image-formats/small.webp', import.meta.url)
 const photoBytes = await readFile(fixture)
@@ -52,8 +52,11 @@ try {
     } }))
   }, { id: visitor.id })
   await context.routeWebSocket(/supabase\.co/, socket => socket.close())
-  await context.route('https://*.supabase.co/**', async route => {
-    const path = new URL(route.request().url()).pathname
+  await context.route('**/*', async route => {
+    const url = new URL(route.request().url())
+    if (url.origin === base || !url.protocol.startsWith('http')) return route.continue()
+    if (url.origin !== 'https://jupuypvmgjpnpntfetqv.supabase.co') return route.abort()
+    const path = url.pathname
     if (path.endsWith('/media-upload')) {
       uploads++
       return route.fulfill({ json: uploaded })
@@ -132,7 +135,7 @@ try {
   await page.waitForTimeout(350)
   for (const [label, width, height, dark, scale] of [
     ['375',375,812,false,16], ['320',320,680,false,16], ['440',440,956,false,16],
-    ['wide',1024,768,false,16], ['landscape',844,390,false,16], ['dark-large',375,812,true,22]
+    ['wide',1024,768,false,16], ['landscape',844,390,false,16], ['dark-large',375,812,true,22], ['dark-200',320,740,true,32]
   ]) {
     await page.setViewportSize({ width, height })
     await page.emulateMedia({ colorScheme: dark ? 'dark' : 'light' })
@@ -145,6 +148,13 @@ try {
     assert.ok(await sheet.evaluate(el => el.scrollWidth <= el.clientWidth+1), label + ': no horizontal overflow')
     await aligned(sheet)
     await multiline(sheet)
+    await sheet.locator('textarea').focus()
+    const ring = await sheet.locator('.spot-discussion__composer').evaluate(container => {
+      const composer=container.querySelector('.mobile-comment-composer'), a=container.getBoundingClientRect(), b=composer.getBoundingClientRect()
+      return {top:b.top-a.top,right:a.right-b.right,bottom:a.bottom-b.bottom,left:b.left-a.left,shadow:getComputedStyle(composer).boxShadow}
+    })
+    assert.notEqual(ring.shadow,'none',label+': input has a visible focus state')
+    assert.ok([ring.top,ring.right,ring.bottom,ring.left].every(space=>space>=1.5),label+': focus ring is inside its scroll clipping boundary '+JSON.stringify(ring))
     await page.screenshot({ path: output + '/' + label + '.png' })
   }
   await page.setViewportSize({ width: 375, height: 812 })
@@ -155,6 +165,19 @@ try {
   await field.waitFor()
   await page.waitForFunction(() => document.activeElement?.tagName === 'TEXTAREA')
   await field.fill('我也在东岸。')
+  const contextCopy = await sheet.locator('.spot-discussion__context').innerText()
+  for (const [label,width,height,size] of [['reply-320',320,740,16],['reply-landscape',844,390,16],['reply-200',320,740,32]]) {
+    await page.setViewportSize({width,height});await setH5TextScale(page,size)
+    await sheet.locator('.spot-discussion__title').evaluate(el => {el.textContent='InnerMongoliaHohhotCity · 长名称水域评论'})
+    await sheet.locator('.spot-discussion__context .caption').evaluate(el => {el.textContent='1234567 条评论 · 最新在前'})
+    assert.ok(await sheet.evaluate(el=>el.scrollWidth<=el.clientWidth+1),label+': complete discussion context fits the sheet')
+    await sheet.getByRole('button',{name:'取消回复',exact:true}).scrollIntoViewIfNeeded()
+    assert.ok(await sheet.getByRole('button',{name:'取消回复',exact:true}).isVisible())
+    await page.screenshot({path:output+'/'+label+'.png'})
+  }
+  await page.setViewportSize({width:375,height:812});await setH5TextScale(page,16)
+  await sheet.locator('.spot-discussion__title').evaluate((el,text)=>{el.textContent=text},spot.name)
+  await sheet.locator('.spot-discussion__context .caption').evaluate((el,text)=>{el.textContent=text},contextCopy.split('\n').at(-1))
   // H5 keyboard layout uses visualViewport. Exercise its resize handler with a shortened visible area.
   await page.evaluate(() => {
     Object.defineProperty(visualViewport,'height',{configurable:true,get:()=>460})
@@ -182,7 +205,9 @@ try {
   assert.equal(uploads,1)
   await page.screenshot({ path: output + '/reply-retry.png' })
   await send.click()
-  await sheet.getByText('回复已发表', { exact: true }).waitFor()
+  await sheet.getByText('回复已发表', { exact: true }).waitFor({ state: 'attached' })
+  const sentAnnouncement = await sheet.locator('.spot-comments__announcement').boundingBox()
+  assert.ok(sentAnnouncement && sentAnnouncement.width <= 1 && sentAnnouncement.height <= 1)
   assert.equal(submissions.length,2)
   assert.deepEqual(submissions[1], submissions[0])
   assert.equal(submissions[1].body, '')
@@ -219,6 +244,7 @@ try {
   assert.equal(positions.length,3)
   assert.ok(Math.max(...positions)-Math.min(...positions)<1)
   await feed.locator('.discussion-comment__message').first().click()
+  assert.equal(await feed.locator('.post-comments__excerpt').innerText(),rows[0].body || '[图片]')
   await feed.getByRole('textbox',{name:'写一条回复'}).fill('刚刚在湖边看到。')
   await page.screenshot({path:output+'/feed-reply.png'})
   await page.goto(base+'/#/pages/notifications/index')
@@ -258,7 +284,7 @@ try {
     assert.ok(positions.every(row => row.aligned), label + ' medal alignment ' + JSON.stringify(positions.find(row => !row.aligned)))
     await page.screenshot({path:output+'/ranking-'+label+'.png'})
   }
-  console.log('PASS H5 discussion, photos, replies, paging, reaction alignment and leading rank medals across six viewports')
+  console.log('PASS H5 discussion, photos, replies, paging, focus visibility across seven composer viewports, and leading rank medals')
 } catch (error) {
   if (page) {
     await page.screenshot({ path: output + '/failure.png' })

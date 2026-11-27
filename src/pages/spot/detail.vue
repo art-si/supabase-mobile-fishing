@@ -1,8 +1,9 @@
 <script setup lang="ts">
+
 import { computed, ref, watch } from 'vue'
 import { onLoad, onShow } from '@dcloudio/uni-app'
 import FishingShell from '@/components/FishingShell.vue'
-import FishingLoadingStatus from '@/components/FishingLoadingStatus.vue'
+import MobileSkeleton from '@mobile-core/components/MobileSkeleton.vue'
 import MobileAction from '@mobile-core/components/MobileAction.vue'
 import MobileIcon from '@mobile-core/components/MobileIcon.vue'
 import MobileAvatar from '@mobile-core/components/MobileAvatar.vue'
@@ -12,6 +13,7 @@ import FishingPlaceLink from '@/components/FishingPlaceLink.vue'
 import FishingPhotos from '@/components/FishingPhotos.vue'
 import ContentReviewStatus from '@/components/ContentReviewStatus.vue'
 import ContentOwnerActions from '@/components/ContentOwnerActions.vue'
+import ContentDetailTools from '@/components/ContentDetailTools.vue'
 import SpotStatusStamp from '@/components/SpotStatusStamp.vue'
 import SpotReactionBar from '@/components/SpotReactionBar.vue'
 import SpotSourceActions from '@/components/SpotSourceActions.vue'
@@ -23,12 +25,13 @@ import StaticMapPreview from '@/components/StaticMapPreview.vue'
 // #endif
 import { read, write } from '@/services/repository'
 import { useResource } from '@/composables/useResource'
+import { useListRefresh } from '@/composables/useListRefresh'
 import { useMutation } from '@/composables/useMutation'
 import { useLoginAction } from '@/composables/useLoginAction'
 import { useSpotCommunity } from '@/composables/useSpotCommunity'
 import { useAuthStore } from '@/stores/auth'
 import { spotCommunityKey } from '@/services/spot-community'
-import { isDemo } from '@/config'
+import { onContentDeleted } from '@/services/content-deletion'
 import { audienceLabels, canNavigate, validCoordinates } from '@/domain/rules'
 import { describeSpotLocation } from '@/platforms/spot-location'
 import type { Spot } from '@/domain/models'
@@ -40,8 +43,12 @@ const { data, error, loading, load, invalidate } = useResource(
   () => read<Spot>('spot', { id: id.value }),
   null as Spot | null
 )
+onContentDeleted(value => {
+  if (value.type === 'spot' && value.id === id.value) { invalidate(); data.value = null }
+})
+useListRefresh(load, () => !mutation.busy.value && !commentsOpen.value)
 const share = computed(() => splitSpotShareText(data.value?.description || ''))
-const discussionTarget = computed(() => data.value && !isDemo && data.value.audience === 'public' &&
+const discussionTarget = computed(() => data.value && data.value.audience === 'public' &&
   data.value.status === 'published' ? spotCommunityKey(data.value.id) : '')
 const { summaries, busy: communityBusy, commentsOpen, commentTarget, apply: applySummary,
   react: reactToCommunity, openComments } = useSpotCommunity(
@@ -119,7 +126,7 @@ async function applyBookmark(intent: Bookmark, resumed = false) {
   <FishingShell title="钓位详情" back
     ><view class="fishing-content stack"
       ><MobileLoadError v-if="error" :message="error" @retry="load" />
-      <FishingLoadingStatus v-if="loading && !data" label="正在读取这个钓位…" />
+      <MobileSkeleton v-if="loading && !data" label="正在读取这个钓位…" />
       <template v-if="data && !error"
         ><ContentReviewStatus
           v-if="data.status === 'hidden'"
@@ -128,7 +135,7 @@ async function applyBookmark(intent: Bookmark, resumed = false) {
           :status="data.status"
           :owner="data.author.id"
         /><view class="panel stack spot-summary"
-          ><view class="row row--between"
+          ><view class="row row--between row--wrap spot-summary__meta"
             ><text class="badge">{{ data.water_type }}</text
             ><text class="caption">{{ data.city }}</text></view
           ><text class="heading spot-summary__title">{{ data.name }}</text
@@ -190,7 +197,7 @@ async function applyBookmark(intent: Bookmark, resumed = false) {
           <StaticMapPreview :target="{ spotId: data.id }" :area="data.precision === 'area'" :prohibited="prohibited && data.precision === 'exact'" />
         </view>
         <!-- #endif -->
-        <view class="panel stack stack--tight spot-tools">
+        <ContentDetailTools class="spot-tools">
           <SpotReactionBar v-if="discussionTarget" :community="community" :title="data.name" :saved="data.saved"
             :busy="communityBusy.has(discussionTarget) || mutation.busy.value"
             @react="kind => kind === 'bookmark' && !community ? bookmark() : reactToCommunity(discussionTarget, kind)"
@@ -216,7 +223,7 @@ async function applyBookmark(intent: Bookmark, resumed = false) {
             @changed="load"
           />
           <SpotDeleteAction :id="data.id" :owner="data.author.id" compact />
-        </view>
+        </ContentDetailTools>
         <ContentReportAction :id="data.id" type="spot" :owner="data.author.id" />
         <SpotCommentsSheet v-model="commentsOpen" :target="commentTarget.id" :title="commentTarget.title"
           @summary="applySummary" /> </template
@@ -233,6 +240,15 @@ async function applyBookmark(intent: Bookmark, resumed = false) {
 .spot-summary__title {
   overflow-wrap: anywhere;
 }
+.spot-summary__meta .badge {
+  flex: none;
+  white-space: nowrap;
+}
+.spot-summary__meta .caption {
+  min-width: 0;
+  max-width: 100%;
+  overflow-wrap: anywhere;
+}
 .spot-summary__facts {
   position: relative;
   gap: 12px;
@@ -246,23 +262,7 @@ async function applyBookmark(intent: Bookmark, resumed = false) {
   right: 0;
   top: 0;
 }
-.spot-tools {
-  gap: 8px;
-  padding-block: 8px;
-}
 .spot-tools__primary {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(min(100%, 6rem), 1fr));
-  gap: 8px;
-}
-.spot-tools :deep(.mobile-action) {
-  min-height: 48px;
-}
-.spot-tools :deep(.content-owner-actions--compact) {
-  padding-top: 8px;
-  border-top: 1px solid var(--line);
-}
-.spot-tools :deep(.mobile-action-group) {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(min(100%, 6rem), 1fr));
   gap: 8px;
@@ -278,6 +278,7 @@ async function applyBookmark(intent: Bookmark, resumed = false) {
   gap: 10px;
   justify-content: flex-start;
   width: 100%;
+  min-height: var(--fishing-target);
   padding: 4px 0;
   text-align: left;
 }

@@ -1,9 +1,10 @@
 <script setup lang="ts">
+
 import { computed, ref, watch } from 'vue'
 import { onLoad, onReachBottom } from '@dcloudio/uni-app'
 import FishingShell from '@/components/FishingShell.vue'
 import DiscussionAvatar from '@/components/DiscussionAvatar.vue'
-import FishingLoadingStatus from '@/components/FishingLoadingStatus.vue'
+import MobileSkeleton from '@mobile-core/components/MobileSkeleton.vue'
 import FishingEmptyState from '@/components/FishingEmptyState.vue'
 import MobileAction from '@mobile-core/components/MobileAction.vue'
 import MobileIcon from '@mobile-core/components/MobileIcon.vue'
@@ -12,8 +13,8 @@ import MobileLoadError from '@mobile-core/components/MobileLoadError.vue'
 import MobileListFooter from '@mobile-core/components/MobileListFooter.vue'
 import MobileBottomSheet from '@mobile-core/components/MobileBottomSheet.vue'
 import { usePageActivity } from '@mobile-core/page-activity'
+import { useListRefresh } from '@/composables/useListRefresh'
 import { useAuthStore } from '@/stores/auth'
-import { isDemo } from '@/config'
 import { appForeground } from '@/services/app-activity'
 import { onSocialUpdate } from '@/services/live-updates'
 import { notifications } from '@/services/notifications'
@@ -55,6 +56,10 @@ let poll: ReturnType<typeof setInterval> | undefined, stopLive: (() => void) | u
 onReachBottom(() => {
   if (!error.value && !moreError.value && !settingsOpen.value) void load(true)
 })
+useListRefresh(async () => {
+  version++; operation.value = ''
+  await load()
+}, () => !settingsOpen.value && (!operation.value || ['page', 'more', 'refresh'].includes(operation.value)))
 function clear() {
   version++
   items.value = []
@@ -73,7 +78,7 @@ async function run(name: string, task: (current: () => boolean) => Promise<void>
     version++
     operation.value = ''
   }
-  if (!active || !auth.signedIn || isDemo || operation.value) return
+  if (!active || !auth.signedIn || operation.value) return
   const currentVersion = version
   operation.value = name
   error.value = ''
@@ -184,7 +189,7 @@ function change(value: NotificationCategory) {
 function start() {
   active = true
   clear()
-  if (showSettings && auth.signedIn && !isDemo) {
+  if (showSettings && auth.signedIn) {
     settingsOpen.value = true
     showSettings = false
   }
@@ -226,12 +231,6 @@ onLoad((options) => {
       >
         <MobileAction class="primary" @click="auth.requireLogin()">登录</MobileAction>
       </FishingEmptyState>
-      <FishingEmptyState
-        v-else-if="isDemo"
-        icon="message"
-        title="本机体验不产生真实通知"
-        description="登录线上账号后，这里会展示你的互动和处理结果。"
-      />
       <template v-else>
         <MobileSegmented
           label="通知分类"
@@ -247,10 +246,9 @@ onLoad((options) => {
           <MobileAction class="text-action" @click="settingsOpen = true">通知设置</MobileAction>
         </view>
         <MobileAction v-if="hasNew" class="secondary" :disabled="busy" @click="load()"
-          >有新通知，刷新查看</MobileAction
-        >
+          >有新通知，刷新查看</MobileAction>
         <MobileLoadError v-if="error" title="通知未能更新" :message="error" @retry="load()" />
-        <FishingLoadingStatus
+        <MobileSkeleton
           v-if="operation === 'page'"
           label="正在读取通知…"
         />
@@ -295,8 +293,7 @@ onLoad((options) => {
         <view class="mobile-action-group">
           <MobileAction class="text-action" :disabled="busy" @click="load()">刷新通知</MobileAction>
           <MobileAction v-if="unread" class="text-action" :disabled="busy" @click="refresh(true)"
-            >已显示的标为已读</MobileAction
-          >
+            >已显示的标为已读</MobileAction>
         </view>
         <MobileListFooter :loading="operation === 'more'" :error="moreError"
           :can-load-more="!!next && !busy && !error && !settingsOpen"
@@ -327,8 +324,7 @@ onLoad((options) => {
             ><text class="grow name">点赞提醒</text
             ><text class="caption">{{
               preferences.likes ? '已开启' : '已关闭'
-            }}</text></MobileAction
-          >
+            }}</text></MobileAction>
           <MobileAction
             class="list-row"
             :aria-pressed="preferences.comments"
@@ -337,12 +333,11 @@ onLoad((options) => {
             ><text class="grow name">评论与回复</text
             ><text class="caption">{{
               preferences.comments ? '已开启' : '已关闭'
-            }}</text></MobileAction
-          >
+            }}</text></MobileAction>
         </view>
-        <FishingLoadingStatus v-if="operation === 'preference'" label="正在保存设置…" />
+        <MobileSkeleton v-if="operation === 'preference'" label="正在保存设置…" />
         <MobileLoadError v-if="error" :message="error" @retry="load()" />
-        <FishingLoadingStatus v-else-if="!preferences && !isDemo" label="正在读取设置…" />
+        <MobileSkeleton v-else-if="!preferences" label="正在读取设置…" />
         <text class="muted"
           >更改只影响之后的新通知，不删除已有记录。审核和举报结果仍会保留。</text
         >

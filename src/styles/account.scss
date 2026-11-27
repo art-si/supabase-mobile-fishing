@@ -1,3 +1,11 @@
+.mobile-checkbox .caption {
+  display: inline-flex;
+  align-items: center;
+  min-height: 48px;
+  font-size: var(--fishing-label-size);
+  font-weight: 400;
+  line-height: 1.5;
+}
 .fishing-page .account-content {
   --tms-line: var(--reed);
   --tms-control-radius: var(--fishing-auth-control-radius);

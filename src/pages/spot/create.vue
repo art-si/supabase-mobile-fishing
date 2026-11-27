@@ -1,4 +1,5 @@
 <script setup lang="ts">
+
 import { computed, ref, watch } from 'vue'
 import { onLoad, onShow, onHide, onUnload } from '@dcloudio/uni-app'
 import FishingShell from '@/components/FishingShell.vue'
@@ -11,11 +12,12 @@ import MobileSelect from '@mobile-core/components/MobileSelect.vue'
 import MobileSegmented from '@mobile-core/components/MobileSegmented.vue'
 import MobileAction from '@mobile-core/components/MobileAction.vue'
 import MobileMediaUploader from '@mobile-core/components/MobileMediaUploader.vue'
+import { preserveMediaPickerPage, resumeMediaPickerPage } from '@mobile-core/media-picker-session'
 import MobileMultiChoice from '@mobile-core/components/MobileMultiChoice.vue'
 import MobileComboField from '@mobile-core/components/MobileComboField.vue'
 import MobileDateTimeField from '@mobile-core/components/MobileDateTimeField.vue'
 import MobileIcon from '@mobile-core/components/MobileIcon.vue'
-import { canLocateSpot, locateSpot, describeSpotWater } from '@/platforms/spot-location'
+import { locateSpot, describeSpotWater } from '@/platforms/spot-location'
 import { spotEntryName, canSaveSpotPoint } from '@/domain/spot-entry'
 import type { SelectedPlace } from '@/domain/map'
 import { fishSpeciesOptions } from '@/domain/fishing-presets'
@@ -34,7 +36,8 @@ import { pickMap, consumeSelection } from '@/platforms/map-navigation'
 import { useAuthStore } from '@/stores/auth'
 import { useMutation } from '@/composables/useMutation'
 import { write } from '@/services/repository'
-import { isDemo } from '@/config'
+import { ApiError } from '@/services/http'
+import { checkSpotProhibition, type SpotProhibition } from '@/services/spot-prohibition'
 import type { Spot, SpotDraft, Media } from '@/domain/models'
 import { useDraftOwner } from '@/composables/useDraftOwner'
 import { leadSourceName, shareSources } from '../../../supabase/functions/_shared/discovery-contract'
@@ -50,10 +53,12 @@ const locating = ref(false),
   locationError = ref(''),
   detailsOpen = ref(false)
 const exactPoint = computed(() => canSaveSpotPoint(draft.value, locationResolved.value))
+const prohibition = ref<SpotProhibition | null>(null)
+const prohibited = computed(() => prohibition.value?.blocked && !(editor.editing.value && draft.value.fishing_status === 'prohibited'))
 const sourceHint = computed(() => {
   const platforms = [...new Set(shareSources(draft.value.description || '').map(leadSourceName))]
   return platforms.length ? `保存后可查看${platforms.join('、')}原文。`
-    : '可粘贴自己发布或获作者授权的抖音、今日头条、B 站作品链接。'
+    : '可粘贴小红书、抖音、微信公众号、头条、B 站分享链接。'
 })
 let locationVersion = 0
 function invalidateLocation() {
@@ -65,6 +70,7 @@ function resetLocation() {
   locationResolved.value = false
   locationLabel.value = ''
   locationError.value = ''
+  prohibition.value = null
 }
 const uploading = computed(() => photos.value.some((p) => p.busy || (!p.asset && !p.error)))
 const fromAsset = (asset: Media): CompositionPhoto => ({
@@ -159,7 +165,7 @@ function restore() {
     /* keep a fresh draft */
   }
 }
-const draftKey = () => `dyj.${isDemo ? 'demo' : 'live'}.spot-draft.${owner.value || 'guest'}`
+const draftKey = () => `dyj.live.spot-draft.${owner.value || 'guest'}`
 let saved = false
 onLoad((options) => {
   if (options?.id) {
@@ -184,6 +190,9 @@ watch(
 )
 onShow(() => {
   pageVisible.value = true
+  // #ifdef MP-WEIXIN
+  if (resumeMediaPickerPage()) return
+  // #endif
   if (!available.value) return
   const result = consumeSelection(requestId.value)
   if (result) {
@@ -198,6 +207,9 @@ onShow(() => {
     void resolveStoredLocation()
 })
 onHide(() => {
+  // #ifdef MP-WEIXIN
+  if (preserveMediaPickerPage()) return
+  // #endif
   pageVisible.value = false
   invalidateLocation()
 })
@@ -238,7 +250,7 @@ async function initializeLocation() {
     validCoordinates(draft.value.longitude, draft.value.latitude)
   )
     return resolveStoredLocation()
-  if (canLocateSpot && !validCoordinates(draft.value.longitude, draft.value.latitude))
+  if (!validCoordinates(draft.value.longitude, draft.value.latitude))
     await locateCurrentPoint()
 }
 function resolveStoredLocation() {
@@ -269,6 +281,7 @@ async function resolvePoint(
   locating.value = true
   locationResolved.value = false
   locationError.value = ''
+  prohibition.value = null
   errors.value.location = ''
   try {
     const place = await load()
@@ -289,18 +302,28 @@ async function resolvePoint(
       draft.value.precision = 'exact'
       draft.value.location_label = locationLabel.value.slice(0, 240)
     }
-    locationResolved.value = true
-  } catch {
+    try {
+      const restriction = await checkSpotProhibition(place.longitude, place.latitude)
+      if (!current()) return
+      prohibition.value = restriction
+      locationResolved.value = true
+      if (prohibited.value) locationError.value = '此位置已标记为禁钓，请重新选择水域。'
+    } catch {
+      if (current()) locationError.value = '禁钓范围暂未核对，请稍后重试或重新选点。'
+    }
+  } catch (cause) {
     if (current()) {
       locationLabel.value = ''
-      locationError.value = '附近水域或所在城市暂未确认，请重试或在水域地图选点。'
+      locationError.value = cause instanceof ApiError ? errorText(cause)
+        : cause instanceof Error && cause.message === '附近未找到水域，请在水域地图选点。' ? cause.message
+        : '附近水域或所在城市暂未确认，请重试或在水域地图选点。'
     }
   } finally {
     if (current()) locating.value = false
   }
 }
 async function locateCurrentPoint() {
-  if (!available.value || locating.value || !canLocateSpot) return
+  if (!available.value || locating.value) return
   await resolvePoint(locateSpot)
 }
 async function applySelectedPlace(place: SelectedPlace) {
@@ -326,8 +349,16 @@ async function submit() {
   if (!validDate(draft.value.observed_on)) errors.value.observed_on = '请选择有效的信息核实日期'
   if (!exactPoint.value && !editor.onlyFishingStatusChanged.value)
     errors.value.location = '请先确认实际钓位位置和所在城市，再保存。'
+  if (prohibited.value) errors.value.location = '此位置已标记为禁钓，不能创建钓位。'
   if (Object.keys(errors.value).length || !auth.requireLogin()) return
   await run(async () => {
+    if (!editor.onlyFishingStatusChanged.value) {
+      prohibition.value = await checkSpotProhibition(draft.value.longitude!, draft.value.latitude!)
+      if (prohibited.value) {
+        errors.value.location = '此位置已标记为禁钓，不能创建钓位。'
+        return
+      }
+    }
     draft.value.name = spotEntryName(draft.value.name, locationLabel.value)
     if (!editor.editing.value) draft.value.fishing_status = 'allowed'
     if (!draft.value.location_label) draft.value.location_label = locationLabel.value.slice(0, 240)
@@ -369,11 +400,7 @@ async function submit() {
               <text v-else-if="editor.editing.value && draft.precision !== 'exact'" class="caption"
                 >原记录未开放精确位置，请重新选点后保存。</text
               >
-              <text v-else class="caption">{{
-                canLocateSpot
-                  ? '定位附近水域，也可以在地图上点选水面。'
-                  : '在水域地图中选择钓位。'
-              }}</text>
+              <text v-else class="caption">定位附近水域，也可以在地图上点选水面。</text>
             </view>
           </view>
           <view class="mobile-action-group">
@@ -381,7 +408,6 @@ async function submit() {
               exactPoint ? '更换水域' : '水域地图选点'
             }}</MobileAction>
             <MobileAction
-              v-if="canLocateSpot"
               class="text-action"
               :disabled="busy || locating"
               @click="locateCurrentPoint"
@@ -530,6 +556,7 @@ async function submit() {
             busy ||
             uploading ||
             locating ||
+            prohibited ||
             editor.conflict.value ||
             (editor.editing.value && !editor.dirty.value)
           "

@@ -2,6 +2,7 @@
 import { ref, watch } from 'vue'
 import { onLoad, onShow, onHide, onUnload, onReachBottom } from '@dcloudio/uni-app'
 import FishingShell from '@/components/FishingShell.vue'
+import FishingEmptyState from '@/components/FishingEmptyState.vue'
 import ZoneInfo from '@/components/ZoneInfo.vue'
 // #ifdef H5
 import ZoneMapPreview from '@/components/ZoneMapPreview.vue'
@@ -13,9 +14,10 @@ import MobileAction from '@mobile-core/components/MobileAction.vue'
 import MobileField from '@mobile-core/components/MobileField.vue'
 import MobileLoadError from '@mobile-core/components/MobileLoadError.vue'
 import MobileListFooter from '@mobile-core/components/MobileListFooter.vue'
-import FishingLoadingStatus from '@/components/FishingLoadingStatus.vue'
+import MobileSkeleton from '@mobile-core/components/MobileSkeleton.vue'
 import MobileConfirmDialog from '@mobile-core/components/MobileConfirmDialog.vue'
 import { useAuthStore } from '@/stores/auth'
+import { useListRefresh } from '@/composables/useListRefresh'
 import { isTransientRequestError } from '@/services/http'
 import { zonesRead, zonesMine, zonesWrite } from '@/services/zones'
 import type { Zone, ZonePage } from '@/domain/zones'
@@ -57,6 +59,10 @@ function clear() {
 onReachBottom(() => {
   if (!error.value && !moreError.value && !busy.value) void load(true)
 })
+useListRefresh(async () => {
+  version++; loading.value = loadingMore.value = false
+  await load()
+}, () => auth.signedIn && !busy.value && !confirm.value)
 async function load(more = false) {
   if (!auth.signedIn || loading.value || (more && (!next.value || busy.value))) return
   const current = ++version
@@ -159,7 +165,7 @@ function changeStatus() {
   <FishingShell :title="review ? '禁钓提醒审核' : '我的标记'" back>
     <view class="fishing-content stack">
       <template v-if="!auth.signedIn"
-        ><text class="muted">登录后查看自己提交的禁钓提醒。</text
+        ><text class="muted">{{ review ? '请登录已获审核权限的账号。' : '登录后查看自己提交的禁钓提醒。' }}</text
         ><MobileAction class="primary" @click="auth.requireLogin()">登录</MobileAction></template
       >
       <template v-else>
@@ -178,7 +184,7 @@ function changeStatus() {
           >逐条核实依据、地点和期限。通过后仍是钓友提醒，不成为官方公告。</text
         >
         <MobileLoadError v-if="error" title="标记未加载" :message="error" @retry="load()" />
-        <FishingLoadingStatus v-if="loading && !loadingMore" label="正在读取标记…" />
+        <MobileSkeleton v-if="loading && !loadingMore" label="正在读取标记…" />
         <text v-if="!loading && !error && !items.length && !next" class="muted">{{
           review ? '没有符合条件的提醒。' : '还没有提交过标记。到地图上圈选需要提醒的水域吧。'
         }}</text>

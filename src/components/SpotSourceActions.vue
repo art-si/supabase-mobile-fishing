@@ -1,5 +1,5 @@
 <script setup lang="ts">
-defineOptions({ options: { styleIsolation: 'apply-shared' } })
+defineOptions({ options: { virtualHost: true, styleIsolation: 'apply-shared' } })
 import { ref } from 'vue'
 import MobileAction from '@mobile-core/components/MobileAction.vue'
 import { openExternalPage } from '@/platforms/open-external-page'

@@ -1,0 +1,4 @@
+{
+  "light": { "canvas": "#F5F7F5", "navText": "black", "refreshText": "dark" },
+  "dark": { "canvas": "#111C19", "navText": "white", "refreshText": "light" }
+}

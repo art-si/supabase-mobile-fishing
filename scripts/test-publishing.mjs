@@ -98,15 +98,18 @@ await context.addInitScript(
             () =>
               cb('complete', {
                 poiList: {
-                  pois: [{ id: query, name: query, address: '接口验收地点', location: point }],
-                  count: 1
+                  pois: query === '附近测试水域' && window.__postGeoFail ? [] : [{
+                    id: query, name: query, address: '接口验收地点', location: point,
+                    type: '地名地址信息;自然地名;湖泊'
+                  }],
+                  count: query === '附近测试水域' && window.__postGeoFail ? 0 : 1
                 }
               }),
             query === '旧地点' ? 700 : 0
           )
         }
         searchNearBy(query, _point, _radius, cb) {
-          this.search(query || '附近测试水域', cb)
+          setTimeout(() => this.search(query || '附近测试水域', cb), window.__postGeoDelay)
         }
       }
     }
@@ -130,6 +133,9 @@ await context.route('**/*', async (route) => {
   const req = route.request(),
     url = new URL(req.url())
   if (url.origin === base || !url.protocol.startsWith('http')) return route.continue()
+  // The current water picker can request its basemap independently. This
+  // publishing contract keeps that external tile service outside the fixture.
+  if (url.origin === 'https://tiles.openfreemap.org') return route.abort()
   assert.equal(url.origin, 'https://jupuypvmgjpnpntfetqv.supabase.co')
   const reply = (json, status = 200) =>
     route.fulfill({
@@ -198,6 +204,8 @@ await context.route('**/*', async (route) => {
   const body = req.postDataJSON() || {},
     p = body.payload || {}
   if (url.pathname === '/functions/v1/amap') {
+    if (body.action === 'water-places')
+      return reply({ items: [{ name: searches.at(-1) || '太湖', point: [120.62345, 31.32789], flowing: false }] })
     if (body.action === 'search') {
       searches.push(body.query)
       if (body.query === '旧地点') await new Promise((done) => setTimeout(done, 700))
@@ -223,8 +231,7 @@ await context.route('**/*', async (route) => {
     if (body.action === 'post') return reply({ post, comments: [] })
     if (body.action === 'feed')
       return reply({ items: post && p.filter === 'recommended' ? [post] : [], next: null })
-    if (body.action === 'spots' || body.action === 'people')
-      return reply({ items: [], next: null })
+    if (body.action === 'spots' || body.action === 'people') return reply({ items: [], next: null })
     if (body.action === 'library') return reply({ posts: [], trips: [], spots: [] })
     return reply([])
   }
@@ -270,7 +277,10 @@ async function checkPublishedInFeed() {
   const card = page.locator('.post-card').filter({ hasText: post.body })
   await card.getByText(post.body, { exact: true }).waitFor()
   assert.equal(await card.locator('.name').innerText(), author.nickname)
-  assert.equal(await page.getByRole('link', { name: '钓友圈', exact: true }).getAttribute('aria-current'), 'page')
+  assert.equal(
+    await page.getByRole('link', { name: '钓友圈', exact: true }).getAttribute('aria-current'),
+    'page'
+  )
 }
 async function choice(label, names) {
   await button(`选择${label}`).click()
@@ -346,7 +356,10 @@ try {
   await button('保存并发布').click()
   await page.getByText('选择所在位置后再发布', { exact: true }).first().waitFor()
   await button('选择所在位置').click()
-  const mapSearch = field('搜索所在位置')
+  // The current product selects a waterbody through the map. Exercise its
+  // supported static-search recovery when this fixture has no map renderer.
+  await button('改用地点搜索与静态预览').click()
+  const mapSearch = field('搜索高德地点')
   await mapSearch.waitFor()
   await mapSearch.fill('旧地点')
   await page.waitForTimeout(410)
@@ -355,6 +368,8 @@ try {
   await page.waitForTimeout(800)
   assert.equal(await page.getByRole('option', { name: /旧地点/ }).count(), 0)
   await page.getByRole('option', { name: /太湖/ }).click()
+  await button('确认这处水域').waitFor()
+  await button('确认这处水域').click()
   await button('选择所在位置').waitFor()
   assert.match(await button('选择所在位置').innerText(), /太湖/)
   pass(
@@ -565,13 +580,17 @@ try {
   assert.equal(writes.length, 2)
   assert.equal(writes[1].payload.kind, 'experience')
   await shot('published-experience-feed-375')
-  pass('new catches and experiences open the refreshed recommended feed from direct and in-app entry')
+  pass(
+    'new catches and experiences open the refreshed recommended feed from direct and in-app entry'
+  )
   await page.goto(`${base}/?fixture-location=late#/pages/post/compose?locationcase=late`, {
     waitUntil: 'domcontentloaded'
   })
   await button('选择所在位置').click()
-  await field('搜索所在位置').fill('手动选择的水域')
+  await button('改用地点搜索与静态预览').click()
+  await field('搜索高德地点').fill('手动选择的水域')
   await page.getByRole('option', { name: /手动选择的水域/ }).click()
+  await button('确认这处水域').click()
   await button('选择所在位置').waitFor()
   await page.waitForTimeout(3400)
   assert.match(await button('选择所在位置').innerText(), /手动选择的水域/)

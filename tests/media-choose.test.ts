@@ -11,8 +11,12 @@ function nativePicker() {
   // Match the actual non-H5 branch; this is an API contract, not a native device test.
   const source = readFileSync(file, 'utf8').replace(/\/\/ #ifdef H5[\s\S]*?\/\/ #endif/g, '')
   const exports: any = {}, calls: any[] = []
+  const session: any = {}
+  const runtime = { uni: { chooseMedia: (options: any) => calls.push(options) } }
+  runInNewContext(ts.transpileModule(readFileSync(resolve(resolveMobileProRoot(), 'packages/mobile-core/src/media-picker-session.ts'), 'utf8'), { compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 } }).outputText,
+    { exports: session, ...runtime })
   runInNewContext(ts.transpileModule(source, { compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 } }).outputText,
-    { exports, uni: { chooseMedia: (options: any) => calls.push(options) } })
+    { exports, ...runtime, require: (name: string) => { assert.equal(name, './media-picker-session'); return session } })
   return { choose: exports.chooseMediaFiles, calls }
 }
 test('native camera asks for exactly one image from the camera and retains genuine file metadata', async () => {
@@ -44,7 +48,7 @@ test('native chooser cancellation resolves empty without a visible error', async
 test('native permission/provider failure is distinguishable from user cancellation', async () => {
   const picker = nativePicker(), result = picker.choose(2, ['image', 'video'], 'album')
   picker.calls[0].fail({ errMsg: 'chooseMedia:fail authorize denied' })
-  await assert.rejects(result, (error: any) => error.code === 'MEDIA_SELECTION_FAILED')
+  await assert.rejects(result, (error: any) => error.code === 'MEDIA_PERMISSION_DENIED' && error.nativeMessage.includes('authorize denied'))
 })
 test('no chooser opens without capacity or when a video-only consumer asks to take a photo', async () => {
   const picker = nativePicker()

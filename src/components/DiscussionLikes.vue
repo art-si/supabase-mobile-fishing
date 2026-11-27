@@ -1,6 +1,7 @@
 <script setup lang="ts">
-import { ref, watch } from 'vue'
 import MobileAction from '@mobile-core/components/MobileAction.vue'
+
+import { ref, watch } from 'vue'
 import MobileBottomSheet from '@mobile-core/components/MobileBottomSheet.vue'
 import MobileListFooter from '@mobile-core/components/MobileListFooter.vue'
 import { useListEnd } from '@/composables/useListEnd'
@@ -8,11 +9,14 @@ import DiscussionAvatar from './DiscussionAvatar.vue'
 import type { DiscussionPerson } from '@/domain/models'
 import { read } from '@/services/repository'
 import { useAuthStore } from '@/stores/auth'
+import { useAppearanceStore } from '@/stores/appearance'
 defineOptions({ options: { styleIsolation: 'apply-shared' } })
 const props = defineProps<{ target: string; count: number }>()
 const auth = useAuthStore()
+const theme = useAppearanceStore()
 const people = ref<DiscussionPerson[]>([]), next = ref<string | null>(null)
 const loading = ref(false), failed = ref(false)
+const refreshing = ref(false)
 const expanded = ref(false)
 let version = 0
 function openProfile(id: string) {
@@ -35,8 +39,15 @@ async function load(append = false) {
     if (current === version) failed.value = true
   } finally { if (current === version) loading.value = false }
 }
+async function refresh() {
+  if (refreshing.value || loading.value) return
+  const current = version
+  refreshing.value = true
+  try { await load() } finally { if (current === version) refreshing.value = false }
+}
 watch([() => props.target, () => props.count, () => auth.context], (_, __, cleanup) => {
   expanded.value = false
+  refreshing.value = false
   people.value = []; next.value = null; loading.value = failed.value = false
   cleanup(() => { version++ })
   void load()
@@ -56,7 +67,8 @@ const end = useListEnd('.discussion-likes__end', () => expanded.value && !!next.
       <MobileAction v-else-if="next || people.length > 18" class="text-action discussion-likes__more" @click="expanded = true">更多点赞</MobileAction>
     </view>
   </view>
-  <MobileBottomSheet v-if="expanded" v-model="expanded" title="赞过的钓友" close-label="关闭点赞名单" tall root-portal :z-index="180">
+  <MobileBottomSheet v-if="expanded" v-model="expanded" title="赞过的钓友" close-label="关闭点赞名单" tall root-portal :z-index="180"
+    :refreshable="!loading || refreshing" :refreshing="refreshing" :refresh-style="theme.dark ? 'white' : 'black'" @refresh="refresh">
     <view class="discussion-likes__list">
       <MobileAction v-for="person in people" :key="person.id" class="discussion-likes__row"
         :aria-label="`查看${person.nickname}的主页`" @click="openProfile(person.id)">
@@ -68,7 +80,7 @@ const end = useListEnd('.discussion-likes__end', () => expanded.value && !!next.
       <!-- #ifdef MP-WEIXIN -->
       <view v-if="next" class="discussion-likes__end" aria-hidden="true" />
       <!-- #endif -->
-      <MobileListFooter :loading="loading" :can-load-more="!!next" :error="failed ? '点赞名单未能更新' : ''"
+      <MobileListFooter :loading="loading && !refreshing" :can-load-more="!!next && !refreshing" :error="failed ? '点赞名单未能更新' : ''"
         :finished="!next && !failed" :count="people.length" @more="load(true)" />
     </view>
   </MobileBottomSheet>

@@ -31,6 +31,13 @@ export default defineConfig(async ({ mode }) => {
     amapProxy(env.VITE_AMAP_KEY || '', serverEnv.AMAP_SECURITY_JS_CODE || '')
   )
   if (process.env.UNI_PLATFORM === 'h5') {
+    mobileConfig.plugins.push({
+      name: 'fishing-map-service-worker',
+      generateBundle() {
+        const fileName = 'amap-service-worker.js'
+        this.emitFile({ type: 'asset', fileName, source: readFileSync(resolve(applicationRoot, 'src/platforms', fileName), 'utf8') })
+      }
+    })
     // Pinia survives Vue HMR, but replacing these modules creates new session refs.
     // Reload together so the signed-in UI and request credentials share one instance.
     mobileConfig.plugins.push({

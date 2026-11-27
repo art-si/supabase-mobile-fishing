@@ -5,11 +5,9 @@ import FishingShell from '@/components/FishingShell.vue'
 import MobileAction from '@mobile-core/components/MobileAction.vue'
 import MobileConfirmDialog from '@mobile-core/components/MobileConfirmDialog.vue'
 import MobileLoadError from '@mobile-core/components/MobileLoadError.vue'
-import FishingEmptyState from '@/components/FishingEmptyState.vue'
 import { useAuthStore } from '@/stores/auth'
 import { socialAccounts, type SocialAccount } from '@/services/discovery'
 import { errorText } from '@/domain/rules'
-import { isDemo } from '@/config'
 import { platforms, type Platform } from '../../../supabase/functions/_shared/discovery-contract'
 // #ifdef H5
 import { Capacitor } from '@capacitor/core'
@@ -42,7 +40,7 @@ watch(() => auth.context, reset, { flush: 'sync' })
 onScopeDispose(reset)
 
 async function load() {
-  if (isDemo || busy.value) return
+  if (busy.value) return
   await auth.hydrate()
   const current = ++version
   if (!auth.signedIn) {
@@ -146,13 +144,7 @@ async function unlink() {
 <template>
   <FishingShell title="第三方账号" back narrow>
     <view class="fishing-content account-content">
-      <FishingEmptyState
-        v-if="isDemo"
-        icon="user"
-        title="本机体验无需绑定账号"
-        description="登录线上账号后，可在这里管理第三方绑定。"
-      />
-      <text v-else-if="loading" class="caption" role="status">正在读取账号绑定…</text>
+      <text v-if="loading" class="caption" role="status">正在读取账号绑定…</text>
       <MobileAction v-else-if="!auth.signedIn" class="primary" @click="auth.requireLogin()">登录后管理绑定</MobileAction>
       <template v-else>
         <text v-if="!canBind && accounts.some(row => row.available)" class="caption">绑定请在钓友集网页版完成。</text>

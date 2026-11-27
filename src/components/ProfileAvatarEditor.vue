@@ -31,7 +31,10 @@ function recovery(error: unknown): 'login' | 'retry' | 'remove' {
   <view class="profile-avatar-field">
     <MobileAvatarEditor v-model="avatar" :name="nickname" :scope="auth.context" :disabled="disabled"
       :upload="upload" :normalize-unsupported-image="normalizeHeifImage" :error-text="message" :recovery="recovery" @busy="emit('busy', $event)"
-      @login="uni.navigateTo({ url: '/pages/login/index' })"><FishMark :size="44" /></MobileAvatarEditor>
+      @login="uni.navigateTo({ url: '/pages/login/index' })">
+      <text v-if="nickname?.trim()">{{ Array.from(nickname.trim())[0] }}</text>
+      <FishMark v-else :size="44" />
+    </MobileAvatarEditor>
     <text class="caption">头像会公开显示。点击“保存资料”后生效。</text>
   </view>
 </template>

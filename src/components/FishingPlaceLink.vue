@@ -1,7 +1,9 @@
 <script setup lang="ts">
+import MobileAction from '@mobile-core/components/MobileAction.vue'
 import { ref, watch } from 'vue'
 import { onHide } from '@dcloudio/uni-app'
-import { activateActionKey, preventActionKey } from '@mobile-core/action-keyboard'
+
+import { useLongPressActionGuard } from '@mobile-core/long-press-action'
 import MobileIcon from '@mobile-core/components/MobileIcon.vue'
 import MobileMapChooser from '@mobile-core/components/MobileMapChooser.vue'
 import type { MapProvider } from '@mobile-core/map-links'
@@ -23,6 +25,7 @@ const auth = useAuthStore(),
   visible = ref(false),
   fallback = ref(false),
   message = ref('')
+const allowAction = useLongPressActionGuard()
 let operation = 0
 function close() {
   operation++
@@ -46,6 +49,7 @@ watch(
 )
 onHide(close)
 function choose() {
+  if (!allowAction()) return
   operation++
   fallback.value = false
   message.value = ''
@@ -95,21 +99,16 @@ function copy() {
 }
 </script>
 <template>
-  <button
-    class="mobile-action fishing-place-link"
-    role="button"
-    :tabindex="0"
-    hover-class="mobile-action--pressed"
+  <MobileAction
+    class="fishing-place-link"
     :aria-label="`${navigation ? '导航到' : '在地图中查看'}：${label}`"
     @click="choose"
-    @keydown="preventActionKey"
-    @keyup="activateActionKey($event, choose)"
   >
     <MobileIcon name="location" :size="18" /><text class="fishing-place-link__label">{{
       label
     }}</text
     ><MobileIcon name="chevron" :size="16" />
-  </button>
+  </MobileAction>
   <MobileMapChooser
     v-model="visible"
     :place="label"
@@ -132,7 +131,7 @@ function copy() {
   border-radius: 8px;
   text-align: left;
   color: var(--lake);
-  font-size: var(--fishing-caption-size);
+  font-size: var(--fishing-label-size);
   line-height: 1.5;
 }
 .fishing-place-link__label {

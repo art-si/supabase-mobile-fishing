@@ -6,7 +6,7 @@
 
 业务边界：新页面必须拿到有效经纬度与该地点的城市才可保存。地图选点立即清空旧城市，反查失败可以重试；迟到 GPS、后台页面或已切换账号的结果不会替换当前地点。编辑既有精确钓位只反查原坐标，不自动改到当前人所在位置；历史 private/friends 范围保留，area/hidden 记录必须重新选点后才可按精确位置保存。没有批量修改历史记录或扩大钓位审核范围。
 
-数据库沿用现有 owner/revision/idempotency 和非空名称约束，无迁移。可选名称在提交时优先使用用户输入，其次使用真实地图地名（最多60字），最后显示为“已保存钓位”；不自动编造水域名。旧客户端契约保持兼容。本机体验模式不会提供假的 GPS 点；个人主体小程序继续使用已支持的高德地点搜索/静态预览，搜索结果携带行政区代码映射城市，不调用不具备资格的设备定位能力。
+数据库沿用现有 owner/revision/idempotency 和非空名称约束，无迁移。可选名称在提交时优先使用用户输入，其次使用真实地图地名（最多60字），最后显示为“已保存钓位”；不自动编造水域名。旧客户端契约保持兼容。不生成替代 GPS 点；个人主体小程序使用已批准的大致定位、微信原生地图和高德地点搜索／地址解析。
 
 设计依据：已读取项目 apple-design 和 ui-ux-pro-max 技能及相关参考。Apple `entering-data.md › Best practices` 的系统预填、合理默认值和就近校验用于位置及可选名称；`disclosure-controls.md` 用于附加字段展开；`maps.md › Best practices` 用于复用现有高德选点；沿用已读取的 layout/accessibility/typography/color/designing-for-ios/cross-platform 基础规则。UI UX 查询 `progressive disclosure optional form fields` 命中 Required Indicators、Submit Feedback、Form Labels，落实明确选填标签、保存状态和关联输入标签；折叠分组是本项目的布局判断。
 

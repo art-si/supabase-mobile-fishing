@@ -21,6 +21,13 @@ export interface SelectedPlace {
   adcode?: string
   kind?: 'water'
 }
+export function placeSelection([longitude, latitude]: MapPoint, place?: Pick<SelectedPlace, 'name' | 'address' | 'adcode'>): SelectedPlace {
+  return {
+    longitude, latitude, name: place?.name.trim().slice(0, 120) || '已选位置',
+    address: place?.address?.trim().slice(0, 240), adcode: place?.adcode,
+    crs: 'GCJ-02', created_at: Date.now()
+  }
+}
 export function waterSelection([longitude, latitude]: MapPoint, name: string, nameUnavailable = false): SelectedPlace {
   return {
     longitude,
@@ -36,7 +43,7 @@ export function formatMapCoordinates(longitude: number, latitude: number) {
 }
 export type MapPreviewTarget = (
   | { spotId: string }
-  | { longitude: number; latitude: number; radiusM?: number }
+  | { longitude: number; latitude: number; radiusM?: number; viewport?: { width: number; height: number }; density?: 1 | 2 }
 ) & { hideMarker?: true }
 export function validSelection(value: unknown, now = Date.now()): value is SelectedPlace {
   if (!value || typeof value !== 'object') return false

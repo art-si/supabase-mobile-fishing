@@ -17,7 +17,6 @@ mkdirSync(output, { recursive: true })
 if (!process.argv.includes('--skip-build')) {
   const env = {
     ...process.env,
-    VITE_DATA_MODE: 'live',
     VITE_SUPABASE_URL: fixtureOrigin,
     VITE_SUPABASE_KEY: placeholderKey,
     VITE_PHONE_AUTH_ENABLED: 'false',

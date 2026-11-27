@@ -1,8 +1,9 @@
 <script setup lang="ts">
+
 import { computed, onBeforeUnmount, ref, watch } from 'vue'
 import MobileAction from '@mobile-core/components/MobileAction.vue'
 import MobileLoadError from '@mobile-core/components/MobileLoadError.vue'
-import MobileLoadingStatus from '@/components/FishingLoadingStatus.vue'
+import MobileSkeleton from '@mobile-core/components/MobileSkeleton.vue'
 import { getCurrentWeather } from '@/services/weather'
 import {
   weatherIsStale,
@@ -99,7 +100,7 @@ onBeforeUnmount(() => {
   <view class="map-weather stack stack--tight">
     <MobileAction
       class="secondary weather-toggle"
-      :aria-expanded="String(expanded)"
+      :aria-expanded="expanded"
       @click="toggle"
     >
       {{ expanded ? '收起天气' : '查看天气' }}
@@ -130,7 +131,7 @@ onBeforeUnmount(() => {
           >这份天气资料已较旧，请刷新核实，勿作为当前天气判断。</text
         >
       </view>
-      <MobileLoadingStatus v-if="loading" label="正在查询天气…" />
+      <MobileSkeleton v-if="loading" label="正在查询天气…" />
       <MobileLoadError v-else-if="error" title="天气未能更新" :message="error" @retry="load" />
       <text v-if="error && weather" class="caption">上方保留的是上次结果，不是本次更新。</text>
       <MobileAction v-if="weather && !error" class="secondary" :disabled="loading" @click="load"

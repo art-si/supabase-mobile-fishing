@@ -2,10 +2,9 @@ import assert from 'node:assert/strict'
 import { setH5TextScale } from './h5-text-scale.mjs'
 
 // H5 regression for the controls adapted to WeChat style isolation. Native
-// screenshots are reviewed separately; this local demo never contacts users.
+// screenshots are reviewed separately; the local API sandbox never contacts production.
 export async function miniappAlignmentContract({ page, go, screenshot, pass }) {
-  await go('/pages/login/index')
-  await page.getByRole('button', { name: '进入本机体验', exact: true }).click()
+  await go('/pages/home/index')
   await page.getByRole('heading', { name: '钓友集', exact: true }).waitFor()
   const cases = [
     ['feed', '/pages/home/index', '.post-content'],
@@ -43,11 +42,11 @@ export async function miniappAlignmentContract({ page, go, screenshot, pass }) {
   await page.emulateMedia({ colorScheme: 'light' })
   await setH5TextScale(page, 16)
   await go('/pages/settings/index')
-  const skin = page.getByRole('button', { name: '深海蓝', exact: true })
+  const skin = page.getByRole('button', { name: '日出橙', exact: true })
   await skin.focus()
   assert.ok(await skin.evaluate(node => getComputedStyle(node).outlineStyle !== 'none'))
   await page.keyboard.press('Enter')
-  await page.waitForFunction(() => document.querySelector('.skin-choice[aria-label="深海蓝"]')?.getAttribute('aria-pressed') === 'true')
+  await page.waitForFunction(() => document.querySelector('.skin-choice[aria-label="日出橙"]')?.getAttribute('aria-pressed') === 'true')
   await screenshot('alignment-settings-focus.png')
   await page.getByRole('button', { name: '湖畔青', exact: true }).click()
   await go('/pages/home/index')

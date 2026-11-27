@@ -19,7 +19,7 @@ export async function packageRoutesContract({ page, go, overflow, pass, screensh
     'pages/settings/index'
   ])
   async function singleLineTitle(expected) {
-    const title = page.locator('.top-bar__title').last()
+    const title = page.locator('.fishing-shell-title').last()
     assert.equal(await title.innerText(), expected)
     const metrics = await title.evaluate((el) => ({
       height: el.getBoundingClientRect().height,
@@ -32,7 +32,12 @@ export async function packageRoutesContract({ page, go, overflow, pass, screensh
     await page.emulateMedia({ colorScheme: 'light' })
     await go(`/${route}`)
     await page.reload()
-    const expected = route === 'pages/map/bridge' ? 'pages/map/search' : route
+    const expected =
+      {
+        'pages/map/bridge': 'pages/map/index',
+        'pages/spot/discover': 'pages/home/index',
+        'pages/water-report/history': 'pages/water-report/index'
+      }[route] || route
     await page.waitForFunction((path) => {
       const pages = [...document.querySelectorAll('uni-page')]
       return pages.at(-1)?.getAttribute('data-page') === path
@@ -64,7 +69,7 @@ export async function packageRoutesContract({ page, go, overflow, pass, screensh
     )
   }
   pass(
-    `all ${routes.length} original page URLs boot with route-level splitting; bridge preserves search destination`
+    `all ${routes.length} original page URLs boot with route-level splitting; bridge opens the interactive map`
   )
   await go('/pages/map/search?pick=1&requestId=package-routing-only')
   await page.reload()

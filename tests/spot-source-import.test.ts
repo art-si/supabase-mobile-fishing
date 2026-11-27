@@ -24,15 +24,18 @@ const posts = sourceLinks.map((url, index) => ({
 }))
 const blocked = { ...posts[0]!, url: 'https://www.douyin.com/video/100003', excerpt: name + '已禁钓。' }
 
-test('imports three platform shares into the public list with Art evidence, restricted writes and idempotent sources', async () => {
+test('stages three platform shares with Art evidence, restricted writes and idempotent sources without claiming publication', async () => {
   const db = new PGlite()
   try {
-    await db.exec('create role anon; create role authenticated; create role service_role bypassrls;')
-    for (const migration of ['20261121051141_fishing_public_spot_leads.sql', '20261121101747_fishing_publish_shared_spots.sql']) {
+    await db.exec(`create role anon; create role authenticated; create role service_role bypassrls;
+      create schema fishing_private; grant usage on schema fishing_private to service_role;
+      create function public.fishing_store_spot_lead_point(text,text,double precision,double precision) returns void language sql as $$select$$;`)
+    for (const migration of ['20261121051141_fishing_public_spot_leads.sql', '20261121101747_fishing_publish_shared_spots.sql', '20261123030929_fishing_spot_source_pipeline.sql', '20261123033038_fishing_spot_source_place_hints.sql']) {
       await db.exec(await readFile(new URL('../supabase/migrations/' + migration, import.meta.url), 'utf8'))
     }
     const secret = 'fixture-service-key'
     let analyses = 0
+    let staged: SpotLead[] = []
     const handler = createSpotSourceImportHandler({
       loadAi: async token => token !== secret ? null : async (_prompt, input, validate) => {
         analyses++
@@ -52,6 +55,7 @@ test('imports three platform shares into the public list with Art evidence, rest
         })
       },
       publish: async (items, token) => {
+        staged = items
         assert.equal(token, secret)
         await db.exec('set role service_role')
         try {
@@ -75,23 +79,26 @@ test('imports three platform shares into the public list with Art evidence, rest
 
     const imported = await send(secret, { city, posts: [...posts, blocked] })
     assert.equal(imported.status, 200)
-    assert.equal((await imported.json()).published, 1)
-    assert.equal((await (await send(secret, { city, posts })).json()).published, 0)
+    const importedResult = await imported.json()
+    assert.equal(importedResult.published, 0)
+    assert.equal(importedResult.queued, 3)
+    assert.equal((await (await send(secret, { city, posts })).json()).queued, 0)
     const fourth = { ...posts[0]!, url: 'https://www.douyin.com/video/100004?share=tracking' }
-    assert.equal((await (await send(secret, { city, posts: [fourth] })).json()).published, 1)
+    assert.equal((await (await send(secret, { city, posts: [fourth] })).json()).queued, 1)
+
+    const spot = staged[0]!
+    assert.deepEqual(spot.labels, { parking: '有免费停车场。' })
+    assert.equal(spot.sourceAddress, '武汉市江夏区样例路6号')
+    assert.equal(spot.poiQuery, name)
+    assert.equal(spot.sourceDate, '2026-11-20')
+    assert.equal('longitude' in spot, false)
+    const queued = await db.query<{ url: string }>('select url from fishing_private.spot_source_jobs where url=any($1)', [[...sourceLinks, 'https://www.douyin.com/video/100004']])
+    assert.equal(queued.rows.length, 4)
 
     await db.exec('set role anon')
     try {
       const { rows } = await db.query<{ items: SpotLead[] }>('select public.fishing_list_spot_leads($1) as items', [city])
-      const spot = rows[0]!.items.find(item => item.name === name)!
-      assert.deepEqual([spot.source, ...spot.relatedSources || []].map(source => source.url), [
-        ...sourceLinks, 'https://www.douyin.com/video/100004'
-      ])
-      assert.deepEqual(spot.labels, { parking: '有免费停车场。' })
-      assert.equal(spot.sourceAddress, '武汉市江夏区样例路6号')
-      assert.equal(spot.poiQuery, name)
-      assert.equal(spot.sourceDate, '2026-11-20')
-      assert.equal('longitude' in spot, false)
+      assert.deepEqual(rows[0]!.items, [])
       await assert.rejects(db.query('select public.fishing_publish_spot_leads($1::jsonb)', ['[]']), /permission denied/i)
     } finally { await db.exec('reset role') }
   } finally {

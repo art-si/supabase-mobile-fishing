@@ -10,10 +10,10 @@ export function sharedLeadPlace(lead: SpotLead): MapPlace | undefined {
     ? wgs84ToGcj02(position.longitude, position.latitude)
     : [position.longitude, position.latitude]
   return {
-    id: `share:${longitude.toFixed(6)},${latitude.toFixed(6)}`,
+    id: lead.positionSource === 'amap' && lead.poiId ? lead.poiId : `share:${longitude.toFixed(6)},${latitude.toFixed(6)}`,
     name: lead.poiQuery || lead.name,
     address: lead.sourceAddress || '',
-    longitude, latitude, crs: 'GCJ-02', source: 'share'
+    longitude, latitude, crs: 'GCJ-02', ...(lead.positionSource === 'amap' ? {} : { source: 'share' as const })
   }
 }
 

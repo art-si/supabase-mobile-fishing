@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
+import { readFileSync } from 'node:fs'
 import {
   FISHING_SKINS,
   fishingPalette,
@@ -30,6 +31,9 @@ test('all three fishing skins have readable light and dark semantic pairs', () =
         ['reed', 'mist'],
         ['reed', 'paper'],
         ['reed', 'inset'],
+        ['discussionName', 'mist'],
+        ['discussionName', 'paper'],
+        ['discussionName', 'inset'],
         ['lake', 'paper'],
         ['lake', 'lakeSoft'],
         ['onLake', 'lake'],
@@ -41,6 +45,7 @@ test('all three fishing skins have readable light and dark semantic pairs', () =
           `${skin.id}/${mode} ${fg}/${bg}: ${ratio(p[fg], p[bg]).toFixed(2)}`
         )
       assert.equal(fishingThemeVars(p).fishLake, p.lake)
+      assert.equal(fishingThemeVars(p).fishDiscussionName, p.discussionName)
       assert.equal(fishingPalette(skin.id, mode === 'dark'), p)
     }
 })
@@ -48,4 +53,16 @@ test('unknown or corrupt persisted skin safely falls back to lake', () => {
   for (const value of [null, {}, '', 'dark', '__proto__', 'lake; display:none'])
     assert.equal(validSkin(value), 'lake')
   assert.equal(validSkin('ocean'), 'ocean')
+})
+
+test('system chrome starts on the same lake canvas as the page', () => {
+  const read = (path: string) => readFileSync(new URL(path, import.meta.url), 'utf8')
+  const windows = JSON.parse(read('../src/pages.json')).globalStyle
+  const theme = JSON.parse(read('../src/theme.json'))
+  for (const scheme of ['light', 'dark']) {
+    assert.equal(theme[scheme][windows.backgroundColor.slice(1)], fishingPalette('lake', scheme === 'dark').mist)
+    assert.equal(theme[scheme][windows.navigationBarTextStyle.slice(1)], scheme === 'dark' ? 'white' : 'black')
+    assert.equal(theme[scheme][windows.backgroundTextStyle.slice(1)], scheme === 'dark' ? 'light' : 'dark')
+  }
+  assert.equal(read('../index.html').match(/name="theme-color" content="([^"]+)"/)?.[1], theme.light.canvas)
 })

@@ -38,10 +38,10 @@ test('report offers direct attachment and save actions and keeps storage details
   assert.match(readFileSync(new URL('../src/domain/legal.ts',import.meta.url),'utf8'), /中国大陆境外的爱尔兰/)
 })
 
-test('copy cleanup preserves experience-only and notification limitations', () => {
+test('copy cleanup preserves reporting and notification limitations', () => {
   assert.match(template('pages/notifications/index.vue'), /这些开关只影响站内通知/)
   const channels = template('pages/water-report/ReportChannels.vue')
-  assert.match(channels, /本机体验只展示渠道，不拨号、不发送材料/)
+  assert.doesNotMatch(channels, /本机体验/)
   assert.match(channels, /打开自己的邮箱确认发送/)
   assert.match(channels, /图片和视频需在邮件中添加/)
   assert.match(channels, /举报联系方式/)
@@ -50,7 +50,7 @@ test('copy cleanup preserves experience-only and notification limitations', () =
   assert.match(channelSource, /材料不会自动传过去/)
   assert.match(channels, /信息核对：/)
   assert.match(channels, /查看官方来源/)
-  assert.match(channels, /:disabled="isDemo"/)
+  assert.match(channels, /@click="choose\(channel\)"/)
 })
 
 test('settings and legal pages do not expose integration diagnostics or supplier link blocks', () => {

@@ -58,6 +58,7 @@ export function watchSystemAppearance() {
     document.documentElement.style.setProperty('--fishing-canvas', palette.mist)
     document.documentElement.style.setProperty('--fishing-foreground', palette.ink)
     document.documentElement.style.colorScheme = theme.dark ? 'dark' : 'light'
+    document.querySelector('meta[name="theme-color"]')?.setAttribute('content', palette.mist)
   }
   theme.$subscribe(paintCanvas, { detached: true, flush: 'sync' })
   paintCanvas()

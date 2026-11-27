@@ -1,4 +1,3 @@
-import { isDemo } from '@/config'
 import { validCoordinates } from '@/domain/rules'
 import { readWeatherResponse, validAdcode, type WeatherTarget } from '@/domain/weather'
 import { sessionRequest } from './session'
@@ -6,7 +5,6 @@ import { sessionRequest } from './session'
 import { currentWeatherAt } from '@/platforms/amap'
 // #endif
 export async function getCurrentWeather(target: WeatherTarget, staticMode = false) {
-  if (isDemo) throw new Error('WEATHER_DEMO_UNAVAILABLE')
   if (
     'adcode' in target
       ? !validAdcode(target.adcode)

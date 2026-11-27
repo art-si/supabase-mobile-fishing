@@ -1,7 +1,7 @@
 <script setup lang="ts">
 defineOptions({ options: { styleIsolation: 'apply-shared' } })
 import MobileAction from '@mobile-core/components/MobileAction.vue'
-import { activateActionKey, preventActionKey } from '@mobile-core/action-keyboard'
+
 import MobileIcon from '@mobile-core/components/MobileIcon.vue'
 import { FISHING_SKINS } from '@/domain/appearance'
 import { useAppearanceStore } from '@/stores/appearance'
@@ -13,19 +13,14 @@ const theme = useAppearanceStore()
       ><text class="heading">主题皮肤</text><text class="caption">明暗随系统</text></view
     >
     <view class="skin-options" role="group" aria-label="主题皮肤">
-      <button
+      <MobileAction
         v-for="skin in FISHING_SKINS"
         :key="skin.id"
-        class="mobile-action skin-choice"
-        role="button"
-        :tabindex="0"
-        hover-class="mobile-action--pressed"
+        class="skin-choice"
         :class="{ 'skin-choice--selected': theme.skin === skin.id }"
         :aria-label="skin.name"
         :aria-pressed="theme.skin === skin.id"
         @click="theme.select(skin.id)"
-        @keydown="preventActionKey"
-        @keyup="activateActionKey($event, () => theme.select(skin.id))"
       >
         <view
           class="skin-preview"
@@ -47,9 +42,9 @@ const theme = useAppearanceStore()
             theme.skin === skin.id ? '使用中' : skin.description
           }}</text></view
         >
-      </button>
+      </MobileAction>
     </view>
-    <view v-if="theme.saveFailed" class="row row--between"
+    <view v-if="theme.saveFailed" class="row row--between row--wrap skin-save-status"
       ><text class="error" role="alert">皮肤已应用，但未保存。</text
       ><MobileAction class="text-action" @click="theme.select(theme.skin)"
         >重试保存</MobileAction
@@ -129,6 +124,8 @@ const theme = useAppearanceStore()
 .skin-choice--selected .skin-choice__state {
   color: var(--lake);
 }
+.skin-save-status .error { flex: 1 1 12rem; }
+.skin-save-status :deep(.text-action) { margin-inline-start: auto; }
 @media (max-width: 350px) {
   .skin-options {
     gap: 8px;

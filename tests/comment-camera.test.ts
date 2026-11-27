@@ -86,6 +86,35 @@ test('mini program camera delegates one image to the existing real chooseMedia a
   assert.equal(state.api.isCommentCameraHandoff(), false)
 })
 
+test('mini album uses the same page handoff and retains requested count and media kinds', async () => {
+  let finish!: (files: unknown) => void
+  const state = adapter({ mini: true, miniCapture: () => new Promise(resolve => { finish = resolve }) })
+  const result = state.api.chooseCommentMedia(4, ['image', 'video'], 'album')
+  const [count, kinds, source] = state.miniCalls[0]
+  assert.equal(count, 4); assert.deepEqual(Array.from(kinds), ['image', 'video']); assert.equal(source, 'album')
+  assert.equal(state.api.preserveCommentCameraPage(), true)
+  state.hide(); state.show()
+  assert.equal(state.api.resumeCommentCameraPage(), true)
+  finish([{ path: 'wxfile://album.jpg', kind: 'image', size: 100 }])
+  assert.equal((await result)[0].path, 'wxfile://album.jpg')
+  assert.equal(state.listeners(), 0); assert.equal(state.api.isCommentCameraHandoff(), false)
+})
+
+test('album callback before PageShow preserves the return once and discards a replacement page result', async () => {
+  for (const leave of [false, true]) {
+    let finish!: (files: unknown) => void, released = 0
+    const state = adapter({ mini: true, miniCapture: () => new Promise(resolve => { finish = resolve }) })
+    const result = state.api.chooseCommentMedia(1, ['image'], 'album')
+    state.api.preserveCommentCameraPage()
+    if (leave) state.setPage({ route: 'pages/spot/detail' })
+    finish([{ path: 'wxfile://album.jpg', kind: 'image', size: 100, release: () => { released++ } }])
+    assert.equal((await result).length, leave ? 0 : 1)
+    assert.equal(released, leave ? 1 : 0)
+    assert.equal(state.api.resumeCommentCameraPage(), !leave)
+    assert.equal(state.api.resumeCommentCameraPage(), false)
+  }
+})
+
 test('native handoff exists only while capture is pending on its original page and clears after return', async () => {
   let finish!: (photo: unknown) => void
   const pending = new Promise(resolve => { finish = resolve })
@@ -116,18 +145,43 @@ test('native capture never transfers its image to another page instance or route
   }
 })
 
-test('mini camera preserves only an AppHide-confirmed request and removes its listeners after success', async () => {
+test('mini camera preserves PageHide before AppHide and stays owned until the result returns', async () => {
   let finish!: (files: unknown) => void
   const pending = new Promise(resolve => { finish = resolve })
   const state = adapter({ mini: true, miniCapture: () => pending })
   const result = state.api.chooseCommentCamera()
-  assert.equal(state.api.isCommentCameraHandoff(), false, 'ordinary route hide is not an app-background handoff')
-  assert.equal(state.listeners(), 2)
+  assert.equal(state.api.isCommentCameraHandoff(), true)
+  assert.equal(state.api.preserveCommentCameraPage(), true, 'PageHide can arrive before AppHide')
+  assert.equal(state.listeners(), 1)
   state.hide(); assert.equal(state.api.isCommentCameraHandoff(), true)
-  state.show(); assert.equal(state.api.isCommentCameraHandoff(), false)
+  state.show(); assert.equal(state.api.isCommentCameraHandoff(), true, 'AppShow must not discard a pending image')
+  assert.equal(state.api.resumeCommentCameraPage(), true)
   finish([{ path: 'wxfile://captured.jpg', kind: 'image', size: 456 }])
   assert.equal((await result).length, 1)
   assert.equal(state.api.isCommentCameraHandoff(), false); assert.equal(state.listeners(), 0)
+  assert.equal(state.api.resumeCommentCameraPage(), false)
+})
+
+test('a camera callback before PageShow preserves the return refresh exactly once', async () => {
+  let finish!: (files: unknown) => void
+  const state = adapter({ mini: true, miniCapture: () => new Promise(resolve => { finish = resolve }) })
+  const result = state.api.chooseCommentCamera()
+  assert.equal(state.api.preserveCommentCameraPage(), true)
+  finish([{ path: 'wxfile://captured.jpg', kind: 'image', size: 456 }])
+  assert.equal((await result).length, 1)
+  assert.equal(state.api.isCommentCameraHandoff(), false)
+  assert.equal(state.api.resumeCommentCameraPage(), true)
+  assert.equal(state.api.resumeCommentCameraPage(), false)
+})
+
+test('a returned camera never suppresses refresh on a replacement page', async () => {
+  let finish!: (files: unknown) => void
+  const state = adapter({ mini: true, miniCapture: () => new Promise(resolve => { finish = resolve }) })
+  const result = state.api.chooseCommentCamera()
+  state.api.preserveCommentCameraPage()
+  finish([{ path: 'wxfile://captured.jpg', kind: 'image', size: 456 }]); await result
+  state.setPage({ route: 'pages/post/detail' })
+  assert.equal(state.api.resumeCommentCameraPage(), false)
 })
 
 test('mini camera discards another page result and always clears background listeners on rejection', async () => {

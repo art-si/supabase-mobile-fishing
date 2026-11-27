@@ -3,10 +3,10 @@ import assert from 'node:assert/strict'
 import { mkdir, writeFile } from 'node:fs/promises'
 import { chromium } from 'playwright'
 import { setH5TextScale } from './h5-text-scale.mjs'
-const base = process.env.FISHING_H5_URL || 'http://127.0.0.1:5178', output = 'artifacts/report-email-settings'
+const base = process.env.FISHING_H5_URL || 'http://127.0.0.1:5178', output = process.env.UI_OUTPUT_DIR || 'artifacts/report-email-settings'
 assert.ok(['localhost','127.0.0.1'].includes(new URL(base).hostname))
 await mkdir(output,{recursive:true})
-const browser = await chromium.launch({channel:'chrome',headless:true}), context = await browser.newContext({viewport:{width:375,height:812},locale:'zh-CN',reducedMotion:'reduce'})
+const browser = await chromium.launch({channel:'chrome',headless:true}), context = await browser.newContext({viewport:{width:375,height:812},locale:'zh-CN',reducedMotion:'reduce',permissions:['geolocation'],geolocation:{longitude:120.12,latitude:31.12}})
 const checks=[], errors=[], requests=[]
 const owner='11111111-1111-4111-8111-111111111111', other='22222222-2222-4222-8222-222222222222'
 await context.addInitScript(owner=>{
@@ -26,7 +26,8 @@ const sheet=()=>page.getByRole('dialog',{name:'我的邮箱资料',exact:true})
 async function open(){await page.getByRole('button',{name:'我的邮箱资料 官方渠道邮件联系'}).click();await sheet().waitFor()}
 async function capture(name){await page.evaluate(()=>document.fonts.ready);assert.ok(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1));await page.screenshot({path:`${output}/${name}.png`})}
 try{
- await page.goto(base+'/#/pages/settings/index',{waitUntil:'domcontentloaded'});await open()
+ await page.goto(base+'/#/pages/settings/index',{waitUntil:'domcontentloaded'})
+ await page.getByText('账号与安全',{exact:true}).waitFor();await capture('settings-375');await open()
  await button('保存邮箱资料').click()
  await page.getByText('请填写称呼，最多40字',{exact:true}).waitFor()
  assert.ok(await page.locator('#report-email-name-input').evaluate(el=>el===document.activeElement))
@@ -40,7 +41,8 @@ try{
  assert.equal(await page.evaluate(owner=>JSON.parse(localStorage.getItem(`dyj.live.draft.${owner}.report-email-contact`)).data.email,owner),'fishing.test@example.com')
  checks.push('required name and single email validate inline, focus errors and store only under current owner')
  await open();assert.equal(await page.locator('input[aria-label="联系邮箱"]').inputValue(),'fishing.test@example.com')
- await page.locator('input[aria-label="联系邮箱"]').fill('unsaved@example.com');await button('取消').click();await open()
+ await page.locator('input[aria-label="联系邮箱"]').fill('unsaved@example.com');await button('取消').click();await sheet().waitFor({state:'hidden'});await open()
+ await page.waitForFunction(()=>document.getElementById('report-email-address-input')?.value==='fishing.test@example.com')
  assert.equal(await page.locator('input[aria-label="联系邮箱"]').inputValue(),'fishing.test@example.com')
  checks.push('cancel never changes saved mailbox contact and reopening restores prior values')
  for(const [width,height,dark,size] of [[320,740,false,16],[375,812,false,16],[440,956,false,16],[812,375,false,16],[1280,800,true,16],[320,740,true,24]]){
@@ -53,6 +55,7 @@ try{
  }
  checks.push('mailbox sheet fits 320/375/440/landscape/wide/dark-large text with focus and aligned 48px actions')
  await page.keyboard.press('Escape');await sheet().waitFor({state:'hidden'})
+ await capture('settings-dark-large');await setH5TextScale(page,32);await capture('settings-dark-200');await setH5TextScale(page,16)
  await page.evaluate(other=>{const stored=JSON.parse(localStorage.getItem('dyj.auth.v1'));stored.data.user.id=other;localStorage.setItem('dyj.auth.v1',JSON.stringify(stored))},other)
  await page.reload({waitUntil:'domcontentloaded'});await open()
  assert.equal(await page.locator('input[aria-label="联系邮箱"]').inputValue(),'')

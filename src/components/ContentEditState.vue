@@ -3,7 +3,7 @@ import { getCurrentInstance, ref, watch } from 'vue'
 import MobileAction from '@mobile-core/components/MobileAction.vue'
 import MobileConfirmDialog from '@mobile-core/components/MobileConfirmDialog.vue'
 import { revealControl } from '@mobile-core/form-focus'
-import FishingLoadingStatus from './FishingLoadingStatus.vue'
+import MobileSkeleton from '@mobile-core/components/MobileSkeleton.vue'
 import { useAuthStore } from '@/stores/auth'
 import type { EditSnapshot } from '@/domain/content-edit'
 import type { Audience, ContentUpdateInfo } from '@/domain/models'
@@ -38,7 +38,7 @@ watch(
 )
 </script>
 <template>
-  <FishingLoadingStatus v-if="loading" label="正在读取原记录…" />
+  <MobileSkeleton v-if="loading" label="正在读取原记录…" />
   <view
     v-if="!directPublication && ready && publication?.status === 'published' && publication.audience !== 'private'"
     class="notice stack stack--tight"

@@ -67,8 +67,11 @@ export async function resolveNearbyWater(
     // this geometry; a distant POI never substitutes for a nearby unnamed pond.
     const place = matchingWaterPlace(anchor, places, result?.name ? 300 : poiRadius, result)
     if (place) return result ? { ...result, name: place.name, nameUnavailable: false } : { ...place, source: 'amap' }
-  } catch {
+  } catch (error) {
     if (result) return { ...result, nameUnavailable: !result.name }
+    // Keep actionable service errors (quota, network, session) for the existing
+    // user-error mapper. Replacing them with a plain Error hides the actual cause.
+    if (error && typeof error === 'object' && 'code' in error) throw error
     throw new Error('Water names unavailable')
   }
   if (geometryFailed && !result) throw new Error('Water map unavailable')
