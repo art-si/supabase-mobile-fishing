@@ -30,7 +30,7 @@ class ApiError extends Error {
 }
 function harness(
   handler: (path: string, options: any) => Promise<any>,
-  flags = { isDemo: false, phoneAuth: true, captcha: false }
+  flags = { phoneAuth: true, captcha: false }
 ) {
   const scope = { value: 0 },
     current = { value: null as ReturnType<typeof session> | null },
@@ -65,7 +65,7 @@ function harness(
     '@/domain/rules': { normalizePhone },
     '@/domain/auth-errors': { authSessionFromResponse, smsLoginUnavailable },
     '@/domain/account-security': { passwordIssue, normalizeLoginIdentifier },
-    '@/config': { isDemo: flags.isDemo, config: flags },
+    '@/config': { config: flags },
     './login-memory': { rememberedLogin: { forgetOwner: async () => undefined } }
   }
   class Clock extends Date {
@@ -115,6 +115,22 @@ test('password validation and phone masking preserve user input and enforce the 
   assert.equal(maskPhone('8613800000000'), '138 **** 0000')
   assert.equal(normalizePhone('8613800000000'), phone, 'Auth returns numbers without a plus prefix')
   assert.equal(maskPhone('invalid'), '未绑定手机号')
+})
+
+test('password setup uses an authenticated state query and rejects malformed results', async () => {
+  for (const configured of [true, false]) {
+    const h = harness(async (path, options) => {
+      assert.equal(path, '/rest/v1/rpc/fishing_password_configured')
+      assert.equal(options.method, 'POST')
+      assert.equal(Object.keys(options.data).length, 0, 'no phone or account can be queried')
+      return configured
+    })
+    assert.equal(await h.api.accountPasswordConfigured(), configured)
+  }
+  for (const invalid of [null, {}, [], 'false', 0]) {
+    const h = harness(async () => invalid)
+    await assert.rejects(h.api.accountPasswordConfigured(), { code: 'PASSWORD_STATE_INVALID' })
+  }
 })
 
 test('password login installs only a complete real session and never submits signup or persists the password', async () => {

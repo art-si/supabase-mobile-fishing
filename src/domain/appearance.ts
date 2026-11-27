@@ -11,13 +11,14 @@ export interface FishingPalette {
   inset: string
   ink: string
   reed: string
+  discussionName: string
   line: string
   float: string
   floatSoft: string
   danger: string
 }
-const lightSignals = { float: '#914C2D', floatSoft: '#FAEFE7', danger: '#B42331' }
-const darkSignals = { float: '#E7AE8D', floatSoft: '#3A2D25', danger: '#FFADB5' }
+const lightSignals = { float: '#914C2D', floatSoft: '#FAEFE7', danger: '#B42331', discussionName: '#526582' }
+const darkSignals = { float: '#E7AE8D', floatSoft: '#3A2D25', danger: '#FFADB5', discussionName: '#ACC4ED' }
 export const FISHING_SKINS: ReadonlyArray<{
   id: FishingSkinId
   name: string
@@ -57,65 +58,70 @@ export const FISHING_SKINS: ReadonlyArray<{
     }
   },
   {
+    // Keep persisted IDs so existing theme selections survive the palette refresh.
     id: 'ocean',
-    name: '深海蓝',
-    description: '通透，沉静',
+    name: '日出橙',
+    description: '明亮，温暖',
     light: {
-      lake: '#185F8D',
-      lakeRgb: '24, 95, 141',
-      lakeSoft: '#E6EFF7',
+      lake: '#C14B13',
+      lakeRgb: '193, 75, 19',
+      lakeSoft: '#FFF6EF',
       onLake: '#FFFFFF',
-      mist: '#F4F7FA',
+      mist: '#FFF8F2',
       paper: '#FFFFFF',
-      inset: '#ECF1F6',
-      ink: '#203244',
-      reed: '#53697B',
-      line: '#DDE5ED',
-      ...lightSignals
+      inset: '#F9EEE5',
+      ink: '#392519',
+      reed: '#795B48',
+      line: '#EEDCCF',
+      ...lightSignals,
+      discussionName: '#A64718'
     },
     dark: {
-      lake: '#8FC5ED',
-      lakeRgb: '143, 197, 237',
-      lakeSoft: '#243E55',
-      onLake: '#13283A',
-      mist: '#131C25',
-      paper: '#1B2835',
-      inset: '#263747',
-      ink: '#E9F0F7',
-      reed: '#ACBDCC',
-      line: '#344658',
-      ...darkSignals
+      lake: '#FFAB70',
+      lakeRgb: '255, 171, 112',
+      lakeSoft: '#4A2D1E',
+      onLake: '#371A0B',
+      mist: '#1D1713',
+      paper: '#2A211B',
+      inset: '#38291F',
+      ink: '#FFF0E6',
+      reed: '#D0B8A7',
+      line: '#574134',
+      ...darkSignals,
+      discussionName: '#FFBC8D'
     }
   },
   {
     id: 'stone',
-    name: '岩石灰',
-    description: '简洁，耐看',
+    name: '莓果红',
+    description: '鲜明，轻快',
     light: {
-      lake: '#49515B',
-      lakeRgb: '73, 81, 91',
-      lakeSoft: '#EAECEF',
+      lake: '#C62959',
+      lakeRgb: '198, 41, 89',
+      lakeSoft: '#FDEAF0',
       onLake: '#FFFFFF',
-      mist: '#F6F6F7',
+      mist: '#FFF6F8',
       paper: '#FFFFFF',
-      inset: '#F0F1F2',
-      ink: '#24292F',
-      reed: '#60666F',
-      line: '#E0E3E7',
-      ...lightSignals
+      inset: '#F8EBEF',
+      ink: '#3C1D2A',
+      reed: '#795361',
+      line: '#EED8E0',
+      ...lightSignals,
+      discussionName: '#AD2C55'
     },
     dark: {
-      lake: '#C7CDD5',
-      lakeRgb: '199, 205, 213',
-      lakeSoft: '#353B44',
-      onLake: '#24292F',
-      mist: '#191C20',
-      paper: '#23272D',
-      inset: '#2F343C',
-      ink: '#ECEFF2',
-      reed: '#B4BCC6',
-      line: '#414852',
-      ...darkSignals
+      lake: '#FF97B5',
+      lakeRgb: '255, 151, 181',
+      lakeSoft: '#4D2635',
+      onLake: '#3A1222',
+      mist: '#20151B',
+      paper: '#2D2027',
+      inset: '#3D2933',
+      ink: '#FFEBF2',
+      reed: '#D7B4C3',
+      line: '#5C3D4C',
+      ...darkSignals,
+      discussionName: '#FFB2CE'
     }
   }
 ]

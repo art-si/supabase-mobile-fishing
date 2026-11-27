@@ -1,0 +1,57 @@
+{
+  "reviewedOn": "2026-11-26",
+  "title": "路亚飘虾武昌江滩",
+  "card": {
+    "city": "武汉市",
+    "name": "武昌江滩1号门附近临水台阶",
+    "labels": {},
+    "source": {
+      "url": "https://www.bilibili.com/video/BV1ds5f6cEFQ/",
+      "kind": "视频",
+      "author": "钓鱼侠土豆张",
+      "platform": "bilibili"
+    },
+    "district": "武昌区",
+    "evidence": "直接导航武昌江滩1号门",
+    "waterType": "自然水域",
+    "sourceDate": "2026-05-18",
+    "accessPoint": {
+      "crs": "GCJ-02",
+      "url": "https://www.amap.com/place/B001B16FIF",
+      "name": "武昌江滩(1号门)",
+      "poiId": "B001B16FIF",
+      "address": "临江大道604号武昌江滩西南角",
+      "latitude": 30.577536,
+      "provider": "高德地图",
+      "longitude": 114.315744
+    },
+    "sourceAddress": "导航入口 · 武昌江滩1号门（临江大道604号）",
+    "videoEvidence": {
+      "shoreline": {
+        "seconds": 6,
+        "subtitle": "直接导航武昌江滩1号门",
+        "replayUrl": "https://player.bilibili.com/player.html?bvid=BV1ds5f6cEFQ&t=6&autoplay=0&poster=0",
+        "url": "https://www.bilibili.com/video/BV1ds5f6cEFQ/"
+      },
+      "catch": {
+        "seconds": 81,
+        "replayUrl": "https://player.bilibili.com/player.html?bvid=BV1ds5f6cEFQ&t=81&autoplay=0&poster=0",
+        "description": "钓手在江边台阶上将鱼举到镜头前。"
+      }
+    },
+    "poiId": "B001B16FIF",
+    "poiQuery": "武昌江滩(1号门)",
+    "positionSource": "amap",
+    "locationScope": "entrance",
+    "sourcePosition": {
+      "longitude": 114.315744,
+      "latitude": 30.577536,
+      "crs": "GCJ-02"
+    }
+  },
+  "frame": {
+    "file": "BV1ds5f6cEFQ-01m21s.jpg",
+    "seconds": 81,
+    "description": "钓手在江边台阶上把钓获的鱼举到镜头前。"
+  }
+}

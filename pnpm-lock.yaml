@@ -39,8 +39,8 @@ importers:
         specifier: 5.2.0
         version: 5.2.0
       supabase-mobile-pro:
-        specifier: https://gitee.com/art-si/supabase-mobile-pro/repository/archive/3d54612c46a1dd538e2f7941a1a9b5a09f1fd7d8.tar.gz
-        version: https://gitee.com/art-si/supabase-mobile-pro/repository/archive/3d54612c46a1dd538e2f7941a1a9b5a09f1fd7d8.tar.gz(@types/node@26.6.6)(debug@4.4.3(supports-color@5.5.0))(esbuild@0.27.7)(postcss@8.5.33)(supports-color@5.5.0)(terser@5.51.2)(tsx@4.20.6)
+        specifier: https://gitee.com/art-si/supabase-mobile-pro/repository/archive/d16fa58148cc1653647f862a784445f66029362c.tar.gz
+        version: https://gitee.com/art-si/supabase-mobile-pro/repository/archive/d16fa58148cc1653647f862a784445f66029362c.tar.gz(@types/node@26.6.6)(debug@4.4.3(supports-color@5.5.0))(esbuild@0.27.7)(postcss@8.5.33)(supports-color@5.5.0)(terser@5.51.2)(tsx@4.20.6)
     devDependencies:
       '@capacitor/ios':
         specifier: 8.6.2
@@ -3100,8 +3100,8 @@ packages:
   strip-literal@3.1.0:
     resolution: {integrity: sha512-8r3mkIM/2+PpjHoOtiAW8Rg3jJLHaV7xPwG+YRGrv6FP0wwk/toTpATxWYOW0BKdWwl82VT2tFYi5DlROa0Mxg==}
 
-  supabase-mobile-pro@https://gitee.com/art-si/supabase-mobile-pro/repository/archive/3d54612c46a1dd538e2f7941a1a9b5a09f1fd7d8.tar.gz:
-    resolution: {integrity: sha512-RBXZBQHJQFUsOszN5qj2wdZ2bFCroOuQ5NEZWaLXINfl9ywXBBYwEicpCzPAeH0nbXM4bclVMr6h17nVUtOQdg==, tarball: https://gitee.com/art-si/supabase-mobile-pro/repository/archive/3d54612c46a1dd538e2f7941a1a9b5a09f1fd7d8.tar.gz}
+  supabase-mobile-pro@https://gitee.com/art-si/supabase-mobile-pro/repository/archive/d16fa58148cc1653647f862a784445f66029362c.tar.gz:
+    resolution: {integrity: sha512-ebeR1hd2JrwNAAcH5u2t3Ail7NWZJpL6D9o8aCBkyT9J5aK4Rvcugehksy9AX2YCzzRK6+w4TVG2E0FnAc+wJQ==, tarball: https://gitee.com/art-si/supabase-mobile-pro/repository/archive/d16fa58148cc1653647f862a784445f66029362c.tar.gz}
     version: 0.1.1
     engines: {node: '>=22.13.0'}
     hasBin: true
@@ -6988,7 +6988,7 @@ snapshots:
     dependencies:
       js-tokens: 9.0.1
 
-  supabase-mobile-pro@https://gitee.com/art-si/supabase-mobile-pro/repository/archive/3d54612c46a1dd538e2f7941a1a9b5a09f1fd7d8.tar.gz(@types/node@26.6.6)(debug@4.4.3(supports-color@5.5.0))(esbuild@0.27.7)(postcss@8.5.33)(supports-color@5.5.0)(terser@5.51.2)(tsx@4.20.6):
+  supabase-mobile-pro@https://gitee.com/art-si/supabase-mobile-pro/repository/archive/d16fa58148cc1653647f862a784445f66029362c.tar.gz(@types/node@26.6.6)(debug@4.4.3(supports-color@5.5.0))(esbuild@0.27.7)(postcss@8.5.33)(supports-color@5.5.0)(terser@5.51.2)(tsx@4.20.6):
     dependencies:
       '@capacitor/android': 8.6.2(@capacitor/core@8.6.2)
       '@capacitor/app': 8.1.2(@capacitor/core@8.6.2)

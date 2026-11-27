@@ -11,7 +11,6 @@ import {
   validateDraft,
   validDate
 } from '../src/domain/rules'
-import { seed } from '../src/demo/seed'
 test('phone normalization and invalid input', () => {
   assert.equal(normalizePhone('138 0013 8000'), '+8613800138000')
   assert.equal(normalizePhone('+86 13800138000'), '+8613800138000')
@@ -31,7 +30,11 @@ test('coordinates reject nonfinite and out of range', () => {
 })
 test('location privacy applies to all returned fields and navigation', () => {
   const original = {
-    ...seed().spots[0],
+    ...freshSpot(),
+    precision: 'area' as const,
+    author: { id: 'angler', nickname: '', city: '', bio: '', method: '', handle: '' },
+    saved: false,
+    created_at: '2026-01-01',
     longitude: 120.523456,
     latitude: 31.287654,
     access_note: 'secret'

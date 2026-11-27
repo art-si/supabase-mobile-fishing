@@ -3,8 +3,8 @@ import assert from 'node:assert/strict'
 export async function appearanceContract({ page, go, visible, pass, overflow, screenshot }) {
   const skins = [
     { id: 'lake', name: '湖畔青', light: 'rgb(15, 107, 91)', dark: 'rgb(121, 206, 184)' },
-    { id: 'ocean', name: '深海蓝', light: 'rgb(24, 95, 141)', dark: 'rgb(143, 197, 237)' },
-    { id: 'stone', name: '岩石灰', light: 'rgb(73, 81, 91)', dark: 'rgb(199, 205, 213)' }
+    { id: 'ocean', name: '日出橙', light: 'rgb(193, 75, 19)', dark: 'rgb(255, 171, 112)' },
+    { id: 'stone', name: '莓果红', light: 'rgb(198, 41, 89)', dark: 'rgb(255, 151, 181)' }
   ]
   await page.setViewportSize({ width: 440, height: 956 })
   await go('/pages/settings/index')
@@ -42,7 +42,7 @@ export async function appearanceContract({ page, go, visible, pass, overflow, sc
   await page.reload()
   await visible('主题皮肤')
   assert.equal(
-    await page.getByRole('button', { name: '岩石灰', exact: true }).getAttribute('aria-pressed'),
+    await page.getByRole('button', { name: '莓果红', exact: true }).getAttribute('aria-pressed'),
     'true'
   )
   await go('/pages/post/compose')
@@ -53,7 +53,7 @@ export async function appearanceContract({ page, go, visible, pass, overflow, sc
     await dialog.evaluate((el) =>
       getComputedStyle(el.closest('.wd-root-portal')).getPropertyValue('--lake').trim()
     ),
-    '#C7CDD5'
+    '#FF97B5'
   )
   await page.getByRole('button', { name: '关闭选择', exact: true }).click()
   pass('skin survives reload/navigation and follows shared picker root portals')
@@ -69,14 +69,14 @@ export async function appearanceContract({ page, go, visible, pass, overflow, sc
       return original.call(this, key, value)
     }
   })
-  await page.getByRole('button', { name: '深海蓝', exact: true }).click()
+  await page.getByRole('button', { name: '日出橙', exact: true }).click()
   await visible('皮肤已应用，但未保存。')
   await page.evaluate(() => window.__restoreAppearanceStorage())
   await page.getByRole('button', { name: '重试保存', exact: true }).click()
   assert.equal(await page.getByText('皮肤已应用，但未保存。', { exact: true }).count(), 0)
   await page.reload()
   assert.equal(
-    await page.getByRole('button', { name: '深海蓝', exact: true }).getAttribute('aria-pressed'),
+    await page.getByRole('button', { name: '日出橙', exact: true }).getAttribute('aria-pressed'),
     'true'
   )
   pass('failed skin persistence is visible and retry actually survives reload')

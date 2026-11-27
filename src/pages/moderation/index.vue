@@ -2,13 +2,14 @@
 import { ref, watch } from 'vue'
 import { onShow, onHide, onUnload, onReachBottom } from '@dcloudio/uni-app'
 import FishingShell from '@/components/FishingShell.vue'
-import FishingLoadingStatus from '@/components/FishingLoadingStatus.vue'
+import MobileSkeleton from '@mobile-core/components/MobileSkeleton.vue'
 import FishingEmptyState from '@/components/FishingEmptyState.vue'
 import MobileAction from '@mobile-core/components/MobileAction.vue'
 import MobileIcon from '@mobile-core/components/MobileIcon.vue'
 import MobileLoadError from '@mobile-core/components/MobileLoadError.vue'
 import MobileListFooter from '@mobile-core/components/MobileListFooter.vue'
 import { useAuthStore } from '@/stores/auth'
+import { useListRefresh } from '@/composables/useListRefresh'
 import { isTransientRequestError } from '@/services/http'
 import { moderation } from '@/services/moderation'
 import { errorText, relativeTime, audienceLabels } from '@/domain/rules'
@@ -34,6 +35,10 @@ function clear() {
 onReachBottom(() => {
   if (!error.value && !moreError.value) void load(true)
 })
+useListRefresh(async () => {
+  version++; loading.value = loadingMore.value = false
+  await load()
+}, () => auth.signedIn)
 async function load(more = false) {
   if (!auth.signedIn || loading.value || (more && !next.value)) return
   const current = ++version
@@ -135,7 +140,7 @@ onUnload(clear)
             <MobileIcon name="chevron" :size="16" aria-hidden="true" />
           </MobileAction>
         </view>
-        <FishingLoadingStatus v-if="loading && !loadingMore" label="正在读取待审内容…" />
+        <MobileSkeleton v-if="loading && !loadingMore" label="正在读取待审内容…" />
         <FishingEmptyState
           v-else-if="!items.length && !error && !next"
           icon="success"

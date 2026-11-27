@@ -1,4 +1,5 @@
 <script setup lang="ts">
+
 import { computed } from 'vue'
 import MobileAction from '@mobile-core/components/MobileAction.vue'
 import MobileIcon from '@mobile-core/components/MobileIcon.vue'
@@ -21,6 +22,10 @@ const attribution = computed(() => {
 })
 function copy(url: string) {
   if (safeSourceUrl(url)) uni.setClipboardData({ data: url })
+}
+function openSpot() {
+  if (props.zone.spot_id)
+    uni.navigateTo({ url: '/pages/spot/detail?id=' + encodeURIComponent(props.zone.spot_id) })
 }
 </script>
 <template>
@@ -45,9 +50,8 @@ function copy(url: string) {
     <MobileAction
       v-if="zone.spot_id"
       class="secondary zone-info__spot-action"
-      @click="uni.navigateTo({ url: '/pages/spot/detail?id=' + encodeURIComponent(zone.spot_id) })"
-      ><text>查看上报钓位</text><MobileIcon name="chevron" :size="16" aria-hidden="true" /></MobileAction
-    >
+      @click="openSpot"
+      ><text>查看上报钓位</text><MobileIcon name="chevron" :size="16" aria-hidden="true" /></MobileAction>
     <MobileAction
       v-if="safeSourceUrl(zone.source_url)"
       class="text-action"

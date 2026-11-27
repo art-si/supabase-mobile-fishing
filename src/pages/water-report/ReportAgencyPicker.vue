@@ -1,8 +1,8 @@
 <script setup lang="ts">
+
 import MobileAction from '@mobile-core/components/MobileAction.vue'
 import MobileBottomSheet from '@mobile-core/components/MobileBottomSheet.vue'
 import MobileIcon from '@mobile-core/components/MobileIcon.vue'
-import { isDemo } from '@/config'
 import type { AgencyAction, ReportAgencyOption } from '@/domain/report-channel-entry'
 import type { ReportChannel } from '@/domain/report-channels'
 
@@ -32,14 +32,13 @@ const emit = defineEmits<{
           <text v-if="area" class="caption">{{ area }}</text>
         </view>
       </view>
-      <text v-if="isDemo" class="notice">本机体验仅预览举报方式。</text>
       <text v-if="resolving" class="notice" role="status">正在核对水域所属地区…</text>
       <text v-else-if="!agencies.length" class="notice" role="status">该地区暂无已核实的举报入口。你可以复制材料，向事发地主管部门反映。</text>
       <view v-else v-for="agency in agencies" :key="agency.channel.id" class="agency-picker__agency">
         <text class="name">{{ agency.channel.name }}</text>
         <text v-if="agency.channel.scopeNote" class="caption">{{ agency.channel.scopeNote }}</text>
         <MobileAction v-for="action in agency.actions" :key="action.label"
-          class="agency-picker__action" :disabled="isDemo"
+          class="agency-picker__action"
           :aria-label="agency.channel.name + '，' + action.label + (action.kind === 'phone' ? ' ' + action.number : '')"
           @click="emit('select', agency.channel, action)">
           <view class="agency-picker__action-layout">

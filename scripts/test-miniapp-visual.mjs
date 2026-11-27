@@ -12,7 +12,7 @@ const sdkRoot = resolve(value('--sdk-root', 'artifacts/miniapp-tools'))
 const require = createRequire(resolve(sdkRoot, 'package.json'))
 const automator = require('miniprogram-automator')
 const output = resolve(value('--output', 'artifacts/miniapp-acceptance/pages'))
-const mode = value('--mode', 'demo')
+const detail = (path, id) => id ? `${path}?id=${encodeURIComponent(id)}` : path
 const client = await automator.connect({ wsEndpoint: value('--endpoint', 'ws://127.0.0.1:9422') })
 const routes = [
   ['feed', '/pages/home/index'],
@@ -28,9 +28,9 @@ const routes = [
   ['privacy', '/pages/settings/legal?type=privacy'],
   ['terms', '/pages/settings/legal?type=terms'],
   ['contact', '/pages/contact/index'],
-  ['post', '/pages/post/detail?id=a1111111-1111-4111-8111-111111111111'],
+  ['post', detail('/pages/post/detail', process.env.FISHING_VISUAL_POST_ID)],
   ['compose', '/pages/post/compose'],
-  ['spot', '/pages/spot/detail?id=b1111111-1111-4111-8111-111111111111'],
+  ['spot', detail('/pages/spot/detail', process.env.FISHING_VISUAL_SPOT_ID)],
   ['spot-create', '/pages/spot/create'],
   ['spot-discover', '/pages/spot/discover'],
   ['map', '/pages/map/index'],
@@ -39,21 +39,19 @@ const routes = [
   ['map-marks', '/pages/map/marks'],
   ['map-bridge', '/pages/map/bridge'],
   ['notifications', '/pages/notifications/index'],
-  ['person', '/pages/people/detail?id=22222222-2222-4222-8222-222222222222'],
+  ['person', detail('/pages/people/detail', process.env.FISHING_VISUAL_PERSON_ID)],
   ['library', '/pages/mine/library?type=posts'],
   ['profile', '/pages/mine/profile'],
   ['moderation', '/pages/moderation/index'],
-  ['moderation-detail', '/pages/moderation/detail?type=post&id=a1111111-1111-4111-8111-111111111111'],
+  ['moderation-detail', detail('/pages/moderation/detail', process.env.FISHING_VISUAL_POST_ID)],
   ['content-reports', '/pages/content-report/index'],
-  ['content-report-detail', '/pages/content-report/detail?id=missing-fixture'],
+  ['content-report-detail', detail('/pages/content-report/detail', process.env.FISHING_VISUAL_REPORT_ID)],
   ['water-report', '/pages/water-report/index'],
   ['water-report-history', '/pages/water-report/history']
 ]
 const selected = value('--only', '').split(',').filter(Boolean)
 const destinations = {
-  map: '/pages/map/search?pick=0',
-  'map-pick': '/pages/map/search?pick=1&requestId=simulator-review',
-  'map-bridge': '/pages/map/search',
+  'map-bridge': '/pages/map/index',
   'spot-discover': '/pages/home/index?tab=spots',
   'water-report-history': '/pages/water-report/index?tab=records'
 }
@@ -64,19 +62,19 @@ const pause = (ms) => new Promise((done) => setTimeout(done, ms))
 let consecutiveFailures = 0
 await mkdir(output, { recursive: true })
 try {
-  const info = await client.systemInfo()
+  const info = await client.evaluate(() => wx.getSystemInfoSync())
+  if (process.argv.includes('--signed-in')) {
+    const signedIn = await client.evaluate(() => Boolean(getCurrentPages().at(-1)?.$vm?.$pinia?._s.get('fishing-auth')?.signedIn))
+    if (!signedIn) throw new Error('请先在小程序中正常登录，再采集已登录界面。')
+  }
   for (const [name, url] of routes) {
     if (selected.length && !selected.includes(name)) continue
     console.log(`CAPTURE ${name}`)
     try {
-      // In DevTools 2.02 the legacy automator waits for a navigation callback
-      // belonging to the destroyed page. Dispatch with wx, then verify the new
-      // page independently instead of hanging that protocol request.
-      await client.evaluate((target) => {
-        // Let the automation reply leave the old page before destroying it.
-        setTimeout(() => wx.reLaunch({ url: target }), 250)
-        return true
-      }, url)
+      // Use the native callback for navigation. Running wx.reLaunch through
+      // App.callFunction can leave a stale webview in DevTools 2.02; the SDK's
+      // higher-level reLaunch also reads legacy page metadata afterwards.
+      await client.callWxMethod('reLaunch', { url })
       const [path, search = ''] = (destinations[name] || url).split('?')
       const expected = path.slice(1)
       const query = Object.fromEntries(new URLSearchParams(search))
@@ -84,7 +82,12 @@ try {
       const deadline = Date.now() + 20000
       do {
         await pause(500)
-        page = await client.currentPage().catch(() => null)
+        // Read the app's own route state. DevTools 2.02 can temporarily lose its
+        // legacy webview metadata even while the application is running.
+        page = await client.evaluate(() => {
+          const current = getCurrentPages().at(-1)
+          return current ? { path: current.route, query: current.options || {} } : null
+        }).catch(() => null)
         if (page?.path === expected && Object.entries(query).every(([key, value]) => page.query[key] === value)) break
       } while (Date.now() < deadline)
       if (page?.path !== expected || !Object.entries(query).every(([key, value]) => page.query[key] === value)) {
@@ -121,9 +124,10 @@ try {
       consecutiveFailures++
       console.log(`FAILED ${name}: ${String(error.message || error).slice(0,160)}`)
     }
-    await writeFile(resolve(output, 'manifest.json'), JSON.stringify({ mode, environment: 'WeChat DevTools simulator', info, results, exceptions }, null, 2))
+    await writeFile(resolve(output, 'manifest.json'), JSON.stringify({ environment: 'WeChat DevTools simulator', info, results, exceptions }, null, 2))
     if (consecutiveFailures >= 2) throw new Error('Simulator is not responding reliably; stopped without claiming remaining pages passed.')
   }
 } finally {
   await client.disconnect()
 }
+if (results.some(result => result.error) || exceptions.length) process.exitCode = 1

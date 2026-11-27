@@ -10,15 +10,16 @@ import ProfileAvatarEditor from '@/components/ProfileAvatarEditor.vue'
 import MobileConfirmDialog from '@mobile-core/components/MobileConfirmDialog.vue'
 import { revealControl } from '@mobile-core/form-focus'
 import { fishingMethodOptions } from '@/domain/fishing-presets'
-import FishingLoadingStatus from '@/components/FishingLoadingStatus.vue'
+import MobileSkeleton from '@mobile-core/components/MobileSkeleton.vue'
 import { useAuthStore } from '@/stores/auth'
 import { useMutation } from '@/composables/useMutation'
 import { read, write } from '@/services/repository'
+import { returnToHomeTab } from '@/services/primary-navigation'
 import type { PersonDetail, Media } from '@/domain/models'
 import { errorText } from '@/domain/rules'
 const auth = useAuthStore(),
   form = reactive({ nickname: '', city: '', bio: '', method: '' }),
-  saved = ref(false),
+  baseline = ref(''),
   ready = ref(false),
   loading = ref(false),
   { busy, error, run } = useMutation()
@@ -26,12 +27,11 @@ const avatar = ref<Media | null>(null), avatarBusy = ref(false)
 const nicknameError = ref(''), nativeScope = getCurrentInstance()?.proxy
 watch(()=>form.nickname,()=>{if(form.nickname.trim())nicknameError.value=''})
 let version = 0
-let baseline = ''
 let draftOwner = auth.userId
 let confirmResult: ((leave:boolean)=>void)|undefined
 const discard = ref(false)
 const signature = () => JSON.stringify({ nickname: form.nickname, city: form.city, bio: form.bio, method: form.method, avatar: avatar.value?.id || null })
-const dirty = computed(() => ready.value && signature() !== baseline)
+const dirty = computed(() => ready.value && signature() !== baseline.value)
 async function reload() {
   const current = ++version
   if (!auth.signedIn) return
@@ -39,10 +39,10 @@ async function reload() {
   error.value = ''
   try {
     const result = await read<PersonDetail>('profile', { id: auth.userId })
-    if (current !== version) return
+    if (current !== version || dirty.value || avatarBusy.value) return
     Object.assign(form, result.profile)
     avatar.value = result.profile.avatar || null
-    baseline = signature()
+    baseline.value = signature()
     ready.value = true
   } catch (e) {
     if (current === version) error.value = errorText(e)
@@ -66,7 +66,7 @@ watch(
     Object.assign(form, { nickname: '', city: '', bio: '', method: '' })
     avatar.value = null; avatarBusy.value = false
     ready.value = false
-    saved.value = false
+    nicknameError.value = ''
     loading.value = false
     void reload()
   },
@@ -74,7 +74,7 @@ watch(
 )
 function confirmBack():Promise<boolean> {
   if (busy.value || avatarBusy.value) return Promise.resolve(false)
-  if (saved.value || !dirty.value) return Promise.resolve(true)
+  if (!dirty.value) return Promise.resolve(true)
   discard.value = true
   return new Promise(resolve => { confirmResult = resolve })
 }
@@ -89,6 +89,7 @@ async function save() {
     return
   }
   await run(async () => {
+    const scope = auth.context
     await write('update_profile', {
       nickname: form.nickname.trim(),
       city: form.city,
@@ -96,15 +97,16 @@ async function save() {
       method: form.method,
       avatar_id: avatar.value?.id ?? null
     })
-    saved.value = true
-    uni.navigateBack()
+    if (scope !== auth.context) return
+    baseline.value = signature()
+    returnToHomeTab('mine')
   })
 }
 </script>
 <template>
   <FishingShell title="编辑资料" back :confirm-back="confirmBack"
     ><view class="fishing-content stack"
-      ><FishingLoadingStatus v-if="loading" label="正在读取资料…" />
+      ><MobileSkeleton v-if="loading" label="正在读取资料…" />
       <view v-if="auth.signedIn && ready" :key="auth.context" class="panel stack"
         ><ProfileAvatarEditor v-model="avatar" :nickname="form.nickname" :disabled="busy" @busy="avatarBusy = $event" /><MobileField
           v-model="form.nickname"

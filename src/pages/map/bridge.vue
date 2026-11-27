@@ -6,7 +6,7 @@ import MobileLoadError from '@mobile-core/components/MobileLoadError.vue'
 const target = ref('')
 const failed = ref(false)
 
-function openSearch() {
+function openMap() {
   failed.value = false
   uni.redirectTo({ url: target.value, fail: () => { failed.value = true } })
 }
@@ -16,21 +16,21 @@ onLoad((options) => {
   const pick = options?.pick === '1'
   const context = options?.context === 'post' || options?.context === 'water' ? `&context=${options.context}` : ''
   target.value = pick
-    ? `/pages/map/search?pick=1&requestId=${encodeURIComponent(options?.requestId || '')}${context}`
-    : '/pages/map/search'
-  openSearch()
+    ? `/pages/map/index?pick=1&requestId=${encodeURIComponent(options?.requestId || '')}${context}`
+    : '/pages/map/index'
+  openMap()
 })
 </script>
 <template>
-  <FishingShell title="地点搜索" back>
+  <FishingShell title="水域地图" back>
     <view class="fishing-content">
       <MobileLoadError
         v-if="failed"
-        title="无法打开地点搜索"
+        title="无法打开水域地图"
         message="可以重试，或返回上一页。"
-        @retry="openSearch"
+        @retry="openMap"
       />
-      <text v-else class="muted" role="status">正在打开地点搜索…</text>
+      <text v-else class="muted" role="status">正在打开水域地图…</text>
     </view>
   </FishingShell>
 </template>

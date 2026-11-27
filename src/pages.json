@@ -4,7 +4,7 @@
     "custom": { "^wd-(.*)": "@wot-ui/ui/components/wd-$1/wd-$1.vue" }
   },
   "pages": [
-    { "path": "pages/home/index" },
+    { "path": "pages/home/index", "style": { "enablePullDownRefresh": true } },
     { "path": "pages/login/index" },
     { "path": "pages/account/security" },
     { "path": "pages/account/connections" },
@@ -17,49 +17,54 @@
     { "root": "pages/contact", "pages": [{ "path": "index" }] },
     {
       "root": "pages/post",
-      "pages": [{ "path": "detail" }, { "path": "compose" }]
+      "pages": [{ "path": "detail", "style": { "enablePullDownRefresh": true } }, { "path": "compose" }]
     },
     {
       "root": "pages/spot",
-      "pages": [{ "path": "detail" }, { "path": "create" }, { "path": "discover" }]
+      "pages": [{ "path": "detail", "style": { "enablePullDownRefresh": true } }, { "path": "create" }, { "path": "discover" }]
     },
     {
       "root": "pages/map",
       "pages": [
         { "path": "index" },
-        { "path": "search" },
-        { "path": "marks" },
+        { "path": "search", "style": { "enablePullDownRefresh": true } },
+        { "path": "marks", "style": { "enablePullDownRefresh": true } },
         { "path": "bridge" }
       ]
     },
-    { "root": "pages/notifications", "pages": [{ "path": "index" }] },
+    { "root": "pages/notifications", "pages": [{ "path": "index", "style": { "enablePullDownRefresh": true } }] },
     {
       "root": "pages/people",
-      "pages": [{ "path": "detail" }]
+      "pages": [{ "path": "detail", "style": { "enablePullDownRefresh": true } }]
     },
     {
       "root": "pages/mine",
-      "pages": [{ "path": "library" }, { "path": "profile" }]
+      "pages": [{ "path": "library", "style": { "enablePullDownRefresh": true } }, { "path": "profile" }]
     },
     {
       "root": "pages/moderation",
-      "pages": [{ "path": "index" }, { "path": "detail" }]
+      "pages": [{ "path": "index", "style": { "enablePullDownRefresh": true } }, { "path": "detail" }]
     },
     {
       "root": "pages/content-report",
-      "pages": [{ "path": "index" }, { "path": "detail" }]
+      "pages": [{ "path": "index", "style": { "enablePullDownRefresh": true } }, { "path": "detail" }]
     },
     {
       "root": "pages/water-report",
-      "pages": [{ "path": "index" }, { "path": "history" }]
+      "pages": [{ "path": "index", "style": { "enablePullDownRefresh": true } }, { "path": "history" }]
     }
   ],
+  "preloadRule": {
+    "pages/home/index": { "network": "all", "packages": ["pages/map"] }
+  },
   "globalStyle": {
     "navigationStyle": "custom",
     "navigationBarTitleText": "钓友集",
-    "navigationBarTextStyle": "black",
+    "navigationBarTextStyle": "@navText",
+    "navigationBarBackgroundColor": "@canvas",
     "onReachBottomDistance": 160,
-    "backgroundColor": "#f5f7f3",
+    "backgroundColor": "@canvas",
+    "backgroundTextStyle": "@refreshText",
     "rpxCalcMaxDeviceWidth": 0,
     "rpxCalcBaseDeviceWidth": 375
   }

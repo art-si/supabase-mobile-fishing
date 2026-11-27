@@ -1,4 +1,3 @@
-import { isDemo } from '@/config'
 import type { DiscussionPerson, Media } from '@/domain/models'
 import type { SpotLead } from '../../supabase/functions/_shared/discovery-contract'
 import { resolveContentMedia } from './media'
@@ -37,7 +36,7 @@ function rpc<T>(action: string, payload: Record<string, unknown>, auth = false) 
   }, auth)
 }
 export function spotCommunitySummary(targets: string[]) {
-  if (!targets.length || isDemo) return Promise.resolve([] as SpotCommunitySummary[])
+  if (!targets.length) return Promise.resolve([] as SpotCommunitySummary[])
   const requests: Promise<SpotCommunitySummary[]>[] = []
   for (let offset = 0; offset < targets.length; offset += 100)
     requests.push(rpc('summary', { targets: targets.slice(offset, offset + 100) }))
@@ -55,7 +54,7 @@ export const deleteSpotComment = (target: string, id: string) =>
   rpc<SpotCommunitySummary>('delete_comment', { target, id }, true)
 export const reactToSpot = (target: string, kind: SpotReaction, enabled: boolean) =>
   rpc<SpotCommunitySummary>('react', { target, kind, enabled }, true)
-export const savedSpotLeads = () => isDemo ? Promise.resolve([] as SpotLead[]) : rpc<SpotLead[]>('saved_leads', {}, true)
+export const savedSpotLeads = () => rpc<SpotLead[]>('saved_leads', {}, true)
 
 const analysing = new Map<string, Promise<SpotCommunitySummary[]>>()
 export function analyseSpotComments(target: string, afterSubmission = false): Promise<SpotCommunitySummary[]> {

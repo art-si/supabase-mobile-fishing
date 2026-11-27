@@ -4,16 +4,18 @@ import { onLoad, onShow, onHide, onUnload } from '@dcloudio/uni-app'
 import FishingShell from '@/components/FishingShell.vue'
 import AccountPhoneVerification from '@/components/AccountPhoneVerification.vue'
 import MobileAction from '@mobile-core/components/MobileAction.vue'
-import { isDemo } from '@/config'
+import MobileCheckbox from '@mobile-core/components/MobileCheckbox.vue'
 import MobileField from '@mobile-core/components/MobileField.vue'
 import { revealControl, nativeFieldOf, type ElementTarget } from '@mobile-core/form-focus'
 import { useAuthStore } from '@/stores/auth'
 import { accountIdentity, createAccountSecurityFlow } from '@/services/account-security'
 import { hydrateSession } from '@/services/session'
+import { rememberedLogin, rememberLoginLabel, saveLoginMemory } from '@/services/login-memory'
 import { passwordIssue } from '@/domain/account-security'
 import { errorText } from '@/domain/rules'
 import { ApiError } from '@/services/http'
 const auth = useAuthStore()
+const rememberLabel = rememberLoginLabel()
 const passwordControl = ref<ElementTarget>(),
   confirmationControl = ref<ElementTarget>()
 const mode = ref('reset'),
@@ -21,6 +23,8 @@ const mode = ref('reset'),
   phone = ref(''),
   password = ref(''),
   confirmation = ref('')
+const fromLogin = ref(false),
+  remember = ref(false)
 const passwordError = ref(''),
   confirmationError = ref(''),
   error = ref(''),
@@ -51,9 +55,9 @@ watch(
 )
 onLoad((query) => {
   mode.value = query?.mode === 'set' ? 'set' : 'reset'
+  fromLogin.value = mode.value === 'set' && query?.from === 'login'
 })
 async function open() {
-  if (isDemo) return
   const current = ++version
   active.value = true
   loading.value = true
@@ -68,6 +72,7 @@ async function open() {
     await hydrateSession()
     if (current !== version) return
     owner = mode.value === 'set' ? auth.userId : ''
+    remember.value = Boolean(owner && rememberedLogin.preference()?.owner === owner)
     if (mode.value === 'set') {
       if (!owner) throw new ApiError('请重新登录后再管理账号', 401, 'ACCOUNT_IDENTITY_INVALID')
       phone.value = (await accountIdentity()).phone
@@ -141,9 +146,19 @@ async function save() {
   busy.value = true
   error.value = ''
   savingPassword = true
+  const current = version,
+    identifier = phone.value
+  const isCurrent = () => alive && current === version && auth.userId === verifiedOwner
   try {
     await flow.setPassword(secret)
-    if (alive) {
+    if (isCurrent()) {
+      await saveLoginMemory(
+        { identifier, password: secret, owner: verifiedOwner },
+        remember.value,
+        isCurrent
+      )
+    }
+    if (isCurrent()) {
       password.value = ''
       confirmation.value = ''
       step.value = 3
@@ -170,13 +185,12 @@ function done() {
 <template>
   <FishingShell
     narrow
-    :title="mode === 'set' ? '设置登录密码' : '找回密码'"
+    :title="fromLogin ? '' : mode === 'set' ? '设置登录密码' : '找回密码'"
     back
     :confirm-back="async () => !busy"
   >
     <view class="fishing-content account-content">
-      <text v-if="isDemo" class="notice">本机体验无需登录密码。正式账号可通过短信验证设置或找回密码。</text>
-      <text v-else-if="loading" class="caption" role="status">正在准备验证…</text>
+      <text v-if="loading" class="caption" role="status">正在准备验证…</text>
       <template v-else-if="step === 3">
         <view class="account-heading" role="status"
           ><text class="account-title" role="heading" aria-level="1">密码已设置</text
@@ -189,16 +203,18 @@ function done() {
       </template>
       <template v-else>
         <view class="account-heading"
-          ><text class="account-step">{{
+          ><text v-if="!fromLogin" class="account-step">{{
             step === 1 ? '1 / 2 · 确认本人' : '2 / 2 · 设置密码'
           }}</text
           ><text class="account-title" role="heading" aria-level="1">{{
-            step === 1 ? '验证手机号' : '设置新密码'
+            step === 1 ? '验证手机号' : fromLogin ? '设置登录密码' : '设置新密码'
           }}</text
           ><text class="account-description">{{
             step === 1
               ? '验证已绑定的手机号后，即可设置新密码。'
-              : '设置后可用手机号和密码登录，无需每次获取短信。'
+              : fromLogin
+                ? '手机号已注册成功。设置密码后，下次可直接使用账号或手机号登录。'
+                : '设置后可用手机号和密码登录，无需每次获取短信。'
           }}</text></view
         >
         <AccountPhoneVerification
@@ -244,8 +260,21 @@ function done() {
             @confirm="save"
             required
           />
+          <MobileCheckbox
+            v-model="remember"
+            :aria-label="rememberLabel"
+            :disabled="busy"
+            checked-color="var(--lake)"
+            unchecked-color="var(--reed)"
+          ><text class="caption">{{ rememberLabel }}</text></MobileCheckbox>
           <MobileAction class="primary" :disabled="busy" @click="save">{{
-            busy ? '正在保存…' : mode === 'set' ? '保存新密码' : '保存密码并登录'
+            busy
+              ? '正在保存…'
+              : fromLogin
+                ? '保存密码'
+                : mode === 'set'
+                  ? '保存新密码'
+                  : '保存密码并登录'
           }}</MobileAction>
         </view>
         <text v-if="error" class="error" role="alert">{{ error }}</text>

@@ -7,21 +7,19 @@ import MobileLoadError from '@mobile-core/components/MobileLoadError.vue'
 import MobileInlineLabel from '@mobile-core/components/MobileInlineLabel.vue'
 import { elementOf, type ElementTarget } from '@mobile-core/form-focus'
 import ZoneInfo from './ZoneInfo.vue'
-import FishingLoadingStatus from './FishingLoadingStatus.vue'
+import MobileSkeleton from '@mobile-core/components/MobileSkeleton.vue'
 import { zonesNearby } from '@/services/zones'
 import { ApiError } from '@/services/http'
 import { chinaDate, zoneSourceLabel, type Zone, type ZoneBounds } from '@/domain/zones'
 import { spotReportZone } from '@/domain/spot-zone'
 import { errorText } from '@/domain/rules'
-// #ifdef H5
+import { useAppearanceStore } from '@/stores/appearance'
 import { useAuthStore } from '@/stores/auth'
-import { isDemo } from '@/config'
 import { loadWaterNotices } from '@/services/discovery'
 import { waterOutline } from '@/domain/water-surfaces'
 import { boundaryAnchor, boundaryBounds } from '@/domain/zone-geometry'
 import { governmentNoticeUrl } from '../../supabase/functions/_shared/discovery-contract'
 const auth = useAuthStore()
-// #endif
 
 defineOptions({ options: { styleIsolation: 'apply-shared' } })
 const props = defineProps<{
@@ -29,6 +27,7 @@ const props = defineProps<{
   focusRequest?: { id: string } | null
   active: boolean
 }>()
+const theme = useAppearanceStore()
 const emit = defineEmits<{ overlays: [zones: Zone[]] }>()
 const items = ref<Zone[]>([])
 const releasedItems = ref<Zone[]>([])
@@ -39,6 +38,7 @@ const listOrigin = ref('')
 const listBody = ref<ElementTarget>()
 const backAction = ref<ElementTarget>()
 const loading = ref(false)
+const refreshing = ref(false)
 const error = ref('')
 const zoomIn = ref(false)
 let version = 0
@@ -58,6 +58,11 @@ function openList() {
   sheetView.value = 'list'
   sheetOpen.value = true
   if (!loading.value || timer) void load()
+}
+async function refreshList() {
+  if (refreshing.value || loading.value || !props.active) return
+  refreshing.value = true
+  try { await load() } finally { refreshing.value = false }
 }
 function resetClosedSheet() {
   if (!sheetOpen.value) {
@@ -94,9 +99,8 @@ function feedbackChanged(zone: Zone) {
   else items.value.push(zone)
   emit('overlays', items.value)
 }
-// #ifdef H5
 async function addWaterNotices(bounds: ZoneBounds, current: number) {
-  if (isDemo || !auth.signedIn || bounds.east < 114.16 || bounds.west > 114.22 ||
+  if (!auth.signedIn || bounds.east < 114.16 || bounds.west > 114.22 ||
       bounds.north < 30.47 || bounds.south > 30.54) return
   const notices = await loadWaterNotices()
   if (current !== version) return
@@ -124,7 +128,6 @@ async function addWaterNotices(bounds: ZoneBounds, current: number) {
   items.value = [...items.value, ...added]
   emit('overlays', items.value)
 }
-// #endif
 watch(() => props.focusRequest, request => {
   const zone = items.value.find(item => item.id === request?.id)
   if (zone) choose(zone)
@@ -154,9 +157,7 @@ async function load(retried = false) {
       ) || null
       if (!selected.value) removeSelection()
     }
-    // #ifdef H5
     if (!result.zoom_in) void addWaterNotices(props.bounds, current)
-    // #endif
   } catch (cause) {
     if (current !== version) return
     error.value = errorText(cause)
@@ -182,6 +183,7 @@ watch([() => props.bounds, () => props.active], () => {
     zoomIn.value = false
     emit('overlays', [])
     if (!props.active) {
+      refreshing.value = false
       selected.value = null
       sheetOpen.value = false
     }
@@ -217,6 +219,8 @@ onBeforeUnmount(() => {
       :close-label="sheetView === 'list' ? '关闭区域列表' : '关闭区域详情'"
       :z-index="150"
       root-portal
+      :refreshable="sheetView === 'list' && props.active && (!loading || refreshing)"
+      :refreshing="refreshing" :refresh-style="theme.dark ? 'white' : 'black'" @refresh="refreshList"
       @after-leave="resetClosedSheet"
     >
       <template v-if="sheetView === 'detail' && listOrigin" #toolbar>
@@ -227,7 +231,7 @@ onBeforeUnmount(() => {
       <view class="zone-sheet stack">
         <MobileLoadError v-if="error" inline title="禁钓区域未加载" :message="error" @retry="load()" />
         <view v-if="sheetView === 'list'" ref="listBody" class="zone-sheet__list">
-          <FishingLoadingStatus v-if="loading && !items.length" label="正在读取禁钓区域…" />
+          <MobileSkeleton v-if="loading && !refreshing && !items.length" label="正在读取禁钓区域…" />
           <text v-else-if="!error && !items.length && !releasedItems.length" class="muted">{{
             zoomIn ? '请放大地图查看。' : '暂未收录此范围的禁钓区域，请核对现场标识和最新公告。'
           }}</text>

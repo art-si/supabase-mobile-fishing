@@ -29,6 +29,7 @@ import { spotDistanceChecks } from './spot-distance.mjs'
 import { spotDiscussionMediaChecks } from './spot-discussion-media.mjs'
 let publicationMigration, spotPublicationMigration, spotFishingMigration, communityPublicationMigration
 let discoveryMigration, automaticFencesMigration
+let spotProhibitionMigration
 let retireChatMigration, spotCommunityMigration, spotDiscussionMigration, spotReplyMigration
 let discussionLikesMigration
 const db = new PGlite()
@@ -77,6 +78,10 @@ for (const file of (await readdir(new URL('../supabase/migrations/', import.meta
   // Function upgrades compare the previous definition with LF line breaks.
   const migration = (await readFile(new URL(`../supabase/migrations/${file}`, import.meta.url), 'utf8'))
     .replace(/\r\n/g, '\n')
+  if (file.endsWith('_fishing_spot_prohibition_guard.sql')) {
+    spotProhibitionMigration = migration
+    continue
+  }
   // Preserve migration-era review regressions, then exercise the current direct
   // publication policy and upgrade of real pre-policy records at the end.
   if (file.endsWith('_fishing_posts_direct_publish.sql')) {
@@ -484,6 +489,12 @@ try {
     "insert into fishing_private.rate_events(user_id,action,created_at) select $1::uuid,'amap',now()-interval '2 hours' from generate_series(1,120)",
     [alice]
   )
+  check((await mapTicket(alice)).rows[0].result.ok, 'a full feature review can continue beyond the old 120-request allowance')
+  await db.exec("delete from fishing_private.rate_events where action='amap'")
+  await db.query(
+    "insert into fishing_private.rate_events(user_id,action,created_at) select $1::uuid,'amap',now()-interval '2 hours' from generate_series(1,500)",
+    [alice]
+  )
   await rejects(() => mapTicket(alice), /RATE_LIMIT/, 'per-user map rolling day quota is enforced')
   await db.exec("delete from fishing_private.rate_events where action='amap'")
   await db.query(
@@ -550,7 +561,8 @@ try {
   // This upgrade uses the spot status column and fence functions installed by the staged checks above.
   await db.exec(spotCommunityMigration)
   await db.exec(spotDiscussionMigration)
-  await db.exec(await readFile(new URL('../supabase/migrations/20261121092639_fishing_scroll_pages.sql', import.meta.url), 'utf8'))
+  // Match the migration loader above when Git checks SQL out with CRLF on Windows.
+  await db.exec((await readFile(new URL('../supabase/migrations/20261121092639_fishing_scroll_pages.sql', import.meta.url), 'utf8')).replace(/\r\n/g, '\n'))
   await db.query(`
     with added as (
       insert into public.fishing_spots(id,author_id,name,city,water_type,observed_on,audience,precision,status)
@@ -592,6 +604,9 @@ try {
     check(Array.isArray(page.items) && page.items.length <= 20, action + ' returns a scoped page')
     await rejects(() => read(null, action, { cursor: null }), /NOT_AUTHENTICATED/, action + ' rejects guest reads')
   }
+  await db.exec(spotProhibitionMigration)
+  check(typeof (await db.query("select (public.fishing_spot_creation_check(114.3,30.5)->>'blocked')::boolean as blocked")).rows[0].blocked === 'boolean',
+    'current prohibition guard installs after the historical publication checks')
   console.log(
     `\n${assertions} database checks passed (PGlite PostgreSQL; not a hosted Supabase integration test).`
   )

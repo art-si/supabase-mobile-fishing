@@ -1,8 +1,6 @@
-import { config, isDemo } from '@/config'
+import { config } from '@/config'
 import { accessToken, assertSession, sessionScope, sessionRequest } from './session'
-import { createId } from '@/domain/rules'
 import type { Media } from '@/domain/models'
-import { useAuthStore } from '@/stores/auth'
 import { prepareUploadImage, type PreparedUploadImage } from '@mobile-core/image-prepare'
 import { prepareUploadVideo, VideoPreparationError, type PreparedUploadVideo } from '@mobile-core/video-prepare'
 import { convertBrowserVideo } from '@/platforms/video-conversion'
@@ -26,7 +24,6 @@ export async function chooseVideo() {
 }
 export async function uploadVideo(filePath: string, options: UploadOptions = {}): Promise<Media> {
   const scope = sessionScope.value
-  if (isDemo) throw new ApiError('视频请在正式环境登录后上传', 0, 'VIDEO_DEMO_UNAVAILABLE')
   const token = await accessToken()
   assertSession(scope)
   if (!token) throw new ApiError('请先登录，草稿会保留', 401, 'NOT_AUTHENTICATED')
@@ -164,15 +161,6 @@ export async function choosePhotos(count: number, source?: 'camera' | 'album'): 
 }
 export async function uploadPhoto(filePath: string, options: UploadOptions = {}): Promise<Media> {
   const scope = sessionScope.value
-  if (isDemo) {
-    const owner = useAuthStore().userId
-    if (!owner) throw new Error('请先登录再上传照片')
-    const { rememberDemoPhoto } = await import('@/demo/database')
-    assertSession(scope)
-    const asset = { id: createId(), path: filePath, url: filePath, width: 1000, height: 750 }
-    rememberDemoPhoto(owner, asset)
-    return asset
-  }
   const token = await accessToken()
   assertSession(scope)
   if (!token) throw new ApiError('请先登录，草稿会保留', 401, 'NOT_AUTHENTICATED')
@@ -241,7 +229,6 @@ export async function uploadPhoto(filePath: string, options: UploadOptions = {})
   }
 }
 export async function resolvePhotos(posts: { media: Media[] }[]) {
-  if (isDemo) return posts
   const scope = sessionScope.value
   const signatures = new Map<string, Promise<string | undefined>>()
   await Promise.all(
@@ -251,9 +238,9 @@ export async function resolvePhotos(posts: { media: Media[] }[]) {
           let signature = signatures.get(asset.path)
           if (!signature) {
             signature = sessionRequest<{ signedURL: string }>(
-            `/storage/v1/object/sign/fishing-media/${asset.path.split('/').map(encodeURIComponent).join('/')}`,
-            { method: 'POST', data: { expiresIn: asset.kind === 'video' ? 300 : 60 } },
-            false
+              `/storage/v1/object/sign/fishing-media/${asset.path.split('/').map(encodeURIComponent).join('/')}`,
+              { method: 'POST', data: { expiresIn: asset.kind === 'video' ? 300 : 60 } },
+              false
             ).then(result => `${config.supabaseUrl}/storage/v1${result.signedURL}`).catch(() => undefined)
             signatures.set(asset.path, signature)
           }

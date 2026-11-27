@@ -1,3 +1,5 @@
+import { publisherSource, spotPublishers } from './spot-publishers.ts'
+
 export const preferences = {
   catch: '鱼情好',
   quiet: '人少',
@@ -13,9 +15,13 @@ export const platforms = {
   bilibili: 'B 站'
 } as const
 export type Platform = keyof typeof platforms
+export const sourcePlatforms = { ...platforms, xiaohongshu: '小红书', wechat: '微信公众号' } as const
+export type SourcePlatform = keyof typeof sourcePlatforms
 export interface ShareSource {
-  platform: Platform
+  platform: SourcePlatform
   url: string
+  author?: string
+  kind?: '图文' | '视频'
 }
 export type SpotLabels = Partial<Record<Preference, string>>
 export interface SpotLabelBatch {
@@ -30,8 +36,17 @@ export interface SpotSharePosition {
   latitude: number
   crs: 'GCJ-02' | 'WGS84'
 }
+/** Copied from the fetched original, never from model output or an import hint. */
+export interface SpotPositionEvidence {
+  url: string
+  name: string
+  kind: 'structured_geo' | 'text_coordinates'
+  value: string
+  original: SpotSharePosition
+}
 export interface SpotLead {
   name: string
+  displayName?: string
   city: string
   waterType: '' | '自然水域' | '水库' | '钓场'
   poiQuery?: string
@@ -43,6 +58,19 @@ export interface SpotLead {
   source: LeadSource
   relatedSources?: LeadSource[]
   sourceDate: string
+  verifiedAt?: string
+  poiId?: string
+  positionSource?: 'amap' | 'source'
+  locationScope?: 'entrance' | 'shoreline'
+  catchFrame?: SpotCatchFrame
+  positionEvidence?: SpotPositionEvidence
+}
+
+export interface SpotCatchFrame {
+  key: string
+  seconds: number
+  sourceUrl: string
+  description: string
 }
 
 export function readSpotSharePosition(value: unknown): SpotSharePosition | undefined {
@@ -60,7 +88,7 @@ export interface SpotLeadResult {
 export function leadSourceName(source: LeadSource) {
   if (source.platform === 'public') return source.publisher || '公开资料'
   if (source.platform === 'media') return source.publisher
-  return platforms[source.platform]
+  return sourcePlatforms[source.platform]
 }
 export interface WaterNotice {
   name: string
@@ -71,10 +99,13 @@ export interface WaterNotice {
 }
 export const spotLabelBatchSize = 12
 
-const shareHosts: Record<string, Platform> = {
+const shareHosts: Record<string, SourcePlatform> = {
   'www.douyin.com': 'douyin', 'v.douyin.com': 'douyin', 'jingxuan.douyin.com': 'douyin',
   'www.toutiao.com': 'toutiao', 'm.toutiao.com': 'toutiao', 'toutiao.com': 'toutiao',
-  'www.bilibili.com': 'bilibili', 'm.bilibili.com': 'bilibili', 't.bilibili.com': 'bilibili', 'b23.tv': 'bilibili'
+  'www.bilibili.com': 'bilibili', 'm.bilibili.com': 'bilibili', 't.bilibili.com': 'bilibili', 'b23.tv': 'bilibili',
+  'www.xiaohongshu.com': 'xiaohongshu', 'xiaohongshu.com': 'xiaohongshu',
+  'mp.weixin.qq.com': 'wechat',
+  'xhslink.com': 'xiaohongshu', 'www.xhslink.com': 'xiaohongshu', 'xhslink.cn': 'xiaohongshu', 'www.xhslink.cn': 'xiaohongshu'
 }
 
 export function parseShareSource(link: string): ShareSource | null {
@@ -84,6 +115,28 @@ export function parseShareSource(link: string): ShareSource | null {
     if (url.protocol !== 'https:' || url.username || url.password || url.port ||
         !Object.hasOwn(shareHosts, url.hostname)) return null
     const platform = shareHosts[url.hostname]!
+    if (platform === 'wechat') {
+      if (/^\/s\/[A-Za-z\d_-]{10,80}$/.test(url.pathname)) return { platform, url: url.origin + url.pathname }
+      if (url.pathname !== '/s') return null
+      const biz = url.searchParams.get('__biz'), mid = url.searchParams.get('mid'), idx = url.searchParams.get('idx'), sn = url.searchParams.get('sn')
+      if (!biz || !/^[A-Za-z\d_+=/-]{6,100}$/.test(biz) || !mid || !/^\d{6,20}$/.test(mid) || !idx || !/^\d{1,3}$/.test(idx) || !sn || !/^[a-f\d]{16,64}$/i.test(sn)) return null
+      const canonical = new URL('https://mp.weixin.qq.com/s')
+      canonical.search = new URLSearchParams({ __biz: biz, mid, idx, sn }).toString()
+      return { platform, url: canonical.href }
+    }
+    if (platform === 'xiaohongshu') {
+      if (url.hostname.includes('xhslink.')) return /^\/(?:[ao]\/)?[A-Za-z\d_-]{4,100}\/?$/.test(url.pathname)
+        ? { platform, url: url.origin + url.pathname } : null
+      const note = /^\/(?:explore|discovery\/item)\/([a-f\d]{24})\/?$/i.exec(url.pathname)
+      if (!note) return null
+      const canonical = new URL('https://www.xiaohongshu.com/explore/' + note[1])
+      // Keep only the signed public share fields needed to open a note, never account cookies.
+      for (const key of ['xsec_token', 'xsec_source']) {
+        const value = url.searchParams.get(key)
+        if (value && /^[A-Za-z\d_+=./-]{1,180}$/.test(value)) canonical.searchParams.set(key, value)
+      }
+      return { platform, url: canonical.href }
+    }
     const short = ['v.douyin.com', 'b23.tv'].includes(url.hostname)
     const fullContent = /^\/(video|article|item|note)\/[\w-]+\/?$/
     const curatedVideo = url.hostname === 'jingxuan.douyin.com' && /^\/m\/video\/\d+\/?$/.test(url.pathname)
@@ -108,7 +161,11 @@ export function splitSpotShareText(value: string): { description: string; source
     const link = raw.replace(/[),.!?;]+$/, '')
     const source = parseShareSource(link)
     if (!source) return raw
-    links.set(source.url.replace(/\/$/, ''), source)
+    const parsed = new URL(source.url)
+    const identity = source.platform === 'wechat' && parsed.pathname === '/s'
+      ? source.url : parsed.origin + parsed.pathname.replace(/\/$/, '')
+    const previous = links.get(identity)
+    if (!previous || source.url.length > previous.url.length) links.set(identity, source)
     return raw.slice(link.length)
   })
   return { description: description.trim(), sources: [...links.values()] }
@@ -122,32 +179,10 @@ export function shareSource(value: string): ShareSource | null {
   return shareSources(value)[0] ?? null
 }
 
-const mediaHosts: Readonly<Record<string, string>> = {
-  'm.diaoyu.com': '钓鱼之家', 'www.diaoyu.com': '钓鱼之家',
-  'm.diaoyur.com': '钓鱼人', 'www.diaoyur.com': '钓鱼人',
-  'www.haodiaoyu.com': '好钓鱼',
-  'news.hubeidaily.net': '湖北日报', 'www.cnhubei.com': '荆楚网', 'news.cnhubei.com': '荆楚网',
-  'www.ctdsb.net': '极目新闻',
-  'm.app.dawuhanapp.com': '长江日报', 'cjrb.cjn.cn': '长江日报',
-  'whwb.cjn.cn': '武汉晚报', 'news.cjn.cn': '长江网',
-  'www.thepaper.cn': '澎湃新闻', 'www.news.cn': '新华网',
-  'people.com.cn': '人民网', 'hb.people.com.cn': '人民网'
-}
-export const professionalMediaSites = [
-  'diaoyu.com', 'diaoyur.com', 'haodiaoyu.com', 'hubeidaily.net', 'cnhubei.com',
-  'ctdsb.net', 'dawuhanapp.com', 'cjn.cn', 'thepaper.cn', 'news.cn', 'people.com.cn'
-] as const
+export const professionalMediaSites = spotPublishers.map(([host]) => host)
 
 export function mediaSource(value: string): Extract<LeadSource, { platform: 'media' }> | null {
-  if (value.length > 500) return null
-  try {
-    const url = new URL(value)
-    if (url.protocol !== 'https:' || url.username || url.password || url.port ||
-        !Object.hasOwn(mediaHosts, url.hostname) || !/\d{3,}/.test(url.pathname)) return null
-    if (url.hostname.endsWith('.diaoyu.com') && !/^\/diaochang\/[a-z-]+\/\d+\.html$/.test(url.pathname))
-      return null
-    return { platform: 'media', url: url.origin + url.pathname, publisher: mediaHosts[url.hostname]! }
-  } catch { return null }
+  return publisherSource(value)
 }
 
 export interface DiscoveryItem {

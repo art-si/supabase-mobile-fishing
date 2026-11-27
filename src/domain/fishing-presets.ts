@@ -69,12 +69,11 @@ export const experienceTopicOptions = choices([
   '出钓见闻'
 ])
 export function currentChinaTime(now = new Date()) {
-  return new Intl.DateTimeFormat('en-GB', {
-    timeZone: 'Asia/Shanghai',
-    hour: '2-digit',
-    minute: '2-digit',
-    hour12: false
-  }).format(now)
+  // Fishing timestamps use +08:00. Mini Program JS engines can lack Intl;
+  // draft creation runs before the first render and must not depend on it.
+  if (!Number.isFinite(now.getTime())) return ''
+  const china = new Date(now.getTime() + 8 * 60 * 60 * 1000)
+  return `${String(china.getUTCHours()).padStart(2, '0')}:${String(china.getUTCMinutes()).padStart(2, '0')}`
 }
 export function fishingDateTime(date: string, time = '') {
   if (!time) return null

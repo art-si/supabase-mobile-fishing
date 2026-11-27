@@ -2,12 +2,12 @@
 import { onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { onHide } from '@dcloudio/uni-app'
 import MobileAction from '@mobile-core/components/MobileAction.vue'
-import { activateActionKey, preventActionKey } from '@mobile-core/action-keyboard'
+
 import MobileConfirmDialog from '@mobile-core/components/MobileConfirmDialog.vue'
 import MobileLoadError from '@mobile-core/components/MobileLoadError.vue'
 import MobileListFooter from '@mobile-core/components/MobileListFooter.vue'
 import FishingPhotos from './FishingPhotos.vue'
-import FishingLoadingStatus from './FishingLoadingStatus.vue'
+import MobileSkeleton from '@mobile-core/components/MobileSkeleton.vue'
 import { useResource } from '@/composables/useResource'
 import { useMutation } from '@/composables/useMutation'
 import { useAuthStore } from '@/stores/auth'
@@ -39,7 +39,12 @@ async function loadMore() {
     }
   })
 }
-defineExpose({ reachBottom: () => { if (!more.error.value) void loadMore() } })
+async function refresh() {
+  if (mutation.busy.value) return
+  more.error.value = ''
+  await load()
+}
+defineExpose({ refresh, reachBottom: () => { if (!more.error.value) void loadMore() } })
 onMounted(()=>void load())
 watch(()=>auth.context,()=>{confirm.value=false;target.value=null;more.error.value=''})
 watch(mutation.busy,value=>emit('busy',value))
@@ -54,7 +59,6 @@ async function remove(){
   await write('delete_water_report',{id:selected.id})
   try{
    uni.removeStorageSync(`dyj.live.draft.${owner}.water-report.edit.${selected.id}`)
-   uni.removeStorageSync(`dyj.demo.draft.${owner}.water-report.edit.${selected.id}`)
   }catch{storageNotice.value='这份材料已删除，本机遗留草稿未能清理，不会恢复云端记录。'}
   target.value=null
   await load()
@@ -70,14 +74,14 @@ async function remove(){
     </template>
     <template v-else>
       <MobileLoadError v-if="error" :message="error" @retry="load" />
-      <FishingLoadingStatus v-if="loading && !data.items.length" label="正在读取上报记录…" />
+      <MobileSkeleton v-if="loading && !data.items.length" label="正在读取上报记录…" />
       <view v-for="item in data.items" :key="item.id" class="panel stack report-records__item">
-        <button class="mobile-action report-records__content" role="button" :tabindex="mutation.busy.value ? -1 : 0" :aria-disabled="mutation.busy.value || undefined" hover-class="mobile-action--pressed" aria-label="查看详情" :disabled="mutation.busy.value" @click="emit('open',item)" @keydown="preventActionKey" @keyup="activateActionKey($event, () => { if (!mutation.busy.value) emit('open',item) })">
+        <MobileAction class="report-records__content" aria-label="查看详情" :disabled="mutation.busy.value" @click="emit('open',item)">
           <text class="name">{{ reportCategories.find(category=>category.id===item.category)?.name }}</text>
           <text class="caption">{{ localReportTime(new Date(item.observed_at)) }} · 私密保存</text>
           <text class="body">{{ item.location_label }}</text>
           <text class="caption report-records__description">{{ item.description }}</text>
-        </button>
+        </MobileAction>
         <FishingPhotos v-if="item.media.length" :media="item.media" label="上报记录附件" compact />
         <view class="mobile-action-group">
           <MobileAction class="secondary" :disabled="mutation.busy.value" @click="emit('edit',item)">编辑材料</MobileAction>

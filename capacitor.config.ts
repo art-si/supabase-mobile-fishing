@@ -4,7 +4,7 @@ import { baseNativePlugins } from 'supabase-mobile-pro/scripts/native-plugins.mj
 const config: CapacitorConfig = {
   appId: 'com.diaoyouji.fishing',
   appName: '钓友集',
-  webDir: process.env.FISHING_DEMO_BUILD === '1' ? 'dist/demo/h5' : 'dist/build/h5',
+  webDir: 'dist/build/h5',
   includePlugins: [
     '@aparajita/capacitor-secure-storage',
     ...baseNativePlugins,

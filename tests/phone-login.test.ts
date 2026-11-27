@@ -48,7 +48,6 @@ interface HarnessOptions {
   platform?: string
   native?: boolean
   plugin?: boolean
-  isDemo?: boolean
   backendReady?: boolean
   enabled?: boolean
   subject?: string
@@ -85,7 +84,6 @@ function harness(options: HarnessOptions = {}) {
         operatorPhone: options.enabled ?? true,
         miniProgramSubject: options.subject || 'organization'
       },
-      isDemo: options.isDemo ?? false,
       backendReady: options.backendReady ?? true
     },
     '@/domain/auth-errors': authContract,
@@ -140,7 +138,7 @@ function harness(options: HarnessOptions = {}) {
 }
 
 test('Phone capability rejects personal/unknown WeChat subjects and wrong runtimes', () => {
-  const base = { isDemo: false, backendReady: true, enabled: true, platform: 'wechat' as const }
+  const base = { backendReady: true, enabled: true, platform: 'wechat' as const }
   for (const subject of ['personal', '', 'unknown'])
     assert.equal(capability.wechatPhoneCapability({ ...base, subject }).available, false)
   assert.equal(
@@ -173,10 +171,9 @@ test('Native plugin registration allows only an entry; vendor check requires exp
   )
 })
 
-test('Disabled/demo/missing-backend/missing-plugin/browser/other runtimes never call vendor or exchange', async () => {
+test('Disabled/missing-backend/missing-plugin/browser/other runtimes never call vendor or exchange', async () => {
   for (const options of [
     { enabled: false },
-    { isDemo: true },
     { backendReady: false },
     { plugin: false },
     { native: false },
@@ -196,7 +193,7 @@ test('Personal WeChat and non-mini-program runtimes cannot request WeChat login'
   for (const options of [
     { target: 'MP-WEIXIN', subject: 'personal' },
     {},
-    { target: 'MP-WEIXIN', isDemo: true }
+    { target: 'MP-WEIXIN', backendReady: false }
   ]) {
     const { api, calls } = harness(options)
     assert.equal(api.wechatPhoneAvailable(), false)

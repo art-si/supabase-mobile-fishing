@@ -1,6 +1,7 @@
 import { config } from '@/config'
 import { authErrorMessage, retryAfterFromHeaders } from '@/domain/auth-errors'
 import { serviceErrorMessage } from '@/domain/user-errors'
+import type { UploadSignal } from '@mobile-core/upload-progress'
 export class ApiError extends Error {
   constructor(
     message: string,
@@ -13,6 +14,7 @@ export class ApiError extends Error {
 }
 export function isTransientRequestError(error: unknown) {
   return error instanceof ApiError &&
+    error.code !== 'REQUEST_CANCELLED' &&
     (error.status === 0 || error.status === 408 || error.status === 429 || error.status >= 500)
 }
 export interface RequestOptions {
@@ -21,12 +23,34 @@ export interface RequestOptions {
   token?: string
   headers?: Record<string, string>
   timeout?: number
+  signal?: UploadSignal
 }
 export async function request<T>(path: string, options: RequestOptions = {}): Promise<T> {
+  const cancelled = () => new ApiError('请求已取消', 0, 'REQUEST_CANCELLED')
+  if (options.signal?.aborted) throw cancelled()
   if (!config.supabaseKey)
     throw new ApiError('服务暂时不可用，请稍后重试', 0, 'SERVICE_UNAVAILABLE')
   return new Promise((resolve, reject) => {
-    uni.request({
+    let settled = false, wasCancelled = false, abortCalled = false
+    let task: UniApp.RequestTask | undefined
+    const cleanup = () => options.signal?.removeEventListener('abort', onAbort)
+    const succeed = (value: T) => { if (!settled) { settled = true; cleanup(); resolve(value) } }
+    const fail = (error: unknown) => { if (!settled) { settled = true; cleanup(); reject(error) } }
+    const abortNative = () => {
+      if (!task || abortCalled) return
+      abortCalled = true
+      try { task.abort() } catch { /* cancellation already settled the request */ }
+    }
+    function onAbort() {
+      if (settled) return
+      wasCancelled = true
+      // Settle before abort(), whose native fail callback can fire synchronously.
+      fail(cancelled())
+      abortNative()
+    }
+    options.signal?.addEventListener('abort', onAbort, { once: true })
+    if (options.signal?.aborted) { onAbort(); return }
+    try { task = uni.request({
       url: `${config.supabaseUrl}${path}`,
       method: options.method || 'GET',
       data: options.data as UniApp.RequestOptions['data'],
@@ -38,8 +62,9 @@ export async function request<T>(path: string, options: RequestOptions = {}): Pr
         ...options.headers
       },
       success(response) {
+        if (settled) return
         if (response.statusCode >= 200 && response.statusCode < 300)
-          return resolve(response.data as T)
+          return succeed(response.data as T)
         const body =
           response.data && typeof response.data === 'object'
             ? (response.data as Record<string, unknown>)
@@ -59,7 +84,7 @@ export async function request<T>(path: string, options: RequestOptions = {}): Pr
           : serviceErrorMessage(message.trim())
             ? message.trim()
             : ''
-        reject(
+        fail(
           new ApiError(
             known
               ? serviceErrorMessage(known)!
@@ -76,7 +101,17 @@ export async function request<T>(path: string, options: RequestOptions = {}): Pr
           )
         )
       },
-      fail: () => reject(new ApiError(serviceErrorMessage('NETWORK_ERROR')!, 0, 'NETWORK_ERROR'))
+      fail: (failure) => {
+        if (settled) return
+        // Uni reports timeout as a transport failure too. Keep diagnostics private,
+        // but do not tell people that their connection disconnected without evidence.
+        const code = /timeout|timed out/i.test(failure.errMsg || '')
+          ? 'REQUEST_TIMEOUT' : 'NETWORK_ERROR'
+        fail(new ApiError(serviceErrorMessage(code)!, 0, code))
+      }
     })
+    // An interceptor may cancel while uni.request is still creating its task.
+    if (wasCancelled) abortNative()
+    } catch (error) { fail(error) }
   })
 }

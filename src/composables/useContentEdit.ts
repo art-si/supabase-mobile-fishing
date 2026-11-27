@@ -1,5 +1,4 @@
 import { computed, nextTick, onUnmounted, ref, watch, type Ref } from 'vue'
-import { isDemo } from '@/config'
 import { read, write } from '@/services/repository'
 import { resolvePhotos } from '@/services/media'
 import { assertSession, sessionScope } from '@/services/session'
@@ -55,7 +54,7 @@ export function useContentEdit<D extends PostDraft | SpotDraft>(options: {
     saved = false,
     pending: EditAttempt | undefined
   const key = () =>
-    `dyj.${isDemo ? 'demo' : 'live'}.draft.${options.owner.value}.edit.${options.type()}.${id.value}`
+    `dyj.live.draft.${options.owner.value}.edit.${options.type()}.${id.value}`
   function persist() {
     if (
       !ready.value ||

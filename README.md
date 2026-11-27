@@ -4,36 +4,36 @@
 
 **当前是可运行的开发预览，不是已经上线的三端成品。** 线上服务和平台验收尚未完成。
 
-## 本地体验
+## 本地运行
 
 需要 Node 22.13+ 和 pnpm 11。单独克隆钓友集后，`pnpm install` 会从 Gitee 下载锁定提交的 `supabase-mobile-pro`，并安装它统一维护的 Vue、Pinia、Uni-app 和构建工具。联调公共组件时可用 `MOBILE_PRO_ROOT` 指向本地 Pro 源码，构建工具仍使用锁定包中的版本。
 
+首次运行前，复制 `.env.example` 为 `.env.local`，填写目标项目的公开 Key；不要把服务端密钥放进 `VITE_*`。
+
 ```powershell
 pnpm install
-pnpm dev:demo
+pnpm dev:h5
 ```
 
-打开 `http://127.0.0.1:5178`。H5 启动默认监听 `0.0.0.0:5178`，同一局域网设备可使用 `http://电脑的局域网IPv4:5178` 访问；只在可信网络内使用，不要映射到公网。体验模式有明确横幅，使用独立本机数据和身份，不发送短信、不写线上数据库；示例钓位不可用于真实出行。体验照片为临时预览，重启后可能失效。
+打开 `http://127.0.0.1:5178`。H5 启动默认监听 `0.0.0.0:5178`，同一局域网设备可使用 `http://电脑的局域网IPv4:5178` 访问；只在可信网络内使用，不要映射到公网。开发和发布使用同一套真实接口。离线、未配置或请求失败时显示对应状态，不会改用本机账号或示例内容。
 
-已构建的体验版可运行 `pnpm preview:demo`（先 `pnpm build:demo`）；正式版为 `pnpm preview:h5`。端口固定为 5178，预览时若已被占用会直接提示。手机须与电脑联网互通；如果访问不到，检查 Wi-Fi 客户端隔离或 Windows 防火墙的专用网络规则。普通局域网 HTTP 下浏览器可能禁用定位和相机等安全上下文能力，完整真机测试应使用 HTTPS。
-
-正式模式：复制 `.env.example` 为忽略提交的 `.env.local`，填写公开配置后运行 `pnpm dev:h5`。未配置服务时明确报错，不自动退回演示。服务端密钥不能放进 `VITE_*`。
+构建后用 `pnpm preview:h5` 预览。端口固定为 5178，预览时若已被占用会直接提示。手机须与电脑联网互通；如果访问不到，检查 Wi-Fi 客户端隔离或 Windows 防火墙的专用网络规则。普通局域网 HTTP 下浏览器可能禁用定位和相机等安全上下文能力，完整真机测试应使用 HTTPS。
 
 ## 构建与验证
 
 | 目标 | 命令 | 产物／说明 |
 | --- | --- | --- |
-| H5 线上／体验 | `pnpm build:h5` / `pnpm build:demo` | `dist/build/h5` / `dist/demo/h5` |
+| H5 | `pnpm build:h5` | `dist/build/h5` |
 | GitHub Pages | `pnpm build:docs` | 生成 `docs/`，保留现有文档；[配置与发布](docs/github-pages.md) |
 | Pages 静态预览／验收 | `pnpm preview:docs` / `pnpm test:docs` | 5182 端口、仓库子路径、纯静态服务与截图检查 |
-| 微信线上／体验 | `pnpm build:mp-weixin` / `pnpm build:mp-demo` | 开发者工具导入对应 `dist/build/mp-weixin` / `dist/demo/mp-weixin` |
-| App 线上／体验资源 | `pnpm native:sync` / `pnpm native:sync:demo` | 同步 `android/` 与 `ios/` |
+| 微信 | `pnpm build:mp-weixin` | 开发者工具导入 `dist/build/mp-weixin` |
+| App 资源 | `pnpm native:sync` | 同步同一份 H5 到 `android/` 与 `ios/` |
 | Android | `pnpm android:open` | 需要 Android Studio、SDK、签名 |
 | iOS | `pnpm ios:open` | 需要 Mac/Xcode、开发者账户、签名 |
 | 类型／业务／数据库 | `pnpm check` | PostgreSQL 测试使用 PGlite，不替代托管集成测试 |
 | Edge | `pnpm check:edge` | 类型及基础请求防护，不代表已部署 |
-| H5 流程 | `pnpm test:h5` | 先构建体验包；自启临时服务器，默认使用本机 Chrome |
-| 主题／逐页视觉 | `pnpm test:visual` | 体验包；截图覆盖核心页面、小屏、深色与主题状态 |
+| H5 流程 | `pnpm test:h5` | 先 `pnpm build:h5`；只读线上公开内容；自启临时服务器，默认使用本机 Chrome |
+| 公开页面视觉 | `pnpm test:visual` | 正式界面；覆盖登录、键盘焦点、小屏、横屏、深色和大字 |
 | 高德契约 | `pnpm test:map` | 隔离构建／会话，模拟地图接口；不模拟短信成功、不发送真实短信或地图请求 |
 | 高德真实地图 | `node scripts/test-amap-live.mjs` | 需已启动正式 H5；公开地点搜索、选点、地址识别及布局检查，不登录或发送短信 |
 | 密集钓位与缩放 | `node scripts/test-map-clusters.mjs` | 默认5178，可设 `FISHING_H5_URL`；真实高德底图／隔离钓位响应，数量合并、展开、重合列表、主题与键盘检查，不写远端或获取GPS |
@@ -62,7 +62,9 @@ pnpm dev:demo
 | 缺配置的正式模式 | `pnpm test:h5:unconfigured` | 自动隔离构建无 Key 包，不覆盖 `.env.local`；验证无演示兜底 |
 | 发布门槛 | `pnpm release:check` | 配置、功能和人工验收未完成时应失败 |
 
-截图输出到 `artifacts/h5/`。可用 `PLAYWRIGHT_CHANNEL=bundled` 选择已安装的 Playwright Chromium。
+真实接口冒烟截图在 `artifacts/h5/`，多尺寸截图在 `artifacts/visual-optimization/`。可用 `PLAYWRIGHT_CHANNEL=bundled` 选择已安装的 Playwright Chromium。
+需登录的跨端布局用例仅针对一次性本地 Supabase（`http://127.0.0.1:54321`）。使用该 URL 和本地公开 key 构建；H5 设置 `H5_BUILD_DIR`、`FISHING_UI_ACCOUNT`、`FISHING_UI_PASSWORD`，小程序设置 `MINIAPP_UI_BUILD_DIR` 并先手动登录本地测试账号。需内容的用例另行准备测试帖子／评论／钓位；不要使用个人凭证或线上数据。
+
 `src/_mobile-core/` 是生成目录，禁止手改；通用控件归属 Pro，钓位／渔获／好友业务归属本仓。
 
 ## 产品与技术方案
@@ -90,7 +92,7 @@ pnpm dev:demo
 
 ## 当前阶段
 
-2026 年 11 月 19 日：已实现业务开发预览、SQL 权限基础与原生工程。H5 和微信线上／体验构建通过；Android/iOS 已资源同步，但未编译 APK／IPA、未真机验收。
+2026 年 11 月 19 日：已实现业务开发预览、SQL 权限基础与原生工程。当时的 H5 和微信构建通过；Android/iOS 已资源同步，但未编译 APK／IPA、未真机验收。
 
 Supabase 项目已接通；项目级 MCP 临时不可用时使用已认证且限定该项目的 CLI。已部署基础表／权限、地图配额、内部权限、内容审核、作者编辑和私密水域线索共六条迁移，以及 `amap`、`media-upload`、`account-delete` 三个函数。真实公开读取和匿名拒绝检查已通过；公开 Key 保存在忽略提交的 `.env.local`。没有写入线上示例数据。短信由另一个任务处理，原生号码认证仍缺配置和真实联调；高德状态见下述更新。
 

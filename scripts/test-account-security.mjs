@@ -50,6 +50,21 @@ function session(phone = oldPhone, suffix = '') {
     user: { id, phone: '86' + phone }
   }
 }
+function smsSession(phone = oldPhone) {
+  return {
+    ...session(phone, '-verified'),
+    access_token:
+      'fixture.' +
+      Buffer.from(
+        JSON.stringify({
+          sub: id,
+          phone: '86' + phone,
+          amr: [{ method: 'otp', timestamp: Math.floor(Date.now() / 1000) }]
+        })
+      ).toString('base64url') +
+      '.fixture-only'
+  }
+}
 async function setup(signedIn = false) {
   const context = await browser.newContext({
     viewport: { width: 375, height: 812 },
@@ -74,6 +89,9 @@ async function setup(signedIn = false) {
     errors: [],
     phone: oldPhone,
     passwordError: false,
+    passwordConfigured: true,
+    passwordStateError: false,
+    passwordStateGate: null,
     otpRate: false,
     wrongCode: false,
     conflict: false,
@@ -169,7 +187,7 @@ async function setup(signedIn = false) {
       return json(200, session(state.phone, '-handle'))
     }
     if (url.pathname === '/auth/v1/otp') {
-      assert.equal(data.create_user, false)
+      assert.equal(typeof data.create_user, 'boolean')
       if (state.otpRate)
         return json(429, { error_code: 'over_sms_send_rate_limit' }, { 'Retry-After': '125' })
       return json(200, {})
@@ -182,14 +200,20 @@ async function setup(signedIn = false) {
         assert.equal(data.phone, '+86' + newPhone)
         state.phone = newPhone
       }
-      return json(200, session(state.phone, '-verified'))
+      return json(
+        200,
+        data.type === 'sms' ? smsSession(state.phone) : session(state.phone, '-verified')
+      )
     }
     if (url.pathname === '/auth/v1/user') {
       if (request.method() === 'PUT') {
         if (state.updateGate) await state.updateGate
         if (data.phone && state.conflict)
           return json(422, { error_code: 'phone_exists', msg: 'PRIVATE_UPSTREAM_SENTINEL' })
-        if (data.password) state.password = data.password
+        if (data.password) {
+          state.password = data.password
+          state.passwordConfigured = true
+        }
       }
       return json(200, {
         id,
@@ -199,6 +223,11 @@ async function setup(signedIn = false) {
       })
     }
     if (url.pathname === '/auth/v1/logout') return json(200, {})
+    if (url.pathname === '/rest/v1/rpc/fishing_password_configured') {
+      if (state.passwordStateGate) await state.passwordStateGate
+      if (state.passwordStateError) return json(503, {})
+      return json(200, state.passwordConfigured)
+    }
     if (url.pathname === '/rest/v1/rpc/fishing_read' && data?.action === 'profile') {
       if (state.profileGate) await state.profileGate
       return json(200, {
@@ -538,8 +567,9 @@ try {
       await page.getByRole('checkbox', { name: '记住密码', exact: true }).click()
       await page.waitForFunction(() => !localStorage.getItem('dyj.login.preference.v1'))
       await page.reload({ waitUntil: 'networkidle' })
-      await text(page, '手机号登录')
-      assert.equal(await field(page, '账号或手机号').count(), 0)
+      await text(page, '密码登录')
+      assert.equal(await field(page, '账号或手机号').inputValue(), '')
+      assert.equal(await field(page, '登录密码').inputValue(), '')
     }
   )
   await check('handle-password-login-and-switch-back-to-sms', false, async ({ page, state }) => {
@@ -619,7 +649,9 @@ try {
       await open(page, 'pages/account/security')
       await text(page, '138 **** 0000')
       await text(page, 'DY000000000001')
-      await context.grantPermissions(['geolocation', 'clipboard-read', 'clipboard-write'], { origin: base })
+      await context.grantPermissions(['geolocation', 'clipboard-read', 'clipboard-write'], {
+        origin: base
+      })
       await button(page, '复制钓友号').click()
       await text(page, '钓友号已复制')
       assert.equal(await page.evaluate(() => navigator.clipboard.readText()), 'DY000000000001')
@@ -680,6 +712,141 @@ try {
         0,
         'reuse verified session, no charged resend'
       )
+    }
+  )
+  await check(
+    'sms-registration-password-setup-remember-and-next-password-login',
+    false,
+    async ({ page, state }) => {
+      state.passwordConfigured = false
+      await open(page, 'pages/login/index')
+      await field(page, '手机号码').fill(oldPhone)
+      await button(page, '获取验证码').click()
+      await field(page, '短信验证码').fill('010203')
+      await button(page, '登录 / 注册').click()
+      await text(page, '设置登录密码')
+      await field(page, '新密码').waitFor()
+      assert.equal(await field(page, '短信验证码').count(), 0)
+      assert.ok(page.url().includes('from=login'))
+      assert.equal(state.requests.filter((r) => r.path === '/auth/v1/otp').length, 1)
+      assert.equal(state.requests.find((r) => r.path === '/auth/v1/otp').data.create_user, true)
+      for (const [width, height] of [
+        [320, 812],
+        [375, 812],
+        [440, 900],
+        [844, 390],
+        [1280, 800]
+      ]) {
+        await page.setViewportSize({ width, height })
+        await layout(page, 'registration-password-' + width)
+        await shot(page, 'registration-password-' + width)
+      }
+      await page.setViewportSize({ width: 320, height: 900 })
+      await page.emulateMedia({ colorScheme: 'dark' })
+      await page.addStyleTag({ content: 'html{font-size:32px!important}' })
+      await layout(page, 'registration-password-dark-large-320')
+      await shot(page, 'registration-password-dark-large-320')
+      await page.setViewportSize({ width: 375, height: 812 })
+      await page.emulateMedia({ colorScheme: 'light' })
+      await page.addStyleTag({ content: 'html{font-size:16px!important}' })
+      await field(page, '新密码').fill('FixturePassword1')
+      await field(page, '确认新密码').fill('FixturePassword1')
+      const remember = page.getByRole('checkbox', { name: '记住密码', exact: true })
+      await remember.click()
+      await remember.focus()
+      await shot(page, 'registration-remember-focus-375')
+      await button(page, '保存密码').click()
+      await text(page, '密码已设置')
+      assert.equal(state.browserPasswordWrites, 1)
+      assert.equal(state.requests.filter((r) => r.path === '/auth/v1/otp').length, 1)
+      assert.equal(
+        (await page.evaluate(() => JSON.stringify(localStorage))).includes('FixturePassword1'),
+        false
+      )
+      await button(page, '完成').click()
+      assert.ok(
+        !page.url().includes('pages/login/index'),
+        'completion must not return to registration'
+      )
+      await open(page, 'pages/settings/index')
+      await button(page, '退出登录').click()
+      await button(page, '清除草稿并退出').click()
+      await page.waitForFunction(() => !localStorage.getItem('dyj.auth.v1'))
+      await open(page, 'pages/login/index')
+      await text(page, '密码登录')
+      await page.waitForFunction(
+        () => document.querySelector('input[aria-label="登录密码"]')?.value === 'FixturePassword1'
+      )
+      assert.equal(await field(page, '账号或手机号').inputValue(), oldPhone)
+      await shot(page, 'registration-returning-password-375')
+      await button(page, '登录').click()
+      await page.waitForURL((url) => !url.hash.includes('pages/login'))
+      assert.equal(state.requests.filter((r) => r.path.includes('grant_type=password')).length, 1)
+      assert.equal(state.requests.filter((r) => r.path === '/auth/v1/verify').length, 1)
+    }
+  )
+  await check(
+    'registered-sms-user-with-password-keeps-password-and-prefers-it-next-time',
+    false,
+    async ({ page, state }) => {
+      await open(page, 'pages/login/index')
+      await field(page, '手机号码').fill(oldPhone)
+      await field(page, '短信验证码').fill('010203')
+      await button(page, '登录 / 注册').click()
+      await page.waitForURL((url) => !url.hash.includes('pages/login'))
+      assert.ok(!page.url().includes('pages/account/password'))
+      assert.equal(state.requests.filter((r) => r.method === 'PUT').length, 0)
+      assert.equal(state.browserPasswordWrites, 0)
+      await open(page, 'pages/login/index')
+      await text(page, '密码登录')
+      assert.equal(await field(page, '登录密码').inputValue(), '')
+      assert.equal(await field(page, '账号或手机号').inputValue(), '')
+      await button(page, '使用短信验证码登录').click()
+      await text(page, '手机号登录')
+    }
+  )
+  await check(
+    'password-state-retry-does-not-reuse-otp-or-resend-sms',
+    false,
+    async ({ page, state }) => {
+      state.passwordConfigured = false
+      state.passwordStateError = true
+      await open(page, 'pages/login/index')
+      await field(page, '手机号码').fill(oldPhone)
+      await field(page, '短信验证码').fill('010203')
+      await button(page, '登录 / 注册').click()
+      await text(page, '服务暂时不可用，请稍后重试')
+      await button(page, '继续登录').waitFor()
+      state.passwordStateError = false
+      await button(page, '继续登录').click()
+      await field(page, '新密码').waitFor()
+      assert.equal(state.requests.filter((r) => r.path === '/auth/v1/verify').length, 1)
+      assert.equal(state.requests.filter((r) => r.path === '/auth/v1/otp').length, 0)
+    }
+  )
+  await check(
+    'late-password-status-does-not-navigate-after-leaving-login',
+    false,
+    async ({ page, state }) => {
+      let release
+      state.passwordConfigured = false
+      state.passwordStateGate = new Promise((done) => {
+        release = done
+      })
+      await open(page, 'pages/login/index')
+      await field(page, '手机号码').fill(oldPhone)
+      await field(page, '短信验证码').fill('010203')
+      const checking = page.waitForRequest((request) =>
+        request.url().includes('/rpc/fishing_password_configured')
+      )
+      await button(page, '登录 / 注册').click()
+      await checking
+      await button(page, '联系客服').click()
+      await page.waitForURL((url) => url.hash.includes('pages/contact'))
+      release()
+      await page.waitForLoadState('networkidle')
+      assert.ok(page.url().includes('pages/contact'))
+      assert.equal(state.browserPasswordWrites, 0)
     }
   )
   await check('phone-change-conflict-then-complete-same-account', true, async ({ page, state }) => {

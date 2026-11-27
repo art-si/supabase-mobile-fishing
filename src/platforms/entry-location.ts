@@ -5,6 +5,7 @@ import { Capacitor } from '@capacitor/core'
 // #endif
 // #ifdef MP-WEIXIN
 declare const wx: {
+  getDeviceInfo?(): { platform?: string }
   getFuzzyLocation(options: {
     type: 'gcj02'
     success: (location: { longitude: number; latitude: number }) => void
@@ -13,7 +14,14 @@ declare const wx: {
 }
 // #endif
 
-export type EntryPermission = PermissionState | 'unknown' | 'insecure' | 'unsupported' | 'unavailable'
+export type EntryPermission =
+  | PermissionState
+  | 'unknown'
+  | 'insecure'
+  | 'unsupported'
+  | 'not-enabled'
+  | 'devtools-unavailable'
+  | 'unavailable'
 export type EntryLocation = LocationCoordinates & { crs: 'GCJ-02'; coarse: boolean }
 
 let observedPermission: PermissionStatus | undefined
@@ -27,7 +35,9 @@ export function releaseEntryPermissionListener() {
   // #endif
 }
 
-export async function readEntryPermission(onChanged: (state: PermissionState) => void): Promise<EntryPermission> {
+export async function readEntryPermission(
+  onChanged: (state: PermissionState) => void
+): Promise<EntryPermission> {
   // #ifdef H5
   if (Capacitor.isNativePlatform()) {
     try {
@@ -35,11 +45,15 @@ export async function readEntryPermission(onChanged: (state: PermissionState) =>
       const result = await Geolocation.checkPermissions()
       if (result.location === 'granted' || result.coarseLocation === 'granted') return 'granted'
       return result.location === 'denied' ? 'denied' : 'prompt'
-    } catch { return 'unavailable' }
+    } catch {
+      return 'unavailable'
+    }
   }
   if (!window.isSecureContext) return 'insecure'
   if (!navigator.geolocation) return 'unsupported'
-  const permission = await navigator.permissions?.query({ name: 'geolocation' }).catch(() => undefined)
+  const permission = await navigator.permissions
+    ?.query({ name: 'geolocation' })
+    .catch(() => undefined)
   releaseEntryPermissionListener()
   if (!permission) return 'unknown'
   observedPermission = permission
@@ -81,8 +95,18 @@ export async function captureEntryLocation(): Promise<EntryLocation> {
       },
       fail({ errMsg }) {
         clearTimeout(timeout)
-        if (/requiredPrivateInfos|api scope is not declared|permission is not open/i.test(errMsg)) {
-          reject(new Error('LOCATION_UNSUPPORTED'))
+        let devtools = false
+        try { devtools = wx.getDeviceInfo?.().platform === 'devtools' } catch { /* optional platform metadata */ }
+        if (devtools && /no permission[\s\S]*appId\s*=/i.test(errMsg)) {
+          reject(new Error('LOCATION_DEVTOOLS_UNAVAILABLE'))
+          return
+        }
+        if (
+          /requiredPrivateInfos|api scope is not declared|permission is not open|no permission[\s\S]*appId\s*=/i.test(
+            errMsg
+          )
+        ) {
+          reject(new Error('LOCATION_NOT_ENABLED'))
         } else if (/scope\.userFuzzyLocation|auth deny|denied|未授权|拒绝/i.test(errMsg)) {
           reject(new Error('LOCATION_DENIED'))
         } else reject(new Error('LOCATION_UNAVAILABLE'))

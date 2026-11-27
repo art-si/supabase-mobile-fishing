@@ -43,20 +43,16 @@ test('Retry-After supports seconds, HTTP dates and case-insensitive response hea
   assert.equal(retryAfterFromHeaders(null), undefined)
 })
 
-test('SMS guard refuses demo, disabled phone auth and unsupported CAPTCHA', () => {
+test('SMS guard refuses disabled phone auth and unsupported CAPTCHA', () => {
   assert.equal(
-    smsLoginUnavailable({ isDemo: true, phoneAuth: true, captcha: false })?.code,
-    'DEMO_AUTH_DISABLED'
-  )
-  assert.equal(
-    smsLoginUnavailable({ isDemo: false, phoneAuth: false, captcha: false })?.code,
+    smsLoginUnavailable({ phoneAuth: false, captcha: false })?.code,
     'PHONE_AUTH_UNAVAILABLE'
   )
   assert.equal(
-    smsLoginUnavailable({ isDemo: false, phoneAuth: true, captcha: true })?.code,
+    smsLoginUnavailable({ phoneAuth: true, captcha: true })?.code,
     'AUTH_SECURITY_UNAVAILABLE'
   )
-  assert.equal(smsLoginUnavailable({ isDemo: false, phoneAuth: true, captcha: false }), null)
+  assert.equal(smsLoginUnavailable({ phoneAuth: true, captcha: false }), null)
 })
 
 test('Session contract accepts complete OTP responses and computes an omitted expiry', () => {

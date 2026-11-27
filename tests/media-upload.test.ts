@@ -34,7 +34,7 @@ function harness(
   const dependencies: Record<string, unknown> = {
     vue: { watch },
     '@/config': {
-      isDemo: false,
+
       config: { supabaseUrl: 'https://test.invalid', supabaseKey: 'public-fixture' }
     },
     './session': {

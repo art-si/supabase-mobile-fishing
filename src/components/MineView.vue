@@ -2,11 +2,11 @@
 defineOptions({ options: { styleIsolation: 'apply-shared' } })
 import { watch } from 'vue'
 import MobileAction from '@mobile-core/components/MobileAction.vue'
-import { activateActionKey, preventActionKey } from '@mobile-core/action-keyboard'
+
 import MobileAvatar from '@mobile-core/components/MobileAvatar.vue'
 import MobileIcon from '@mobile-core/components/MobileIcon.vue'
 import FishMark from './FishMark.vue'
-import FishingLoadingStatus from './FishingLoadingStatus.vue'
+import MobileSkeleton from '@mobile-core/components/MobileSkeleton.vue'
 import MobileLoadError from '@mobile-core/components/MobileLoadError.vue'
 import { useAuthStore } from '@/stores/auth'
 import { useResource } from '@/composables/useResource'
@@ -57,24 +57,17 @@ defineExpose({ refresh: load })
 <template>
   <view class="stack">
     <MobileLoadError v-if="error" :message="error" @retry="load" />
-    <FishingLoadingStatus v-if="loading && auth.signedIn && !data" label="正在读取你的出钓资料…" />
-    <button
-      class="mobile-action panel mine-profile"
-      role="button"
-      :tabindex="0"
-      hover-class="mobile-action--pressed"
+    <MobileSkeleton v-if="loading && auth.signedIn && !data" label="正在读取你的出钓资料…" />
+    <MobileAction
+      class="panel mine-profile"
+      :class="{ 'mine-profile--guest': !auth.signedIn }"
       :aria-label="auth.signedIn ? '编辑钓友资料' : '手机号登录 / 注册'"
       @click="open('/pages/mine/profile')"
-      @keydown="preventActionKey"
-      @keyup="activateActionKey($event, () => open('/pages/mine/profile'))"
     >
-      <view
-        class="mine-profile__identity"
-        :class="{ 'mine-profile__identity--guest': !auth.signedIn }"
-      >
+      <view class="mine-profile__identity">
         <MobileAvatar :src="data?.profile.avatar?.url" :name="data?.profile.nickname" :size="56">
           <FishMark v-if="!data?.profile.nickname" :size="36" />
-          <text v-else>{{ data.profile.nickname.slice(0, 1) }}</text>
+          <text v-else>{{ Array.from(data.profile.nickname.trim())[0] }}</text>
         </MobileAvatar>
         <view class="mine-profile__copy">
           <text class="heading mine-profile__name">{{
@@ -84,12 +77,12 @@ defineExpose({ refresh: load })
             data?.profile.bio || '同步收藏、钓位与出钓记录'
           }}</text>
         </view>
-        <view class="mine-profile__edit">
-          <text v-if="auth.signedIn">编辑钓友资料</text>
-          <MobileIcon name="chevron" :size="16" />
-        </view>
       </view>
-    </button>
+      <view class="mine-profile__edit">
+        <text v-if="auth.signedIn">编辑钓友资料</text>
+        <MobileIcon name="chevron" :size="16" />
+      </view>
+    </MobileAction>
     <MobileAction class="primary" @click="uni.navigateTo({ url: '/pages/post/compose' })"
       ><MobileIcon name="add" :size="20" />记录鱼情</MobileAction
     >
@@ -109,6 +102,9 @@ defineExpose({ refresh: load })
 <style scoped>
 .mine-profile.mobile-action {
   display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px var(--fishing-gap);
   width: 100%;
   padding: var(--fishing-inset);
   color: var(--ink);
@@ -117,18 +113,21 @@ defineExpose({ refresh: load })
 }
 .mine-profile__identity {
   display: flex;
-  flex-wrap: wrap;
-  gap: 4px var(--fishing-gap);
-  align-items: center;
-  width: 100%;
+  flex: 1 1 calc(56px + var(--fishing-gap) + 8rem);
+  min-width: 0;
+  gap: var(--fishing-gap);
+  align-items: flex-start;
 }
-.mine-profile__identity--guest {
+.mine-profile--guest.mobile-action {
   flex-wrap: nowrap;
+}
+.mine-profile--guest .mine-profile__identity {
   column-gap: var(--fishing-gap-small);
 }
 .mine-profile__copy {
   display: flex;
-  flex: 1 1 6rem;
+  flex: 1;
+  align-self: center;
   flex-direction: column;
   gap: 4px;
   min-width: 0;
@@ -137,6 +136,10 @@ defineExpose({ refresh: load })
   overflow-wrap: anywhere;
 }
 .mine-profile__bio {
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  overflow: hidden;
   white-space: pre-wrap;
   overflow-wrap: anywhere;
 }

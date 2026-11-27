@@ -38,7 +38,10 @@ export function useSpotCommunity(targets: Readonly<Ref<string[]>>) {
       }
     }
   }
-  watch(targets, () => void refresh(), { immediate: true })
+  // Ranking and labels can replace the array without changing its target set.
+  // Those visual changes must not issue another summary request for every card.
+  watch(() => JSON.stringify([...new Set(targets.value)].sort()),
+    () => void refresh(), { immediate: true })
   watch(() => auth.context, () => {
     summaries.value = {}
     changes.clear()

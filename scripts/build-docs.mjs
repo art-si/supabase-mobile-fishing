@@ -22,7 +22,6 @@ const env = loadEnv('pages', root, '')
 const projectUrl = 'https://jupuypvmgjpnpntfetqv.supabase.co'
 if ((env.VITE_SUPABASE_URL || '').replace(/\/$/, '') !== projectUrl)
   throw new Error('Pages 构建只允许已确认的 Supabase 项目。')
-if (env.VITE_DATA_MODE !== 'live') throw new Error('Pages 构建必须使用 live 模式。')
 if (!env.VITE_SUPABASE_KEY?.trim())
   throw new Error('请在 .env.local 或 .env.pages.local 配置公开 VITE_SUPABASE_KEY。')
 
@@ -87,7 +86,7 @@ function generatedPath(base, name) {
     name.split('/').some((x) => !x || x === '.' || x === '..') ||
     !(
       /^(assets|static|pages)\//.test(name) ||
-      ['index.html', '.nojekyll', manifestName].includes(name)
+      ['index.html', 'amap-service-worker.js', '.nojekyll', manifestName].includes(name)
     )
   )
     throw new Error('Pages 产物清单包含非生成文件；停止以保留 docs 文档。')
@@ -101,7 +100,7 @@ function generatedPath(base, name) {
 }
 
 const files = filesIn(output)
-for (const required of ['index.html', '.nojekyll'])
+for (const required of ['index.html', 'amap-service-worker.js', '.nojekyll'])
   if (!files.includes(required)) throw new Error(`构建缺少 ${required}`)
 const html = readFileSync(join(output, 'index.html'), 'utf8')
 if (/(?:src|href)=["']\/(?!\/)/.test(html))

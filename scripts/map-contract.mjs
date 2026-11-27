@@ -11,6 +11,7 @@ export async function mapContract({
   overflow,
   screenshot
 }) {
+  page.setDefaultTimeout(45000)
   const calls = [],
     escaped = []
   let images = [],
@@ -32,6 +33,8 @@ export async function mapContract({
     const request = route.request(),
       url = new URL(request.url())
     if (url.origin === base || !url.protocol.startsWith('http')) return route.continue()
+    if (url.origin === 'https://tiles.openfreemap.org' && url.pathname === '/planet')
+      return route.fulfill({ status: 503, headers: { 'access-control-allow-origin': '*' }, body: '' })
     if (url.origin !== 'https://jupuypvmgjpnpntfetqv.supabase.co') {
       escaped.push(url.origin)
       return route.abort()
@@ -51,6 +54,7 @@ export async function mapContract({
     calls.push({ path: url.pathname, body, authorization: request.headers().authorization })
     if (url.pathname === '/rest/v1/rpc/fishing_moderation') return reply({ allowed: false })
     if (url.pathname === '/rest/v1/rpc/fishing_read') return reply({ items: [], next: null })
+    if (url.pathname === '/rest/v1/rpc/fishing_spot_creation_check') return reply({ blocked: false, sources: [], checked_at: '2026-01-01T00:00:00Z' })
     if (url.pathname === '/rest/v1/rpc/fishing_zones_read') {
       assert.equal(body.action, 'nearby')
       return reply({ items: [], truncated: false, zoom_in: false })
@@ -61,7 +65,9 @@ export async function mapContract({
     }
     assert.equal(request.method(), 'POST')
     assert.equal(request.headers().authorization, 'Bearer contract-user-token')
+    if (body.action === 'region') return reply({ province: '湖北省', city: '武汉市', district: '汉阳区', adcode: '420105', citycode: '027' })
     if (body.action === 'search') {
+      if (body.query === '北太子湖') return reply({ items: [{ ...point, name: '北太子湖', address: '武汉市 · 契约水域', longitude: 114.19, latitude: 30.517, adcode: '420105' }], hasMore: false })
       if (body.query === '慢请求') {
         delayedRoute = route
         return
@@ -229,15 +235,16 @@ export async function mapContract({
   pass('late search response cannot replace a newer query')
   await go('/pages/spot/create')
   await fill('钓位名称（选填）', '保留这个草稿名')
-  await button('高德地图选点').click()
+  await button('水域地图选点').click()
   await visible('地图暂时未能加载')
   await page.getByRole('button', { name: '改用地点搜索与静态预览', exact: true }).click()
   await visible('先找到那片水')
-  await fill('搜索高德地点', '水库')
+  await fill('搜索高德地点', '北太子湖')
   await page.locator('input[aria-label="搜索高德地点"]').press('Enter')
-  await page.getByRole('option', { name: /测试水域 A/ }).click()
-  await page.getByRole('button', { name: '确认这个位置', exact: true }).click()
-  await visible(point.address)
+  await page.getByRole('option', { name: /北太子湖/ }).click()
+  await page.getByRole('button', { name: '确认这处水域', exact: true }).click()
+  await page.locator('.spot-entry__address').getByText('北太子湖', { exact: true }).waitFor()
+  await page.locator('.spot-entry__address').getByText('武汉市', { exact: true }).waitFor()
   assert.equal(await page.locator('input[aria-label="钓位名称（选填）"]').inputValue(), '保留这个草稿名')
   assert.equal(
     calls.some((c) => c.path.includes('fishing_write')),

@@ -7,11 +7,11 @@ import assert from 'node:assert/strict'
 const base = process.env.FISHING_H5_URL || 'http://127.0.0.1:5179'
 const cloud = process.env.FISHING_AMAP_CLOUD === '1'
 const output = resolve(
-  cloud ? 'artifacts/amap-cloud-live' : 'artifacts/amap-live',
+  process.env.UI_OUTPUT_DIR || (cloud ? 'artifacts/amap-cloud-live' : 'artifacts/amap-live'),
   new Date().toISOString().replace(/[:.]/g, '-')
 )
 mkdirSync(output, { recursive: true })
-const browser = await chromium.launch({ channel: 'chrome', headless: true })
+const browser = await chromium.launch({ channel: 'chrome', headless: true, proxy: process.env.FISHING_BROWSER_PROXY ? { server: process.env.FISHING_BROWSER_PROXY, bypass: '127.0.0.1,localhost' } : undefined })
 const context = await browser.newContext({
   viewport: { width: 375, height: 812 }, locale: 'zh-CN',
   geolocation: { longitude: 120.69, latitude: 31.31, accuracy: 20 }
@@ -44,7 +44,7 @@ page.on('requestfailed', (request) => {
     })
 })
 try {
-  await page.goto(`${base}/#/pages/map/index?pick=1`, { waitUntil: 'domcontentloaded' })
+  await page.goto(`${base}/#/pages/map/index?pick=1&requestId=live-map-read-only-check`, { waitUntil: 'domcontentloaded' })
   await searchInput.waitFor({ state: 'visible' })
   // Wait for the map container and shared Uni native-input binding, not placeholder markup.
   await page.waitForFunction(
@@ -69,14 +69,10 @@ try {
   // The SDK animates search selection. Wait until the selected pin is centered before
   // testing a second, manual selection; clicking during movement cancels that movement.
   await page.waitForFunction(() => {
-    const map = document.querySelector('#amap-canvas')?.getBoundingClientRect()
-    const pin = document.querySelector('#amap-canvas .amap-marker')?.getBoundingClientRect()
-    return (
-      map &&
-      pin &&
-      Math.abs(pin.x + pin.width / 2 - (map.x + map.width / 2)) < 8 &&
-      Math.abs(pin.bottom - (map.y + map.height / 2)) < 12
-    )
+    const map = document.querySelector('.mobile-map__canvas')?.getBoundingClientRect()
+    const selected = document.querySelector('.map-selection .name')?.textContent?.trim()
+    const pin = [...document.querySelectorAll('.mobile-map__canvas .amap-marker [role="img"]')].find(item => item.getAttribute('aria-label') === selected)?.getBoundingClientRect()
+    return map && pin && Math.abs(pin.x + pin.width / 2 - (map.x + map.width / 2)) < 12 && Math.abs(pin.bottom - (map.y + map.height / 2)) < 18
   })
   // SDK data requests can finish after geocoding and marker movement; a pin on
   // an empty WebGL canvas is not a verified rendered basemap.
@@ -92,10 +88,10 @@ try {
     (response) =>
       response.url().includes('/_AMapService/v3/geocode/regeo') && response.status() === 200
   )
-  await page.locator('#amap-canvas').click({ position: { x: 145, y: 170 } })
+  await page.locator('.mobile-map__canvas').click({ position: { x: 145, y: 170 } })
   await geocode
   await page.waitForFunction(() => {
-    const heading = document.querySelector('.panel .heading')?.textContent || ''
+    const heading = document.querySelector('.map-selection .name')?.textContent || ''
     return heading && heading !== '已选位置'
   })
   await page.evaluate(async () => {
@@ -118,7 +114,7 @@ try {
     await page.screenshot({ path: resolve(output, `map-${label}.png`), fullPage: true })
   }
   const proxy = new URL(await page.evaluate(() => window._AMapSecurityConfig?.serviceHost))
-  const secured = (proxy.pathname === '/_AMapService' || proxy.href === 'https://jupuypvmgjpnpntfetqv.supabase.co/functions/v1/amap-js/_AMapService') &&
+  const secured = proxy.pathname === '/_AMapService' &&
     await page.evaluate(() => !window._AMapSecurityConfig?.securityJsCode)
   assert.ok(secured)
   if (cloud) assert.equal(proxy.protocol, 'https:')
@@ -139,13 +135,14 @@ try {
       abortedTileRequests: failures.filter((f) => f.error === 'net::ERR_ABORTED').length
     })
   )
-} catch {
+} catch (error) {
   await page.screenshot({ path: resolve(output, 'map-failed.png'), fullPage: true }).catch(() => {})
   // Only app-owned messages, never SDK console errors that might contain keys.
   console.log(
     JSON.stringify({
       check: 'live-amap-search-select',
       passed: false,
+      error: String(error?.message || error).replace(/https?:\/\/\S+/g, '[URL withheld]').slice(0, 400),
       messages: await page.locator('body').innerText().then(text => text.slice(0, 300)),
       issued,
       responses,

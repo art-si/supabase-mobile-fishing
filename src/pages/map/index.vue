@@ -4,12 +4,10 @@ import { onHide, onLoad, onReady, onShow, onUnload } from '@dcloudio/uni-app'
 import FishingShell from '@/components/FishingShell.vue'
 import MobileAction from '@mobile-core/components/MobileAction.vue'
 import MobileSearch from '@mobile-core/components/MobileSearch.vue'
-import MobileLoadingStatus from '@/components/FishingLoadingStatus.vue'
 // #ifdef MP-WEIXIN
-import MobileLoadError from '@mobile-core/components/MobileLoadError.vue'
+import MiniWaterMap from './components/MiniWaterMap.vue'
 // #endif
 import FishingEmptyState from '@/components/FishingEmptyState.vue'
-import { isDemo } from '@/config'
 import MapZones from '@/components/MapZones.vue'
 import MobileIcon from '@mobile-core/components/MobileIcon.vue'
 // #ifdef H5
@@ -33,9 +31,11 @@ import { sameMapBounds } from '@/domain/map-spots'
 import { useAuthStore } from '@/stores/auth'
 import { appForeground } from '@/services/app-activity'
 import { usePageActivity } from '@mobile-core/page-activity'
-import type { SelectedPlace } from '@/platforms/map-navigation'
-import { formatMapCoordinates, waterSelection } from '@/domain/map'
+import { returnMapSelection, type SelectedPlace } from '@/platforms/map-navigation'
+import { formatMapCoordinates, placeSelection, waterSelection } from '@/domain/map'
+import type { EntryLocation } from '@/platforms/entry-location'
 // #ifdef H5
+import { entryPosition } from '@/services/entry-location'
 import {
   loadAmap,
   searchPlaces,
@@ -51,6 +51,7 @@ import { waterTapRadiusM } from '@/domain/water-geometry'
 import { resolveNearbyWater, type NearbyWater } from '@/services/nearby-water'
 // #endif
 const auth = useAuthStore(),
+  pageOptionsReady = ref(false),
   pick = ref(false),
   waterPick = ref(false),
   requestId = ref(''),
@@ -78,7 +79,15 @@ const waterTapPixels = 160
 const fences = ref<MapFence[]>([])
 const mapPanel = ref<InstanceType<typeof MobileMap>>()
 // Start with an area overview until the device supplies its actual position.
-const overview = { center: [104, 34], zoom: 4 }
+const overview = { center: [104, 34], zoom: 4, viewMode: '3D', pitch: 0, rotateEnable: false }
+const threeDimensional = ref(false), perspectiveAvailable = ref(false)
+function togglePerspective() {
+  // #ifdef H5
+  if (!perspectiveAvailable.value || !map?.setPitch || !map.getPitch || pinDragging.value) return
+  map.setPitch(threeDimensional.value ? 0 : 40, true)
+  threeDimensional.value = map.getPitch() > 0
+  // #endif
+}
 const zonesActive = ref(false)
 usePageActivity(
   appForeground,
@@ -95,6 +104,7 @@ const zonePanel = ref<InstanceType<typeof MapZones>>()
 // #ifdef H5
 const searchStack = ref<HTMLElement | ComponentPublicInstance>()
 const waterCredit = ref<HTMLElement>()
+const pinDragging = ref(false)
 const creditHeight = ref(0)
 watchPostEffect(cleanup => {
   const credit = waterCredit.value
@@ -141,26 +151,15 @@ const spotPins = new Map<string, {
 // #endif
 onLoad((options) => {
   pick.value = options?.pick === '1'
-  waterPick.value = pick.value && options?.context === 'water'
+  waterPick.value = pick.value && (options?.context === 'water' || options?.context === 'post')
   requestId.value = options?.requestId || ''
+  // Native children can mount before this page receives its route options.
+  // Start location lookup only after the requested picker mode is known.
+  pageOptionsReady.value = true
 })
 onReady(() => {
   ready = true
-  // #ifdef MP-WEIXIN
-  openStaticSearch()
-  // #endif
 })
-// #ifdef MP-WEIXIN
-function openStaticSearch() {
-  error.value = ''
-  uni.redirectTo({
-    url: staticSearchUrl.value,
-    fail: () => {
-      if (!disposed) error.value = '请重试打开地点搜索，或返回上一页。'
-    }
-  })
-}
-// #endif
 onShow(() => {
   pageVisible = true
   updateZoneViewport()
@@ -170,6 +169,7 @@ onShow(() => {
 })
 onHide(() => {
   pageVisible = false
+  pinDragging.value = false
   locationVersion++
   selectionVersion++
   searchVersion++
@@ -258,6 +258,7 @@ function editSearch(value: string) {
   }
 }
 function clearWaterPick() {
+  pinDragging.value = false
   if (!waterPick.value) return
   selected.value = null
   // #ifdef H5
@@ -304,6 +305,8 @@ function mapCreated(instance: MobileMapInstance, sdk: MobileMapSdk) {
   waterAttribution.value = ''
   zoneAttribution.value = false
   map = instance
+  threeDimensional.value = false
+  perspectiveAvailable.value = window.AMap?.Browser?.isWebGL !== false && !!map.setPitch && !!map.getPitch
   mapSdk = sdk
   selected.value = null
   spotPins.clear()
@@ -311,6 +314,12 @@ function mapCreated(instance: MobileMapInstance, sdk: MobileMapSdk) {
   locationMarker = undefined
   selectedWaterOverlay = undefined
   mapReady.value = true
+  instance.on('complete', () => {
+    if (disposed || map !== instance || !error.value) return
+    error.value = ''
+    mapReady.value = true
+    if (pageVisible && entryPosition.value && !selected.value) void position(entryPosition.value)
+  })
   map.on('dragend', updateZoneViewport)
   map.on('click', (event) => {
     mapInteracted()
@@ -325,7 +334,7 @@ function mapCreated(instance: MobileMapInstance, sdk: MobileMapSdk) {
     if (map === instance && pageVisible) updateZoneViewport()
   }))
   updateZoneViewport()
-  if (pageVisible) void position()
+  if (pageVisible) void position(entryPosition.value)
   // #endif
 }
 function mapFailed(cause: unknown) {
@@ -414,34 +423,34 @@ function drawSpotPins(zones: Zone[]) {
   }
 }
 // #endif
-async function selectPoint(longitude: number, latitude: number, name?: string) {
+async function selectPoint(longitude: number, latitude: number, place?: PlaceSuggestion) {
   if (!validCoordinates(longitude, latitude)) return
   const version = ++selectionVersion
-  selected.value = {
-    longitude,
-    latitude,
-    name: name || '已选位置',
-    crs: 'GCJ-02',
-    created_at: Date.now()
-  }
+  selected.value = placeSelection([longitude, latitude], place)
   // #ifdef H5
   const amap = await loadAmap()
   if (disposed || version !== selectionVersion) return
-  if (marker) marker.setPosition([longitude, latitude])
-  else {
+  const pin = createMapPin(selected.value.name)
+  if (marker) {
+    marker.setPosition([longitude, latitude])
+    marker.setContent(pin)
+  } else {
     marker = new amap.Marker({
       position: [longitude, latitude],
-      content: createMapPin(name || '已选地点'),
+      content: pin,
       anchor: 'bottom-center',
       offset: new amap.Pixel(0, 0),
       zIndex: 120
     })
     map?.add(marker)
   }
-  if (!name) {
+  if (!place) {
     try {
       const label = await reverseGeocode([longitude, latitude])
-      if (!disposed && version === selectionVersion && selected.value) selected.value.name = label
+      if (!disposed && version === selectionVersion && selected.value) {
+        selected.value = placeSelection([longitude, latitude], { name: label })
+        pin.setAttribute('aria-label', selected.value.name)
+      }
     } catch {
       /* Coordinates remain usable when geocoder fails. */
     }
@@ -467,7 +476,7 @@ async function search(keyword = query.value, exact = false, activated = false) {
           .map((p) => ({
             id: p.id,
             name: p.name,
-            address: p.address,
+            address: typeof p.address === 'string' ? p.address : '',
             longitude: p.location.getLng(),
             latitude: p.location.getLat()
           }))
@@ -541,9 +550,9 @@ async function choosePlace(id: string) {
   map?.setZoom(14)
   // #endif
   dismissSearch()
-  await selectPoint(longitude, latitude, place.name)
+  await selectPoint(longitude, latitude, place)
 }
-async function position() {
+async function position(initial?: EntryLocation | null) {
   // #ifdef H5
   const instance = map
   if (!instance || !mapReady.value || !pageVisible || locating.value) return
@@ -556,7 +565,9 @@ async function position() {
   locating.value = true
   locationHint.value = ''
   try {
-    const { point, accuracyM } = await locate()
+    const { point, accuracyM } = initial
+      ? { point: [initial.longitude, initial.latitude] as MapPoint, accuracyM: initial.accuracyM }
+      : await locate()
     if (!current()) return
     if (!validCoordinates(...point)) throw new Error('暂时无法取得位置，可以搜索地点或手动选点')
     if (!placePick.value) {
@@ -609,7 +620,7 @@ function waterDetailZoom(polygon: MapPoint[][]) {
 
 async function focusNearbyWater(
   point: MapPoint,
-  action: 'location' | 'tap' | 'preview' | 'search',
+  action: 'location' | 'tap' | 'drag' | 'preview' | 'search',
   isCurrent?: () => boolean,
   accuracyM?: number
 ) {
@@ -619,10 +630,12 @@ async function focusNearbyWater(
   const current = () =>
     !disposed && map === instance && pageVisible && version === locationVersion && (isCurrent?.() ?? true)
   if (!current()) return
-  clearWaterPick()
+  const previousSelection=selected.value
+  if(action==='drag')selected.value=null
+  else clearWaterPick()
   const zoom = instance.getZoom()
   const overviewTap = action === 'tap' && zoom < 14
-  const maxDistanceM = action === 'tap'
+  const maxDistanceM = action === 'tap' || action === 'drag'
     ? waterTapRadiusM(point[1], zoom, waterTapPixels)
     : 2000
   let nearby: NearbyWater | undefined
@@ -636,12 +649,18 @@ async function focusNearbyWater(
   if (!current()) return
   // At close zoom levels, keep the shoreline within reach of the tap on screen.
   const withinTapReach = () => {
-    if (action !== 'tap' || !nearby || nearby.distance === 0) return true
+    if (action !== 'tap' && action !== 'drag' || !nearby || nearby.distance === 0) return true
     const tap = instance.lngLatToContainer(point)
     const water = instance.lngLatToContainer(nearby.point)
     return Math.hypot(tap.getX() - water.getX(), tap.getY() - water.getY()) <= waterTapPixels
   }
   if (!nearby || !withinTapReach()) {
+    if(action==='drag' && previousSelection){
+      selected.value=previousSelection
+      locationMarker?.setPosition([previousSelection.longitude,previousSelection.latitude])
+      locationHint.value='附近未识别到水域，已恢复原选点。'
+      return
+    }
     if (locationMarker) instance.remove(locationMarker)
     locationMarker = undefined
     if (selectedWaterOverlay) instance.remove(selectedWaterOverlay)
@@ -674,7 +693,9 @@ async function focusNearbyWater(
   const targetZoom = overviewTap ? (nearby.polygon ? waterDetailZoom(nearby.polygon) : 16) : undefined
   if (animate) instance.setStatus?.({ animateEnable: true })
   try {
-    if (targetZoom !== undefined && instance.setZoomAndCenter) {
+    if (action === 'drag') {
+      // A fine adjustment changes the pin, never the user's map camera.
+    } else if (targetZoom !== undefined && instance.setZoomAndCenter) {
       instance.setZoomAndCenter(targetZoom, nearby.point, !animate, 620)
     } else {
       instance.setCenter(nearby.point, !animate, 380)
@@ -697,17 +718,37 @@ async function focusNearbyWater(
   }
   if (selectedWaterOverlay) instance.add(selectedWaterOverlay)
   if (locationMarker) instance.remove(locationMarker)
-  const water = waterSelection(nearby.point, nearby.name, nearby.nameUnavailable)
+  const chosenPoint = nearby.point
+  const water = waterSelection(chosenPoint, nearby.name, nearby.nameUnavailable)
+  const pin = document.createElement('span')
+  pin.className = 'water-map-drag-pin'
+  pin.setAttribute('aria-label', '拖动标记微调位置')
+  pin.addEventListener('pointerdown', event => event.stopPropagation())
+  pin.append(createMapPin(water.name))
   locationMarker = new amap.Marker({
-    position: nearby.point,
+    position: chosenPoint,
     title: water.name,
-    content: createMapPin(water.name),
+    content: pin,
     anchor: 'bottom-center',
-    offset: new amap.Pixel(0, 0),
+    offset: new amap.Pixel(0, 8),
+    draggable: true,
+    bubble: false,
     // Keep interactive fence labels above the water selection marker.
     zIndex: 60
   })
   instance.add(locationMarker)
+  const draggableMarker = locationMarker
+  draggableMarker.on('dragstart', () => {
+    if (disposed || !pageVisible || locationMarker !== draggableMarker) return
+    locationVersion++; selectionVersion++; dismissSearch(); locating.value = false
+    locationHint.value = ''; pinDragging.value = true
+  })
+  draggableMarker.on('dragend', event => {
+    if (disposed || !pageVisible || locationMarker !== draggableMarker || !pinDragging.value) return
+    pinDragging.value = false
+    const target: MapPoint = [event.lnglat.getLng(), event.lnglat.getLat()]
+    if (validCoordinates(...target)) void focusNearbyWater(target, 'drag')
+  })
   if (action !== 'preview') {
     focusedPlace.value = water.name
     if (waterPick.value) selected.value = water
@@ -718,18 +759,10 @@ async function focusNearbyWater(
   updateZoneViewport()
 }
 // #endif
-async function confirm() {
-  if (!selected.value || !requestId.value) return
+function confirm() {
+  if (!selected.value || pinDragging.value || locating.value || !requestId.value) return
   // #ifdef H5
-  try {
-    uni.setStorageSync(`dyj.map.selection.${requestId.value}`, {
-      ...selected.value,
-      created_at: Date.now()
-    })
-    uni.navigateBack()
-  } catch (e) {
-    error.value = errorText(e)
-  }
+  returnMapSelection(requestId.value, selected.value, message => { locationHint.value = message })
   // #endif
 }
 </script>
@@ -740,20 +773,12 @@ async function confirm() {
     edge-to-bottom
   >
     <!-- #ifdef MP-WEIXIN -->
-    <view class="fishing-content">
-      <MobileLoadError
-        v-if="error"
-        title="无法打开地点搜索"
-        :message="error"
-        @retry="openStaticSearch"
-      />
-      <MobileLoadingStatus v-else label="正在打开地点搜索…" />
-    </view>
+    <MiniWaterMap v-if="pageOptionsReady" :key="auth.context" :pick="pick" :water-pick="waterPick" :request-id="requestId" />
     <!-- #endif -->
     <!-- #ifdef H5 -->
     <view
       class="map-stage"
-      :class="{ 'map-stage--failed': !!error && !loading }"
+      :class="{ 'map-stage--failed': !!error && !loading, 'map-stage--credit': !!(waterAttribution || zoneAttribution) && mapReady && !loading && !error }"
       :style="{ '--water-credit-height': creditHeight + 'px' }"
     >
       <MobileMap
@@ -786,7 +811,9 @@ async function confirm() {
               floating-suggestions
               suggestion-icon="location-fill"
               :suggestions="suggestions"
-              :suggestion-status="searchLoading ? '正在查找地点…' : searchHint"
+              :suggestion-status="searchLoading ? '' : searchHint"
+              :loading="loading || searchLoading || locating || locationHint === waterLookupHint"
+              loading-label="正在查找城市或水域"
               :disabled="!mapReady"
               @update:model-value="editSearch"
               @search="search($event)"
@@ -794,28 +821,16 @@ async function confirm() {
               @preview="previewPlace"
               @dismiss="dismissSearch"
             />
-            <MobileLoadingStatus v-if="loading" label="正在加载地图…" bare />
             <view v-if="error && !loading" class="map-unavailable">
               <FishingEmptyState
                 class="map-unavailable__content"
                 icon="location"
-                :title="isDemo ? '本机体验不加载在线地图' : '地图暂时未能加载'"
+                title="地图暂时未能加载"
                 :description="error"
                 announce="alert"
               >
+                <MobileAction class="primary map-unavailable__retry" @click="init">重新加载地图</MobileAction>
                 <MobileAction
-                  v-if="isDemo"
-                  class="primary map-unavailable__retry"
-                  @click="pick
-                    ? uni.navigateBack({ fail: () => uni.reLaunch({ url: '/pages/home/index?tab=spots' }) })
-                    : uni.reLaunch({ url: '/pages/home/index?tab=spots' })"
-                  >{{ pick ? '返回上一页' : '浏览示例钓位' }}</MobileAction
-                >
-                <MobileAction v-else class="primary map-unavailable__retry" @click="init"
-                  >重新加载地图</MobileAction
-                >
-                <MobileAction
-                  v-if="!isDemo"
                   class="text-action"
                   @click="uni.redirectTo({ url: staticSearchUrl })"
                   >改用地点搜索与静态预览</MobileAction
@@ -823,34 +838,43 @@ async function confirm() {
               </FishingEmptyState>
             </view>
             <text v-else-if="searchError" class="map-status" role="alert">{{ searchError }}</text>
-            <text v-else-if="locationHint" class="map-status" role="status">{{ locationHint }}</text>
+            <text v-else-if="locationHint && locationHint !== waterLookupHint" class="map-status" role="status">{{ locationHint }}</text>
             <text class="map-place-announcement" role="status">{{ focusedPlace }}</text>
           </view>
         </template>
         <template #controls>
           <MobileAction
-            v-if="mapReady"
-            variant="icon"
+            v-if="mapReady && perspectiveAvailable"
             class="map-control"
-            aria-label="地图内禁钓区域"
-            @click="openZonesList"
-            ><MobileIcon name="shield" size="22px"
-          /></MobileAction>
+            variant="icon"
+            :aria-label="threeDimensional ? '切换二维地图' : '切换三维地图'"
+            :aria-pressed="threeDimensional"
+            :disabled="pinDragging"
+            @click="togglePerspective"
+          >{{ threeDimensional ? '2D' : '3D' }}</MobileAction>
           <MobileAction
             v-if="mapReady"
-            variant="icon"
             class="map-control"
+            variant="icon"
+            aria-label="地图内禁钓区域"
+            @click="openZonesList"
+          ><MobileIcon name="shield" size="22px" /></MobileAction>
+          <MobileAction
+            v-if="mapReady"
+            class="map-control"
+            variant="icon"
             :aria-label="locating ? '定位中' : placePick ? '回到当前位置' : '定位附近水域'"
             :disabled="locating"
             @click="position()"
-            ><MobileIcon name="locate" size="22px"
-          /></MobileAction>
+          ><MobileIcon name="locate" size="22px" /></MobileAction>
         </template>
         <template v-if="pick && selected && !searchLoading && !results.length" #selection
           ><view class="map-selection stack stack--tight"
-            ><text class="name">{{ selected.name }}</text
-            ><text v-if="waterPick" class="caption">{{ formatMapCoordinates(selected.longitude, selected.latitude) }}</text
-            ><MobileAction class="primary" :disabled="!requestId" @click="confirm"
+            ><text class="name" role="status">{{ selected.name }}</text
+            ><text v-if="selected.address && selected.address !== selected.name" class="caption">{{ selected.address }}</text
+            ><text v-if="waterPick || selected.name === '已选位置'" class="caption">{{ formatMapCoordinates(selected.longitude, selected.latitude) }}</text
+            ><text v-if="waterPick" class="caption">拖动标记可微调位置</text
+            ><MobileAction class="primary" :disabled="pinDragging || locating || !requestId" @click="confirm"
               >{{ waterPick ? '确认这处水域' : '确认这个位置' }}</MobileAction
             ></view
           ></template
@@ -883,7 +907,8 @@ async function confirm() {
   position: relative;
   flex: 1 0 220px;
   min-height: 220px;
-  --map-control-bottom: calc(30px + var(--mobile-safe-bottom, 0px));
+  margin-bottom: var(--mobile-safe-bottom, 0px);
+  --map-control-bottom: 30px;
   --mobile-map-fence-color: var(--danger);
   --mobile-map-search-max-width: none;
   --mobile-search-selection: var(--lake-soft);
@@ -895,6 +920,7 @@ async function confirm() {
 .map-stage :deep(.mobile-map__loading) {
   display: none;
 }
+.map-stage--credit :deep(.mobile-map) { height: calc(100% - max(16px, var(--water-credit-height, 0px))); }
 .map-stage :deep(.mobile-map__controls) {
   inset-inline-end: var(--fishing-page-end);
   bottom: var(--map-control-bottom);
@@ -903,7 +929,7 @@ async function confirm() {
 .map-stage :deep(.mobile-map__selection) {
   inset-inline-start: var(--fishing-page-start);
   inset-inline-end: calc(var(--fishing-page-end) + var(--fishing-target) + var(--fishing-gap-small));
-  bottom: max(var(--map-control-bottom), calc(21px + var(--water-credit-height, 0px) + var(--mobile-safe-bottom, 0px)));
+  bottom: max(var(--map-control-bottom), calc(21px + var(--water-credit-height, 0px)));
 }
 .map-control {
   width: var(--fishing-target);
@@ -926,14 +952,16 @@ async function confirm() {
   column-gap: 6px;
   max-inline-size: calc(100% - 72px);
   inset-inline-start: 4px;
-  inset-block-end: calc(17px + var(--mobile-safe-bottom, 0px));
+  inset-block-end: 2px;
   z-index: 1;
   padding: 0 4px;
   background: var(--paper);
-  color: var(--ink);
-  font-size: var(--fishing-caption-size);
-  line-height: 1.4;
+  color: var(--muted);
+  font-size: 11px;
+  line-height: 1.3;
 }
+.map-stage :deep(.water-map-drag-pin) { display: flex; align-items: flex-start; justify-content: center; width: 48px; height: 56px; padding-top: 6px; box-sizing: border-box; cursor: grab; touch-action: none; }
+.map-stage :deep(.water-map-drag-pin:active) { cursor: grabbing; }
 .map-water-credit a {
   color: inherit;
 }
@@ -955,7 +983,9 @@ async function confirm() {
   overflow-wrap: anywhere;
 }
 .map-stage--failed :deep(.mobile-map__canvas) {
+  opacity: 0;
   visibility: hidden;
+  pointer-events: none;
 }
 .map-stage--failed :deep(.mobile-map__search) {
   bottom: var(--fishing-gap-small);

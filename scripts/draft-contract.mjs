@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 
-// Uses the explicit, offline demo record created by smoke-h5; never touches hosted data.
+// The local QA account owns the source trip; no hosted data is accessible.
 export async function draftContract({ page, go, fill, visible, pass, screenshot, overflow, sourceDate }) {
   const sourceTitle = '空军也值得记下'
   const sourceCard = () => page.locator('.panel').filter({ hasText: sourceTitle }).first()

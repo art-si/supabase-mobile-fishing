@@ -1,5 +1,6 @@
 import { Capacitor } from '@capacitor/core'
-import { chooseMediaFiles, type ChosenMedia } from '@mobile-core/media-choose'
+import { withMediaPickerPage } from '@mobile-core/media-picker-session'
+import { chooseMediaFiles, type ChosenMedia, type MediaChooseSource } from '@mobile-core/media-choose'
 
 function isMiniProgram(): boolean {
   // #ifdef MP-WEIXIN
@@ -20,7 +21,6 @@ function cameraError(code: string): Error & { code: string } {
 }
 
 type CameraPage = { page: unknown; route: string }
-let handoff: CameraPage | undefined
 function currentCameraPage(): CameraPage | undefined {
   if (typeof getCurrentPages !== 'function') return undefined
   const pages = getCurrentPages(), page = pages[pages.length - 1]
@@ -31,9 +31,12 @@ function sameCameraPage(snapshot: CameraPage): boolean {
   return Boolean(current && current.page === snapshot.page && current.route === snapshot.route)
 }
 
-/** Capacitor backgrounds the web view while its native camera is open. */
-export function isCommentCameraHandoff(): boolean {
-  return Boolean(handoff && sameCameraPage(handoff) && Capacitor.isNativePlatform())
+/** Keep the Capacitor file input on its initiating page, like the native WeChat picker. */
+export function chooseCommentMedia(count: number, accept: readonly ('image' | 'video')[], source?: MediaChooseSource) {
+  if (source === 'camera') return chooseCommentCamera()
+  const select = () => chooseMediaFiles(count, accept, source)
+  if (!isMiniProgram() && Capacitor.isNativePlatform()) return withMediaPickerPage(select)
+  return select()
 }
 
 /** Ownership of the returned object URL passes to MobileMediaUploader's release lifecycle. */
@@ -46,10 +49,13 @@ export async function chooseCommentCamera(): Promise<ChosenMedia[]> {
   if (!Capacitor.isNativePlatform() || !Capacitor.isPluginAvailable('Camera'))
     throw cameraError('CAMERA_UNAVAILABLE')
   const page = currentCameraPage()
-  if (!page || handoff) throw cameraError('CAMERA_UNAVAILABLE')
-  const request = page
-  handoff = request
-  try {
+  if (!page) throw cameraError('CAMERA_UNAVAILABLE')
+  return withMediaPickerPage(() => captureImage(page))
+  // #endif
+}
+
+// #ifndef MP-WEIXIN
+async function captureImage(page: CameraPage): Promise<ChosenMedia[]> {
   const { Camera, CameraSource, CameraResultType, CameraDirection } = await import('@capacitor/camera')
   let photo: Awaited<ReturnType<typeof Camera.getPhoto>>
   try {
@@ -99,8 +105,5 @@ export async function chooseCommentCamera(): Promise<ChosenMedia[]> {
     if (error && typeof error === 'object' && 'code' in error && ['IMAGE_INPUT_TOO_LARGE', 'IMAGE_UNSUPPORTED', 'CAMERA_READ_FAILED'].includes(String(error.code))) throw error
     throw cameraError('CAMERA_READ_FAILED')
   }
-  } finally {
-    if (handoff === request) handoff = undefined
-  }
-  // #endif
 }
+// #endif

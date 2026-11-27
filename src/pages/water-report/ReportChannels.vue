@@ -1,11 +1,11 @@
 <script setup lang="ts">
+
 import { computed, ref, watch, onBeforeUnmount } from 'vue'
 import { onHide } from '@dcloudio/uni-app'
 import MobileAction from '@mobile-core/components/MobileAction.vue'
 import MobileIcon from '@mobile-core/components/MobileIcon.vue'
 import MobileConfirmDialog from '@mobile-core/components/MobileConfirmDialog.vue'
-import { matchingReportChannels, type ReportChannel } from '@/domain/report-channels'
-import { isDemo } from '@/config'
+import { matchingReportChannels, preferredReportChannels, type ReportChannel } from '@/domain/report-channels'
 import { useAuthStore } from '@/stores/auth'
 import type { WaterReport } from '@/domain/water-report'
 import { rankedReportChannels, channelDistance, channelDistanceLabel, type ChannelPoint, type ChannelLocations } from '@/domain/report-channel-location'
@@ -31,7 +31,7 @@ watch(()=>[props.incidentPoint,props.resolvedRegion],async()=>{
  const version=++regionVersion
  recoveredRegion.value=null;resolving.value=false
  const point=props.incidentPoint
- if(!point||props.resolvedRegion||isDemo)return
+ if(!point||props.resolvedRegion)return
  resolving.value=true
  try{
   const result=await describeReportLocation([point.longitude,point.latitude])
@@ -48,14 +48,14 @@ const submissionReport = computed(() => {
 const matching=computed(()=>matchingReportChannels(region.value.province,region.value.city,region.value.district,Date.now(),{
  category:props.category,areaCode:('areaCode' in region.value ? region.value.areaCode : undefined)
 }))
-const channels=computed(()=>rankedReportChannels(matching.value,props.incidentPoint,locations.value))
+const channels=computed(()=>rankedReportChannels(preferredReportChannels(matching.value),props.incidentPoint,locations.value))
 const agencies = computed(() => resolving.value || !props.category ? [] : reportAgencyOptions(channels.value, reportEntryPlatform))
 const showChannels=computed(()=>!props.compact || expanded.value)
 let lookupVersion=0
 watch([matching,()=>props.incidentPoint,resolving,showChannels],async()=>{
  const version=++lookupVersion
  locations.value={}
- if(!props.incidentPoint||!showChannels.value||resolving.value||isDemo||!matching.value.some(c=>c.officeName))return
+ if(!props.incidentPoint||!showChannels.value||resolving.value||!matching.value.some(c=>c.officeName))return
  const result=await locateReportChannels(matching.value)
  if(version===lookupVersion)locations.value=result
 },{immediate:true})
@@ -69,7 +69,6 @@ const confirm = ref(false),
   selected = ref<ReportChannel>(),
   feedback = ref('')
 function choose(channel: ReportChannel) {
-  if (isDemo) return
   if(channel.kind!=='phone'){void enterChannel(channel);return}
   selected.value = channel
   confirm.value = true
@@ -78,7 +77,7 @@ watch(pickerOpen, open => {
   if (open) { expanded.value = false; feedback.value = '' }
 })
 function selectAgency(channel: ReportChannel, action: AgencyAction) {
-  if (!pickerOpen.value || !props.report || resolving.value || !auth.signedIn || isDemo) return
+  if (!pickerOpen.value || !props.report || resolving.value || !auth.signedIn) return
   if (action.kind === 'email') { composeEmail(channel); return }
   pickerOpen.value = false
   if (action.kind === 'phone') dial(action.number)
@@ -90,7 +89,6 @@ defineExpose({agencies, submissionReport, recordFeedback})
 const entry=(channel:ReportChannel)=>reportChannelEntry(channel,reportEntryPlatform)
 function actionLabel(channel:ReportChannel){return channel.kind==='phone'?`拨打${channel.name}`:entry(channel).label+`：${channel.name}`}
 async function enterChannel(channel:ReportChannel){
- if(isDemo)return
  const action=entry(channel)
  feedback.value=''
  try{
@@ -107,7 +105,7 @@ async function enterChannel(channel:ReportChannel){
  }catch{feedback.value=channel.kind==='website'?'未能打开官网，可复制链接后在浏览器访问。':`暂未完成，请在微信搜索“${channel.value}”并核对官方主体。`}
 }
 function composeEmail(channel:ReportChannel){
- if(isDemo||!auth.requireLogin()||!channel.email)return
+ if(!auth.requireLogin()||!channel.email)return
  emailChannel.value=channel
  try{
   const contact=readReportEmailContact(auth.userId)
@@ -122,7 +120,7 @@ function contactSaved(contact:ReportEmailContact){
  if(emailChannel.value)emailConfirm.value=true
 }
 function sendEmail(){
- if(isDemo||!emailChannel.value?.email||!emailContact.value||!auth.signedIn)return
+ if(!emailChannel.value?.email||!emailContact.value||!auth.signedIn)return
  pickerOpen.value=false
  try{
   const opened=openReportMail(reportMailto(emailChannel.value.email,emailContact.value,submissionReport.value))
@@ -134,7 +132,7 @@ function copyEmail(channel:ReportChannel){
  uni.setClipboardData({data:channel.email,showToast:false,success:()=>{feedback.value='举报邮箱已复制，可在自己的邮箱中写信发送。'},fail:()=>{feedback.value=`复制失败，举报邮箱为 ${channel.email}。`}})
 }
 function dial(number: string) {
-  if (isDemo || !number) return
+  if (!number) return
   feedback.value = ''
   uni.makePhoneCall({
     phoneNumber: number,
@@ -164,7 +162,6 @@ async function source(channel: ReportChannel) {
       <text v-if="incidentPoint && region.province" class="caption">{{ regionLabel(region) }}</text>
     </view>
     <text v-if="resolving" class="caption" role="status">正在识别水域辖区…</text>
-    <text v-if="isDemo" class="notice">本机体验只展示渠道，不拨号、不发送材料。</text>
     <text v-if="!resolving && !channels.length" class="notice"
       >此地区暂无可用的已核验渠道，请查看当地政府公布的联系方式。</text
     >
@@ -179,7 +176,6 @@ async function source(channel: ReportChannel) {
       <view class="mobile-action-group">
         <MobileAction
           class="secondary"
-          :disabled="isDemo"
           :aria-label="actionLabel(channel)"
           @click="choose(channel)"
           >{{ entry(channel).label }}</MobileAction
@@ -188,7 +184,7 @@ async function source(channel: ReportChannel) {
       </view>
       <text v-if="reportEntryHelp(channel,reportEntryPlatform)" class="caption">{{ reportEntryHelp(channel,reportEntryPlatform) }}</text>
       <view v-if="channel.email" class="mobile-action-group">
-        <MobileAction class="secondary" :disabled="isDemo" @click="composeEmail(channel)">发送邮件</MobileAction>
+        <MobileAction class="secondary" @click="composeEmail(channel)">发送邮件</MobileAction>
         <MobileAction class="secondary" @click="copyEmail(channel)">复制邮箱</MobileAction>
       </view>
       <text v-if="channel.email" class="caption">打开自己的邮箱确认发送；文字自动填入，图片和视频需在邮件中添加。</text>
@@ -215,7 +211,8 @@ async function source(channel: ReportChannel) {
 <style scoped>
 .report-channel__email { overflow-wrap:anywhere; }
 .report-channel__toggle { display:flex; align-items:center; gap:0.65rem; width:100%; min-height:3.25rem; padding:0.65rem 1rem; background:var(--paper); border-radius:var(--fishing-control-radius); color:var(--ink); text-align:start; }
-.report-channel__area { margin-inline-start:auto; }
+.report-channel__toggle > .name { flex:1; min-width:0; }
+.report-channel__area { flex:none; max-width:40%; overflow-wrap:anywhere; margin-inline-start:auto; }
 .report-channel__arrow { display:flex; flex:none; color:var(--reed); transform:rotate(90deg); }
 .report-channel__arrow--open { transform:rotate(-90deg); }
 </style>

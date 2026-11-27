@@ -1,7 +1,7 @@
 import { watch } from 'vue'
 import { RealtimeClient, type RealtimeClientOptions } from '@supabase/realtime-js'
 import { createLiveUpdates } from '@/domain/live-updates'
-import { config, isDemo, backendReady } from '@/config'
+import { config, backendReady } from '@/config'
 import { accessToken, session, sessionScope } from '@/services/session'
 // #ifdef MP-WEIXIN
 import 'core-js/actual/url'
@@ -81,7 +81,7 @@ function updateForeground() {
   updates.setForeground(visible)
 }
 export function initializeLiveUpdates() {
-  if (installed || isDemo || !backendReady) return
+  if (installed || !backendReady) return
   installed = true
   watch(
     [sessionScope, () => session.value?.access_token],

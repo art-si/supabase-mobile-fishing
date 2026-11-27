@@ -283,8 +283,8 @@ export async function compositionFlow({
   await page.emulateMedia({ colorScheme: 'light' })
   for (const [skin, name] of [
     ['lake', '湖畔青'],
-    ['ocean', '深海蓝'],
-    ['stone', '岩石灰']
+    ['ocean', '日出橙'],
+    ['stone', '莓果红']
   ]) {
     await go(page, '/pages/settings/index')
     await button(page, name).click()

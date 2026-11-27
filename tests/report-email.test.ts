@@ -16,16 +16,16 @@ test('private email contact validates human name and a single reply mailbox', ()
   assert.ok(validateReportEmailContact({ name: '钓友\n附加内容', email: 'name@example.com' }).name)
 })
 test('mailbox contact is removed with current account private drafts only', () => {
-  assert.equal(privateStorageKey('dyj.live.draft.alice.report-email-contact', 'live', 'alice'), true)
-  assert.equal(privateStorageKey('dyj.live.draft.bob.report-email-contact', 'live', 'alice'), false)
-  assert.equal(privateStorageKey('dyj.demo.draft.alice.report-email-contact', 'live', 'alice'), false)
+  assert.equal(privateStorageKey('dyj.live.draft.alice.report-email-contact', 'alice'), true)
+  assert.equal(privateStorageKey('dyj.live.draft.bob.report-email-contact', 'alice'), false)
+  assert.equal(privateStorageKey('dyj.demo.draft.alice.report-email-contact', 'alice'), false)
 })
 test('mailbox storage remains owner-scoped and reports storage failures without replacing contact', () => {
   const storage = new Map<string, unknown>(), exports: Record<string, any> = {}
   let fail = false
   runInNewContext(ts.transpileModule(readFileSync(new URL('../src/services/report-email-contact.ts', import.meta.url),'utf8'),{compilerOptions:{module:ts.ModuleKind.CommonJS,target:ts.ScriptTarget.ES2022}}).outputText, {
     exports,
-    require:(id:string)=>id==='@/config'?{isDemo:false}:contactRules,
+    require:(id:string)=>contactRules,
     uni:{getStorageSync:(key:string)=>storage.get(key),setStorageSync:(key:string,value:unknown)=>{if(fail)throw new Error('storage full');storage.set(key,value)},removeStorageSync:(key:string)=>storage.delete(key)}
   })
   exports.saveReportEmailContact('alice',{name:'钓友',email:'alice@example.com'})

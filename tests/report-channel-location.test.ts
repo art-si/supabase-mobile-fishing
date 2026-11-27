@@ -1,8 +1,21 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { matchingReportChannels, type ReportChannel } from '../src/domain/report-channels'
+import { matchingReportChannels, preferredReportChannels, type ReportChannel } from '../src/domain/report-channels'
 import { rankedReportChannels, matchChannelOffice, channelDistance } from '../src/domain/report-channel-location'
 const agency:ReportChannel={id:'one',name:'甲市农业局',officeName:'甲市农业局',province:'甲省',city:'甲市',kind:'phone',value:'123',instructions:'',source:'https://example.gov.cn',checked:'2026-11-20'}
+test('incident region alone chooses local contacts; national contacts are fallback only',()=>{
+ const now=Date.parse('2026-11-24T16:00:00+08:00')
+ const select=(province:string,city='',district='',category='electric',date=now)=>preferredReportChannels(matchingReportChannels(province,city,district,date,{category}))
+ assert.deepEqual(select('湖北省','武汉市','蔡甸区').map(c=>c.id),['caidian-fishery','wuhan-fishery'])
+ assert.deepEqual(select('湖北省','武汉市','洪山区').map(c=>c.id),['wuhan-fishery'])
+ assert.ok(select('黑龙江省','未知市').every(c=>c.province==='黑龙江省'))
+ assert.ok(select('河北省','石家庄市').some(c=>c.id==='national-fishery'))
+ assert.ok(select('湖北省','武汉市','蔡甸区','electric',Date.parse('2027-11-24')).some(c=>c.id==='national-fishery'))
+ const water=select('湖北省','武汉市','蔡甸区','other')
+ assert.ok(water.some(c=>c.id==='water-supervision'))
+ assert.ok(!water.some(c=>c.id==='caidian-fishery'))
+ assert.deepEqual(select('香港特别行政区'),[])
+})
 test('same-jurisdiction real distances order nearest first; local beats broader jurisdiction',()=>{
  const two={...agency,id:'two'}, national={...agency,id:'national',city:undefined,province:undefined}
  const origin={longitude:114,latitude:30}, points={one:{longitude:114.2,latitude:30},two:{longitude:114.01,latitude:30},national:origin}

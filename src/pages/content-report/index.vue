@@ -2,12 +2,15 @@
 import { ref, watch } from 'vue'
 import { onLoad, onShow, onHide, onUnload, onReachBottom } from '@dcloudio/uni-app'
 import FishingShell from '@/components/FishingShell.vue'
-import FishingLoadingStatus from '@/components/FishingLoadingStatus.vue'
+import MobileSkeleton from '@mobile-core/components/MobileSkeleton.vue'
 import FishingEmptyState from '@/components/FishingEmptyState.vue'
 import MobileAction from '@mobile-core/components/MobileAction.vue'
 import MobileLoadError from '@mobile-core/components/MobileLoadError.vue'
 import MobileListFooter from '@mobile-core/components/MobileListFooter.vue'
+import MobileIcon from '@mobile-core/components/MobileIcon.vue'
+
 import { useAuthStore } from '@/stores/auth'
+import { useListRefresh } from '@/composables/useListRefresh'
 import { isTransientRequestError } from '@/services/http'
 import { contentReports } from '@/services/content-reports'
 import { errorText, relativeTime } from '@/domain/rules'
@@ -41,6 +44,10 @@ function clear() {
 onReachBottom(() => {
   if (!error.value && !moreError.value) void load(true)
 })
+useListRefresh(async () => {
+  version++; loading.value = loadingMore.value = false
+  await load()
+}, () => auth.signedIn)
 async function load(more = false) {
   if (!visible || !auth.signedIn || loading.value || (more && !next.value)) return
   const current = ++version
@@ -143,7 +150,7 @@ onUnload(() => {
             <MobileAction
               v-for="item in items"
               :key="item.id"
-              class="list-row"
+              class="list-row report-queue__row"
               :aria-label="`处理举报：${item.title || reportTypeLabels[item.type]}`"
               @click="uni.navigateTo({ url: `/pages/content-report/detail?id=${item.id}` })"
             >
@@ -154,20 +161,29 @@ onUnload(() => {
                 <text class="name report-text">{{ item.title || '已举报内容' }}</text>
                 <text class="caption">{{ relativeTime(item.created_at) }}</text>
               </view>
-              <text class="caption">查看</text>
+              <MobileIcon name="chevron" :size="18" />
             </MobileAction>
           </view>
         </template>
         <template v-else>
-          <view v-for="item in items" :key="item.id" class="panel stack">
-            <view class="row row--between row--wrap"
-              ><text class="badge">{{ reportStatusLabels[item.status] }}</text
-              ><text class="caption">{{ relativeTime(item.created_at) }}</text></view
-            >
-            <text class="name report-text">{{ item.title || reportTypeLabels[item.type] }}</text>
-            <text class="body report-text">{{ item.reason }}</text>
-            <view v-if="item.resolution" class="stack stack--tight">
-              <text class="caption">处理说明 · {{ relativeTime(item.resolved_at || '') }}</text>
+          <view v-for="item in items" :key="item.id" class="panel content-report-record">
+            <view class="content-report-record__header">
+              <view class="content-report-record__state">
+                <text class="badge" :class="{ 'badge--warm': item.status === 'pending' }">{{ reportStatusLabels[item.status] }}</text>
+                <text class="caption">{{ reportTypeLabels[item.type] }}</text>
+              </view>
+              <text class="caption">{{ relativeTime(item.created_at) }}</text>
+            </view>
+            <text v-if="item.title && item.title !== reportTypeLabels[item.type]" class="name report-text">{{ item.title }}</text>
+            <view class="stack stack--tight">
+              <text class="caption">问题说明</text>
+              <text class="body report-text">{{ item.reason }}</text>
+            </view>
+            <view v-if="item.resolution" class="stack stack--tight content-report-record__resolution">
+              <view class="content-report-record__header">
+                <text class="caption">处理说明</text>
+                <text class="caption">{{ relativeTime(item.resolved_at || '') }}</text>
+              </view>
               <text class="body report-text">{{ item.resolution }}</text>
             </view>
           </view>
@@ -176,7 +192,7 @@ onUnload(() => {
           :can-load-more="!!next && !loading && !error" :finished="!next && !loading && !error"
           :count="items.length" loading-label="正在加载更多举报记录…"
           error-title="更多举报记录暂未加载" @more="load(true)" />
-        <FishingLoadingStatus v-if="loading && !loadingMore" label="正在读取举报记录…" />
+        <MobileSkeleton v-if="loading && !loadingMore" label="正在读取举报记录…" />
         <FishingEmptyState
           v-else-if="!items.length && !error && !next"
           icon="shield"
@@ -200,6 +216,45 @@ onUnload(() => {
   </FishingShell>
 </template>
 <style scoped>
+.content-report-record {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  color: var(--ink);
+}
+.content-report-record__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 8px 12px;
+}
+.content-report-record__state {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.content-report-record__resolution {
+  border-top: 1px solid var(--line);
+  padding-top: 12px;
+}
+.report-queue__row.mobile-action {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  width: 100%;
+  min-height: 48px;
+  margin: 0;
+  padding: 14px 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  color: var(--ink);
+  text-align: start;
+}
+.report-queue__row.mobile-action:not(:last-child) { border-bottom: 1px solid var(--line); }
 .report-text {
   white-space: pre-wrap;
   overflow-wrap: anywhere;

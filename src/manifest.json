@@ -4,10 +4,11 @@
   "versionName": "0.1.0",
   "versionCode": "100",
   "transformPx": false,
-  "h5": { "title": "钓友集", "router": { "mode": "hash" } },
+  "h5": { "title": "钓友集", "router": { "mode": "hash" }, "darkmode": true, "themeLocation": "theme.json" },
   "mp-weixin": {
     "appid": "wx9f631f76bb1543e0",
     "darkmode": true,
+    "themeLocation": "theme.json",
     "permission": {
       "scope.userFuzzyLocation": { "desc": "用于展示所在城市和附近钓位、水域" }
     },

@@ -1,7 +1,8 @@
 <script setup lang="ts">
+import MobileAction from '@mobile-core/components/MobileAction.vue'
+
 import { computed, getCurrentInstance, nextTick, onScopeDispose, ref, watch } from 'vue'
 import { onHide, onShow } from '@dcloudio/uni-app'
-import MobileAction from '@mobile-core/components/MobileAction.vue'
 import MobileField from '@mobile-core/components/MobileField.vue'
 import MobileConfirmDialog from '@mobile-core/components/MobileConfirmDialog.vue'
 import MobileMediaUploader from '@mobile-core/components/MobileMediaUploader.vue'
@@ -12,9 +13,12 @@ import type { MediaUploadEntry } from '@mobile-core/media-upload'
 import DiscussionComment from '@/components/DiscussionComment.vue'
 import DiscussionLikes from '@/components/DiscussionLikes.vue'
 import { canRetryPhoto, uploadPhoto, uploadVideo } from '@/services/media'
-import { canUseCamera, chooseCommentCamera, isCommentCameraHandoff } from '@/platforms/comment-camera'
+import { canUseCamera, chooseCommentMedia } from '@/platforms/comment-camera'
 import { preserveMediaPickerPage } from '@mobile-core/media-picker-session'
 import { revealControl } from '@mobile-core/form-focus'
+// #ifdef MP-WEIXIN
+import { getCapsuleClearance } from '@mobile-core/system-insets'
+// #endif
 import { useAuthStore } from '@/stores/auth'
 import { read, write } from '@/services/repository'
 import { createId, errorText } from '@/domain/rules'
@@ -42,6 +46,11 @@ const body = ref(''),
   reply = ref<Comment>(),
   focus = ref(false)
 const media=ref<MediaUploadEntry[]>([]), active=ref(true), emojiOpen=ref(false)
+const keyboardHeight = ref(0)
+let keyboardRevision = 0
+// #ifdef MP-WEIXIN
+let layoutHeight = uni.getWindowInfo().windowHeight
+// #endif
 const uploader=ref<InstanceType<typeof MobileMediaUploader>>()
 const showCamera=computed(()=>canUseCamera())
 let selection={start:0,end:0}
@@ -62,6 +71,7 @@ let generation = 0,
   attempt: CommentAttempt | undefined
 function invalidate() {
   generation++
+  keyboardRevision++
   busy.value = loading.value = false
   confirming.value = false
   deleting.value = reply.value = undefined
@@ -74,11 +84,16 @@ function invalidate() {
 watch(
   () => props.initial,
   () => {
+    const previousReply = reply.value
     invalidate()
     items.value = props.initial
     next.value = props.next || null
     total.value = props.total
-    reply.value = items.value.find((item) => item.id === replyId.value && item.status !== 'hidden')
+    const refreshedReply = items.value.find((item) => item.id === replyId.value)
+    reply.value = refreshedReply
+      ? refreshedReply.status !== 'hidden' ? refreshedReply : undefined
+      : previousReply?.id === replyId.value ? previousReply : undefined
+    if (keyboardHeight.value) void moveAboveKeyboard(keyboardHeight.value)
   },
   { immediate: true }
 )
@@ -86,6 +101,7 @@ watch(
   () => [props.post, auth.context],
   () => {
     invalidate()
+    keyboardHeight.value = 0
     body.value = ''
     clearMedia()
     replyId.value = null
@@ -94,16 +110,24 @@ watch(
   { flush: 'sync' }
 )
 onHide(()=>{
+  keyboardRevision++
+  keyboardHeight.value=0
+  focus.value=false
   // #ifdef MP-WEIXIN
   if(preserveMediaPickerPage())return
   // #endif
   // #ifdef H5
   // The native camera temporarily backgrounds the web view; route exits still invalidate.
-  if(isCommentCameraHandoff() && document.visibilityState==='hidden')return
+  if(document.visibilityState==='hidden' && preserveMediaPickerPage())return
   // #endif
-  active.value=false;invalidate()
+  active.value=false;keyboardHeight.value=0;invalidate()
 })
-onShow(()=>{active.value=true})
+onShow(()=>{
+  active.value=true
+  // #ifdef MP-WEIXIN
+  layoutHeight = uni.getWindowInfo().windowHeight
+  // #endif
+})
 onScopeDispose(()=>{invalidate();clearMedia()})
 function inaccessible(e: unknown) {
   if (
@@ -115,6 +139,26 @@ function inaccessible(e: unknown) {
     return true
   }
   return false
+}
+async function moveAboveKeyboard(height: number) {
+  // #ifdef MP-WEIXIN
+  const revision = ++keyboardRevision
+  keyboardHeight.value = Math.max(0, height)
+  if (!height || !active.value || !nativeScope) return
+  await nextTick()
+  const query = uni.createSelectorQuery().in(nativeScope)
+  query.select('#post-comment-composer').boundingClientRect()
+  query.selectViewport().scrollOffset(() => {})
+  query.exec(([box, viewport]: [UniApp.NodeInfo | null, UniApp.NodeInfo | null]) => {
+    if (revision !== keyboardRevision || !active.value ||
+        typeof box?.bottom !== 'number' || typeof viewport?.scrollTop !== 'number') return
+    const overflow = box.bottom - (layoutHeight - height - 8)
+    const top = typeof box.top === 'number' ? box.top : 0
+    const clearance = getCapsuleClearance() + 12
+    const delta = overflow > 0 ? overflow : top < clearance ? top - clearance : 0
+    if (Math.abs(delta) > 1) uni.pageScrollTo({ scrollTop: Math.max(0, viewport.scrollTop + delta), duration: 0 })
+  })
+  // #endif
 }
 async function focusComposer() {
   focus.value = false
@@ -193,7 +237,11 @@ async function more() {
     if (current === generation) loading.value = false
   }
 }
-defineExpose({ reachBottom: () => { if (!pageError.value) void more() } })
+defineExpose({
+  canRefresh: () => !busy.value && !uploader.value?.choosing && !uploader.value?.uploading,
+  reachBottom: () => { if (!pageError.value) void more() },
+  reveal: () => revealControl('comments', { focus: false, nativeScope })
+})
 async function send() {
   if (busy.value || incompleteMedia.value || uploader.value?.choosing || (replyId.value && !reply.value) || !hasContent.value || !auth.requireLogin())
     return
@@ -276,7 +324,8 @@ async function reload() {
 </script>
 
 <template>
-  <view id="comments" class="panel stack post-comments">
+  <view id="comments" class="panel stack post-comments"
+    :style="{ '--post-comment-keyboard-inset': `${keyboardHeight}px` }">
     <view class="row row--between row--wrap">
       <text id="comments-heading" class="heading" role="heading" aria-level="2" tabindex="-1"
         >钓友交流 · {{ total }}</text
@@ -301,16 +350,14 @@ async function reload() {
           :disabled="busy || loading"
           aria-label="删除自己的评论"
           @click="prepareDelete(item)"
-          >删除</MobileAction
-        >
+          >删除</MobileAction>
         <MobileAction
           v-else-if="item.status !== 'hidden'"
           class="text-action"
           :disabled="busy || loading"
           :aria-label="`举报 ${item.author.nickname} 的评论`"
           @click="prepareReport(item)"
-          >举报</MobileAction
-        >
+          >举报</MobileAction>
       </template>
     </DiscussionComment>
     <MobileListFooter :loading="loading" :error="pageError" :can-load-more="!!next && !busy"
@@ -324,8 +371,9 @@ async function reload() {
       :owner="reporting.author.id"
       hide-trigger
     />
+    <view id="post-comment-composer" class="post-comments__composer"
+      :class="{ 'post-comments__composer--keyboard': keyboardHeight > 0 }">
     <MobileCommentComposer
-      class="post-comments__composer"
       :disabled="busy || !active"
       :busy="busy"
       :media-disabled="uploader?.choosing || media.length >= 6"
@@ -333,20 +381,22 @@ async function reload() {
       :emoji-open="emojiOpen"
       :send-label="replyId ? '发表回复' : '发表评论'"
       :show-camera="showCamera"
+      :show-reply="!!replyId"
+      :show-meta="!!(media.length || body.length)"
       emoji-trigger-id="comment-emoji-trigger"
       @emoji="showEmoji"
       @camera="chooseMedia('camera')"
       @media="chooseMedia('album')"
       @send="send"
     >
-      <template v-if="replyId" #reply><view class="post-comments__replying row row--between">
+      <template v-if="replyId" #reply><view class="post-comments__replying row row--between row--wrap">
         <view class="stack stack--tight post-comments__reply">
           <text class="name">{{ reply ? `回复 ${reply.author.nickname}` : '回复对象待确认' }}</text>
+          <text v-if="reply" class="caption post-comments__excerpt">{{ reply.body || (reply.media?.some(asset => asset.kind === 'video') ? '[附件]' : '[图片]') }}</text>
           <text v-if="!reply" class="caption">原评论暂未显示，请重新选择或取消回复，已写内容会保留。</text>
         </view>
         <MobileAction class="text-action" :disabled="busy" @click="cancelReply"
-          >取消回复</MobileAction
-        >
+          >取消回复</MobileAction>
       </view></template>
       <MobileField
         v-model="body"
@@ -355,23 +405,26 @@ async function reload() {
         :focus="focus"
         :disabled="busy"
         multiline
+        plain
+        :adjust-position="false"
+        @keyboard="moveAboveKeyboard"
         :maxlength="500"
         :placeholder="reply ? `回复 ${reply.author.nickname}…` : '分享有用的经验，友善交流'"
       />
       <template v-if="auth.signedIn" #attachments>
-        <MobileMediaUploader ref="uploader" v-model="media" :scope="`${auth.context}:${post}`" :poster-scope="auth.context" :active="active" :accept="['image','video']" :limit="6" :upload-image="uploadPhoto" :upload-video="uploadVideo" :camera-picker="chooseCommentCamera" :error-text="errorText" :recovery="uploadRecovery" :disabled="busy || !active" hide-add-button compact @change="error=''" />
+        <MobileMediaUploader ref="uploader" v-model="media" :scope="`${auth.context}:${post}`" :poster-scope="auth.context" :active="active" :accept="['image','video']" :limit="6" :upload-image="uploadPhoto" :upload-video="uploadVideo" :media-picker="chooseCommentMedia" :error-text="errorText" :recovery="uploadRecovery" :disabled="busy || !active" hide-add-button compact @change="error=''" />
       </template>
       <template v-if="media.length || body.length" #meta><text v-if="media.length">附件 {{ media.length }}/6</text><text v-if="body.length">{{ body.length }}/500</text></template>
     </MobileCommentComposer>
-    <text v-if="notice" class="caption" role="status">{{ notice }}</text>
+    </view>
+    <text v-if="notice" class="caption" :class="{ 'post-comments__announcement': notice !== '评论已删除' }" role="status">{{ notice }}</text>
     <text v-if="error && !confirming" class="error" role="alert">{{ error }}</text>
     <MobileAction
       v-if="error"
       class="text-action"
       :disabled="busy || loading"
       @click="reload"
-      >重新读取评论</MobileAction
-    >
+      >重新读取评论</MobileAction>
     <MobileConfirmDialog
       v-model="confirming"
       title="删除这条评论？"
@@ -389,19 +442,39 @@ async function reload() {
 </template>
 
 <style scoped>
-.post-comments { gap: 4px; }
+.post-comments__announcement {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+.post-comments {
+  gap: 4px;
+  padding-bottom: calc(var(--fishing-card-padding, 20px) + var(--post-comment-keyboard-inset, 0px));
+}
 .post-comments__composer {
   --mobile-comment-input-height: clamp(52px, 11vh, 84px);
-  position: sticky;
-  z-index: 2;
-  bottom: 0;
+  display: block;
+  min-width: 0;
+  width: 100%;
+  box-sizing: border-box;
+  /* Match WeChat's document flow: large text and short screens must not hide comments. */
   margin-top: 8px;
   padding-block: 8px max(8px, var(--mobile-safe-bottom, 0px));
   border-top: 1px solid var(--line);
   background: var(--paper);
 }
-.post-comments__composer :deep(.mobile-comment-composer__attachments) { max-height: min(14vh, 104px); overflow-y: auto; overscroll-behavior: contain; scrollbar-width: none; }
+/* #ifdef MP-WEIXIN */
+.post-comments__composer--keyboard {
+  --mobile-comment-input-height: clamp(36px, calc((100vh - var(--post-comment-keyboard-inset, 0px)) * .11), 84px);
+  padding-bottom: 8px;
+}
+/* #endif */
 .post-comments__replying { gap: 8px; color: var(--reed); }
-.post-comments__reply { min-width: 0; flex: 1; }
-.post-comments__replying .text-action { flex: none; }
+.post-comments__reply { min-width: 0; flex: 1 1 8rem; }
+.post-comments__excerpt { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; overflow-wrap: anywhere; white-space: pre-wrap; }
+.post-comments__replying .text-action { flex: none; align-self: flex-start; margin-inline-start: auto; }
 </style>

@@ -12,9 +12,11 @@ function adapter(options: { native?: boolean; plugin?: boolean; mini?: boolean; 
   const exports: any = {}, requests: any[] = [], imports: string[] = [], released: string[] = [], blobs: Blob[] = []
   const picker = nativePicker()
   let page = { route: 'pages/post/detail' }
+  picker.setPage(page)
   const modules: Record<string, unknown> = {
     '@capacitor/core': { Capacitor: { isNativePlatform: () => options.native ?? false, isPluginAvailable: () => options.plugin ?? true } },
     '@mobile-core/media-choose': { chooseMediaFiles: picker.choose },
+    '@mobile-core/media-picker-session': picker.session,
     '@capacitor/camera': {
       Camera: { getPhoto: async (input: unknown) => { requests.push(input); if (options.failure) throw options.failure; return options.capture ? options.capture() : { webPath: 'capacitor://localhost/_capacitor_file_/capture.jpeg', format: 'jpeg' } } },
       CameraSource: { Camera: 'CAMERA' }, CameraResultType: { Uri: 'uri' }, CameraDirection: { Rear: 'REAR' }
@@ -56,11 +58,11 @@ test('camera cancellation is quiet and denied permission has actionable localize
     const state = adapter({ native: true, failure })
     assert.equal((await state.api.chooseCommentCamera()).length, 0)
     assert.equal(state.blobs.length, 0)
-    assert.equal(state.api.isCommentCameraHandoff(), false)
+    assert.equal(state.picker.session.preserveMediaPickerPage(), false)
   }
   const state = adapter({ native: true, failure: { message: 'User denied access to camera' } })
   await assert.rejects(state.api.chooseCommentCamera(), (error: any) => error.code === 'CAMERA_PERMISSION_DENIED' && /系统设置.*再点拍照重试/.test(userErrorText(error)))
-  assert.equal(state.api.isCommentCameraHandoff(), false)
+  assert.equal(state.picker.session.preserveMediaPickerPage(), false)
 })
 
 test('camera rejects unavailable plugins, unreadable images and oversized or unsupported bytes', async () => {
@@ -90,20 +92,20 @@ test('mini program camera delegates one image to the existing real chooseMedia a
   call.success({ tempFiles: [{ tempFilePath: 'wxfile://captured.jpg', fileType: 'image', size: 456 }] })
   assert.equal((await pending)[0].path, 'wxfile://captured.jpg')
   assert.equal(state.imports.includes('@capacitor/camera'), false)
-  assert.equal(state.api.isCommentCameraHandoff(), false)
+  assert.equal(state.picker.session.preserveMediaPickerPage(), false)
 })
 
 test('native handoff exists only while capture is pending on its original page and clears after return', async () => {
   let finish!: (photo: unknown) => void
   const pending = new Promise(resolve => { finish = resolve })
   const state = adapter({ native: true, capture: () => pending })
-  assert.equal(state.api.isCommentCameraHandoff(), false)
+  assert.equal(state.picker.session.preserveMediaPickerPage(), false)
   const result = state.api.chooseCommentCamera()
-  assert.equal(state.api.isCommentCameraHandoff(), true)
+  assert.equal(state.picker.session.preserveMediaPickerPage(), true)
   finish({ webPath: 'capacitor://localhost/_capacitor_file_/capture.jpeg' })
   const files = await result
   assert.equal(files.length, 1)
-  assert.equal(state.api.isCommentCameraHandoff(), false)
+  assert.equal(state.picker.session.preserveMediaPickerPage(), false)
   files[0].release(); assert.equal(state.released.length, 1)
 })
 
@@ -115,11 +117,11 @@ test('native capture never transfers its image to another page instance or route
     const result = state.api.chooseCommentCamera()
     if (changeInstance) state.setPage({ route: 'pages/post/detail' })
     else state.page().route = 'pages/profile/index'
-    assert.equal(state.api.isCommentCameraHandoff(), false)
+    assert.equal(state.picker.session.preserveMediaPickerPage(), false)
     finish({ webPath: 'capacitor://localhost/_capacitor_file_/capture.jpeg' })
     assert.equal((await result).length, 0)
     assert.equal(state.blobs.length, 0)
-    assert.equal(state.api.isCommentCameraHandoff(), false)
+    assert.equal(state.picker.session.preserveMediaPickerPage(), false)
   }
 })
 
@@ -151,5 +153,37 @@ test('a replacement page can select while the previous page waits; late results 
   picker.calls[1].fail({ errMsg: 'chooseMedia:fail authorize denied' })
   await assert.rejects(current, (error: any) => error.code === 'MEDIA_PERMISSION_DENIED' && /微信设置/.test(userErrorText(error)))
   assert.equal(picker.session.preserveMediaPickerPage(), false)
+  assert.equal(picker.listeners(), 0)
+})
+
+test('comment albums keep count and kind filters and resume exactly once for either callback order', async () => {
+  for (const showBeforeCallback of [false, true]) {
+    const state = adapter({ mini: true })
+    const { picker } = state
+    const pending = state.api.chooseCommentMedia(4, ['image', 'video'], 'album')
+    const [call] = picker.calls
+    assert.equal(call.count, 4)
+    assert.deepEqual(Array.from(call.mediaType), ['image', 'video'])
+    assert.deepEqual(Array.from(call.sourceType), ['album'])
+    assert.equal(picker.session.preserveMediaPickerPage(), true, 'page hide can precede app hide')
+    picker.hide()
+    if (showBeforeCallback) assert.equal(picker.session.resumeMediaPickerPage(), true)
+    call.success({ tempFiles: [{ tempFilePath: 'wxfile://album.jpg', fileType: 'image', size: 100 }] })
+    assert.equal((await pending)[0].path, 'wxfile://album.jpg')
+    assert.equal(picker.session.resumeMediaPickerPage(), !showBeforeCallback)
+    assert.equal(picker.session.resumeMediaPickerPage(), false)
+    assert.equal(picker.listeners(), 0)
+  }
+})
+
+test('returning from the album on a replacement page cannot append an image or suppress its refresh', async () => {
+  const state = adapter({ mini: true })
+  const { picker } = state
+  const pending = state.api.chooseCommentMedia(1, ['image'], 'album')
+  assert.equal(picker.session.preserveMediaPickerPage(), true)
+  state.setPage({ route: 'pages/spot/detail' })
+  picker.calls[0].success({ tempFiles: [{ tempFilePath: 'wxfile://old.jpg', fileType: 'image', size: 100 }] })
+  assert.equal((await pending).length, 0)
+  assert.equal(picker.session.resumeMediaPickerPage(), false)
   assert.equal(picker.listeners(), 0)
 })

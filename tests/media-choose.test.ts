@@ -32,7 +32,7 @@ test('native chooser cancellation resolves empty without a visible error', async
 test('native permission/provider failure is distinguishable from user cancellation', async () => {
   const picker = nativePicker(), result = picker.choose(2, ['image', 'video'], 'album')
   picker.calls[0].fail({ errMsg: 'chooseMedia:fail authorize denied' })
-  await assert.rejects(result, (error: any) => error.code === 'MEDIA_PERMISSION_DENIED' && /微信设置/.test(userErrorText(error)))
+  await assert.rejects(result, (error: any) => error.code === 'MEDIA_PERMISSION_DENIED' && error.nativeMessage.includes('authorize denied') && /微信设置/.test(userErrorText(error)))
 })
 test('provider and privacy errors retain their own recovery path', async () => {
   const picker = nativePicker()

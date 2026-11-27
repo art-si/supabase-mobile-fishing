@@ -10,7 +10,7 @@ import { createId } from '@/domain/rules'
 import { editRoute, type EditSnapshot } from '@/domain/content-edit'
 import { ApiError } from '@/services/http'
 import type { Audience, ContentUpdateInfo, Payload } from '@/domain/models'
-defineOptions({ options: { styleIsolation: 'apply-shared' } })
+defineOptions({ options: { virtualHost: true, styleIsolation: 'apply-shared' } })
 const props = defineProps<{
   id: string
   type: 'post' | 'spot'

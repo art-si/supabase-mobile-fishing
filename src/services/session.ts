@@ -1,5 +1,4 @@
 import { ref } from 'vue'
-import { isDemo } from '@/config'
 import { request, ApiError, type RequestOptions } from './http'
 import { privateStorageKey } from '@/domain/private-storage'
 import { authSessionFromResponse, authSessionFromStorage } from '@/domain/auth-errors'
@@ -17,7 +16,6 @@ export interface Session {
 }
 const storageKey = 'dyj.auth.v1'
 export const session = ref<Session | null>(null)
-export const demoUser = ref(false)
 export const sessionScope = ref(0)
 export const sessionNotice = ref('')
 export const sessionReady = ref(!nativeCredentialsAvailable())
@@ -69,20 +67,10 @@ export async function saveSession(value: Session | null, continuing = false) {
     return false
   }
 }
-export function enterDemoSession() {
-  uni.setStorageSync('dyj.demo.signed-in', true)
-  demoUser.value = true
-  sessionScope.value++
-  sessionNotice.value = ''
-}
 export function hydrateSession(): Promise<void> {
   if (hydration) return hydration
   const started = generation
   hydration = (async () => {
-    if (isDemo) {
-      demoUser.value = uni.getStorageSync('dyj.demo.signed-in') === true
-      return
-    }
     try {
       const stored = nativeCredentialsAvailable()
         ? await nativeCredentials.read()
@@ -149,7 +137,7 @@ export async function accessToken() {
 }
 export async function resumeSession() {
   if (!sessionReady.value || restorationFailed) await hydrateSession()
-  if (isDemo || !session.value || session.value.expires_at > Date.now() / 1000 + 60) return
+  if (!session.value || session.value.expires_at > Date.now() / 1000 + 60) return
   try {
     // Share the generation-bound refresh with any foreground data request.
     await accessToken()
@@ -197,7 +185,7 @@ export function clearPrivateDrafts(userId: string) {
   try {
     const keys = uni.getStorageInfoSync().keys
     for (const key of keys) {
-      if (!privateStorageKey(key, isDemo ? 'demo' : 'live', userId)) continue
+      if (!privateStorageKey(key, userId)) continue
       try {
         uni.removeStorageSync(key)
       } catch {
@@ -211,26 +199,19 @@ export function clearPrivateDrafts(userId: string) {
 }
 export async function signOut() {
   const previous = session.value
-  const owner = isDemo ? '11111111-1111-4111-8111-111111111111' : previous?.user.id || ''
-  demoUser.value = false
+  const owner = previous?.user.id || ''
   const clearing = saveSession(null)
-  let demoCleared = true
-  try {
-    uni.removeStorageSync('dyj.demo.signed-in')
-  } catch {
-    demoCleared = false
-  }
   const draftsCleared = clearPrivateDrafts(owner)
   const scope = sessionScope.value
   const cleared = await clearing
   const cleanupWarning =
-    !cleared || !demoCleared || !draftsCleared
+    !cleared || !draftsCleared
       ? '本次页面已退出，但设备存储未能完全清理。请清除此应用的网站数据后再交给他人使用。'
       : ''
   if (scope === sessionScope.value)
     sessionNotice.value = cleanupWarning || '已退出本机，正在结束服务器会话…'
   let revoked = true
-  if (!isDemo && previous) {
+  if (previous) {
     try {
       await request('/auth/v1/logout?scope=local', { method: 'POST', token: previous.access_token })
     } catch {
@@ -252,15 +233,7 @@ export function watchExternalSessions() {
   if (watchingStorage || Capacitor.isNativePlatform()) return
   watchingStorage = true
   window.addEventListener('storage', (event) => {
-    if (event.key !== null && event.key !== (isDemo ? 'dyj.demo.signed-in' : storageKey)) return
-    if (isDemo) {
-      const next = uni.getStorageSync('dyj.demo.signed-in') === true
-      if (demoUser.value !== next) {
-        demoUser.value = next
-        sessionScope.value++
-      }
-      return
-    }
+    if (event.key !== null && event.key !== storageKey) return
     try {
       const next = authSessionFromStorage(uni.getStorageSync(storageKey))
       if (next?.refresh_token === session.value?.refresh_token) return

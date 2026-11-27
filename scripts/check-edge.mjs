@@ -14,6 +14,7 @@ const result = spawnSync(
     'supabase/functions/amap/index.ts',
     'supabase/functions/spot-discovery/index.ts',
     'supabase/functions/spot-source-import/index.ts',
+    'supabase/functions/spot-source-sync/index.ts',
     'supabase/functions/social-accounts/index.ts',
     'supabase/functions/send-sms-hook/index.ts'
   ],

@@ -80,6 +80,10 @@ export async function waterReportContract({
         expires_at: Math.floor(Date.now() / 1000) + 3600,
         user: { id: owner }
       })
+    if (url.pathname === '/rest/v1/rpc/fishing_password_configured') return reply(true)
+    // Foreground region discovery is independent of this private-save contract.
+    // Keep its unavailable state local instead of allowing a live map request.
+    if (url.pathname === '/functions/v1/amap') return reply({ code: 'MAP_SERVICE_UNAVAILABLE' }, 503)
     if (url.pathname === '/rest/v1/rpc/fishing_moderation') return reply({ allowed: false })
     if (url.pathname === '/rest/v1/rpc/fishing_read') {
       if (body.action === 'water_reports') {

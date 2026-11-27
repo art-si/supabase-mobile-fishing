@@ -10,7 +10,7 @@ import type {
   Trip
 } from './models'
 import { createId, validDate, today } from './rules'
-import { fishingDateTime } from './fishing-presets'
+import { currentChinaTime, fishingDateTime } from './fishing-presets'
 import { catchRecordsFromDraft, catchSummary, freshCatch, tripCatches } from './trip-catches'
 import { catchNumber } from './catch-measurements'
 
@@ -119,12 +119,7 @@ export function postEditDraft(item: Post | Trip): PostDraft {
     occurred_on: item.occurred_on,
     occurred_time:
       'occurred_at' in item && item.occurred_at
-        ? new Intl.DateTimeFormat('en-GB', {
-            timeZone: 'Asia/Shanghai',
-            hour: '2-digit',
-            minute: '2-digit',
-            hour12: false
-          }).format(new Date(item.occurred_at))
+        ? currentChinaTime(new Date(item.occurred_at))
         : '',
     location_label: 'location_label' in item ? item.location_label : '',
     location_longitude: 'location_longitude' in item ? item.location_longitude : null,

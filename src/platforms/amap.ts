@@ -1,8 +1,9 @@
 // Browser-only adapter. Mirrors art-supabase-pro's single-flight loader,
 // timeout/reset lifecycle and cancel-safe location selection, without its Web-only dependencies.
-import { config, isDemo } from '@/config'
+import { config } from '@/config'
 import { serviceErrorMessage } from '@/domain/user-errors'
 import { Capacitor } from '@capacitor/core'
+import { amapServiceHost } from './amap-service-host'
 import { captureCapacitorGcj02 } from '@mobile-core/location'
 import { normalizeAmapWeather, validAdcode, type WeatherTarget } from '@/domain/weather'
 import type { MapPoint, MobileMapInstance, MobileMapSdk } from '@mobile-core/map'
@@ -18,12 +19,15 @@ export interface LngLat {
   getLat(): number
 }
 export interface AmapMap extends MobileMapInstance {
+  getPitch?():number
+  setPitch?(pitch:number,immediately?:boolean):void
   setCenter(point: MapPoint, immediately?: boolean, duration?: number): void
   setZoomAndCenter?(zoom: number, point: MapPoint, immediately?: boolean, duration?: number): void
 }
 interface Marker {
   setPosition(point: [number, number]): void
-  on(name: string, callback: () => void): void
+  setContent(content: HTMLElement): void
+  on(name: string, callback: (event: { lnglat: LngLat }) => void): void
 }
 export interface POI {
   id: string
@@ -43,6 +47,7 @@ export interface PlaceSuggestion {
   latitude?: number
 }
 interface AmapNamespace extends MobileMapSdk {
+  Browser?: { isWebGL?: boolean }
   Pixel: new (x: number, y: number) => { getX(): number; getY(): number }
   plugin(name: string, callback: () => void): void
   Weather: new () => {
@@ -118,36 +123,13 @@ declare global {
 }
 let pending: Promise<AmapNamespace> | undefined
 export function loadAmap(): Promise<AmapNamespace> {
-  if (isDemo) return Promise.reject(new Error(serviceErrorMessage('MAP_DEMO_UNAVAILABLE')))
   if (!config.amapKey) return Promise.reject(new Error(serviceErrorMessage('MAP_NOT_CONFIGURED')))
   if (window.AMap) return Promise.resolve(window.AMap)
   if (pending) return pending
-  pending = new Promise<AmapNamespace>((resolve, reject) => {
-    let proxy: URL
-    try {
-      // iOS Capacitor can report an opaque ("null") origin; its href is still a valid base.
-      if (!config.amapServiceHost) throw new Error()
-      proxy = new URL(config.amapServiceHost, window.location.href)
-      const sameOrigin = proxy.origin === window.location.origin
-      if (proxy.protocol !== 'https:' && !(sameOrigin && proxy.protocol === 'http:'))
-        throw new Error()
-      // The SDK retains the full prefix when forwarding requests. Permit the
-      // confirmed project's existing Edge proxy as well as root reverse proxies.
-      const hostedProxy =
-        proxy.origin === config.supabaseUrl &&
-        proxy.pathname === '/functions/v1/amap-js/_AMapService'
-      if (
-        (!hostedProxy && proxy.pathname !== '/_AMapService') ||
-        proxy.search ||
-        proxy.hash ||
-        proxy.username ||
-        proxy.password
-      )
-        throw new Error()
-    } catch {
-      return reject(new Error(serviceErrorMessage('MAP_NOT_CONFIGURED')))
-    }
-    window._AMapSecurityConfig = { serviceHost: proxy.href }
+  pending = amapServiceHost(config.amapServiceHost, config.supabaseUrl, window.location.href, Capacitor.isNativePlatform())
+    .catch(() => { throw new Error(serviceErrorMessage('MAP_NOT_CONFIGURED')) })
+    .then(serviceHost => new Promise<AmapNamespace>((resolve, reject) => {
+    window._AMapSecurityConfig = { serviceHost }
     const script = document.createElement('script')
     let settled = false
     const fail = () => {
@@ -169,7 +151,7 @@ export function loadAmap(): Promise<AmapNamespace> {
     }
     script.onerror = fail
     document.head.append(script)
-  }).catch((error) => {
+  })).catch((error) => {
     pending = undefined
     throw error
   })

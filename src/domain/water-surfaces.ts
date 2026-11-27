@@ -1,5 +1,5 @@
 import type { MapPoint } from '@mobile-core/map'
-import { boundaryAnchor, type ZoneBoundary } from './zone-geometry'
+import type { ZoneBoundary } from './zone-geometry'
 import { indexWaterSurfaces, matchWater, type WaterSurface } from './water-geometry'
 import wuhan from './data/wuhan-water-surfaces.json'
 
@@ -15,9 +15,4 @@ export function waterOutline(name: string): ZoneBoundary | null {
   return coordinates.length === 1
     ? { type: 'Polygon', coordinates: coordinates[0]! }
     : { type: 'MultiPolygon', coordinates }
-}
-
-export function sampleWaterPoints() {
-  const names = [...new Set(surfaces.map(surface => surface.name).filter(Boolean))]
-  return names.map(name => ({ id: name, name, point: boundaryAnchor(waterOutline(name)!) }))
 }

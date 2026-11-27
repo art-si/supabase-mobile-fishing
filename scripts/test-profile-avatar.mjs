@@ -6,16 +6,18 @@ import { resolve } from 'node:path'
 import { setH5TextScale } from './h5-text-scale.mjs'
 const base = process.env.FISHING_H5_URL || 'http://127.0.0.1:5178'
 assert.ok(['localhost', '127.0.0.1'].includes(new URL(base).hostname))
-const out = resolve('artifacts/profile-avatar')
+const out = resolve(process.env.UI_OUTPUT_DIR || 'artifacts/profile-avatar')
 await mkdir(out, { recursive: true })
 const browser = await chromium.launch({ channel: 'chrome', headless: true })
-const context = await browser.newContext({ viewport: { width: 375, height: 812 }, locale: 'zh-CN', reducedMotion: 'reduce' })
+const context = await browser.newContext({ viewport: { width: 375, height: 812 }, locale: 'zh-CN', reducedMotion: 'reduce',
+  permissions: ['geolocation'], geolocation: { longitude: 114.1859, latitude: 30.5189, accuracy: 12 } })
 const owner = '11111111-1111-4111-8111-111111111111', avatarId = '66666666-4444-4444-8444-444444444444'
 const image = await readFile(resolve('assets/brand/fish-symbol.png'))
 const profile = { id: owner, nickname: '头像验收', city: '苏州', method: '台钓', bio: '', handle: 'DYTEST', avatar: null }
 const avatar = { id: avatarId, path: `${owner}/${avatarId}.jpg`, width: 512, height: 512, kind: 'image', size: 1000 }
 const checks = [], errors = [], escaped = [], updates = [], uploads = []
 let failSave = true
+let delayedProfileRead
 const pass = (name) => { checks.push(name); console.log('PASS', name) }
 await context.addInitScript(({ owner }) => {
   localStorage.setItem('dyj.auth.v1', JSON.stringify({ type: 'object', data: { access_token: 'avatar-isolated-fixture', refresh_token: 'fixture', expires_at: Date.now()/1000+3600, user: { id: owner } } }))
@@ -30,6 +32,7 @@ await context.route('**/*', async route => {
   if (url.pathname === '/auth/v1/user') return reply({ id: owner })
   if (url.pathname.endsWith('fishing_read')) {
     const { action } = req.postDataJSON()
+    if (action === 'profile' && delayedProfileRead) await delayedProfileRead
     return reply(action === 'profile' ? { profile, posts: [], followers: 0, following: 0 } : { items: [], next: null, unread: 0 })
   }
   if (url.pathname.endsWith('fishing_moderation')) return reply({ allowed: false })
@@ -57,6 +60,19 @@ try {
   await page.goto(`${base}/#/pages/home/index?tab=mine`, { waitUntil: 'domcontentloaded', timeout: 60000 })
   await page.getByRole('button', { name: '编辑钓友资料' }).click()
   await page.getByRole('button', { name: '更换头像', exact: true }).waitFor()
+  const bio = page.locator('#bio-input'), refresh = page.getByRole('status', { name: '正在读取资料…', exact: true })
+  const draftBio = '回到资料页时，我开始写这段简介。'
+  let releaseRead
+  delayedProfileRead = new Promise(resolveRead => { releaseRead = resolveRead })
+  try {
+    await page.evaluate(() => document.dispatchEvent(new Event('visibilitychange')))
+    await refresh.waitFor()
+    await bio.fill(draftBio)
+  } finally { delayedProfileRead = undefined; releaseRead() }
+  await refresh.waitFor({ state: 'hidden' })
+  assert.equal(await bio.inputValue(), draftBio)
+  await bio.fill(profile.bio)
+  pass('回到前台重新读取资料时，晚到的响应不覆盖刚输入的简介')
   for (const [name, file] of [['WebP', 'small.webp'], ['GIF', 'animated.gif'], ['BMP', 'small.bmp'], ['AVIF', 'color.avif'], ['HEIC', '../fish-heic.heic']]) {
     const selecting = page.waitForEvent('filechooser')
     await page.getByRole('button', { name: '更换头像', exact: true }).click()

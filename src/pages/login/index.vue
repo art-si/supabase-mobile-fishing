@@ -1,33 +1,39 @@
 <script setup lang="ts">
+import MobileAction from '@mobile-core/components/MobileAction.vue'
+
 import { computed, nextTick, onUnmounted, ref, watch } from 'vue'
 import { onHide, onShow } from '@dcloudio/uni-app'
 import FishingShell from '@/components/FishingShell.vue'
 import FishMark from '@/components/FishMark.vue'
 import MobileField from '@mobile-core/components/MobileField.vue'
-import MobileAction from '@mobile-core/components/MobileAction.vue'
 import MobileCheckbox from '@mobile-core/components/MobileCheckbox.vue'
 import { revealControl, nativeFieldOf, type ElementTarget } from '@mobile-core/form-focus'
 import { useAuthStore } from '@/stores/auth'
-import { config, isDemo, backendReady } from '@/config'
+import { config, backendReady } from '@/config'
 import { errorText, normalizePhone } from '@/domain/rules'
 import { ApiError } from '@/services/http'
 import { operatorPhoneLogin, operatorEntryAvailable } from '@/services/phone-login'
-import { passwordLogin } from '@/services/account-security'
+import { accountPasswordConfigured, passwordLogin } from '@/services/account-security'
 import { normalizeLoginIdentifier } from '@/domain/account-security'
 import {
   rememberedLogin,
   rememberLoginLabel,
+  preferPasswordLogin,
+  prefersPasswordLogin,
+  saveLoginMemory,
   displayLoginIdentifier
 } from '@/services/login-memory'
 import { sessionNotice } from '@/services/session'
 const canPasswordLogin = backendReady && !config.captcha
+const rememberLabel = rememberLoginLabel()
 const canSendSms = canPasswordLogin && config.phoneAuth
-const initialMemory = !isDemo && canPasswordLogin ? rememberedLogin.preference() : null
+const initialMemory = canPasswordLogin ? rememberedLogin.preference() : null
+const initialPasswordPreference = Boolean(initialMemory) || prefersPasswordLogin()
 const remember = ref(Boolean(initialMemory)),
   restoringMemory = ref(false),
   memoryError = ref('')
 const passwordFieldVersion = ref(0)
-const passwordMode = ref(!canSendSms || Boolean(initialMemory)),
+const passwordMode = ref(!canSendSms || initialPasswordPreference),
   password = ref(''),
   passwordError = ref('')
 const phoneControl = ref<ElementTarget>(),
@@ -42,7 +48,7 @@ const auth = useAuthStore(),
   now = ref(Date.now())
 const operatorEntry = computed(() => operatorEntryAvailable())
 const hasOnlineLogin = computed(() => canPasswordLogin || operatorEntry.value)
-const credentialsSelected = ref(Boolean(initialMemory))
+const credentialsSelected = ref(initialPasswordPreference)
 const showCredentials = computed(
   () => canPasswordLogin && (!operatorEntry.value || credentialsSelected.value)
 )
@@ -53,6 +59,7 @@ const phoneError = ref('')
 const codeError = ref('')
 const consentError = ref('')
 const focusedField = ref('')
+const phoneLoginScope = ref<number | null>(null)
 const verifyUntil = ref(0)
 const remaining = computed(() => Math.max(0, Math.ceil((until.value - now.value) / 1000)))
 const verifyRemaining = computed(() =>
@@ -75,7 +82,7 @@ let memoryVersion = 0
 let restoredFor = '',
   restoredPassword = ''
 async function restoreMemory() {
-  if (isDemo || !remember.value || !passwordMode.value || activity.value) return
+  if (!remember.value || !passwordMode.value || activity.value) return
   const preference = rememberedLogin.preference()
   if (!preference) return
   try {
@@ -259,7 +266,14 @@ function done() {
   else uni.reLaunch({ url: '/pages/home/index' })
 }
 async function send() {
-  if (busy.value || remaining.value || !canSendSms || passwordMode.value) return
+  if (
+    busy.value ||
+    phoneLoginScope.value !== null ||
+    remaining.value ||
+    !canSendSms ||
+    passwordMode.value
+  )
+    return
   const normalized = validate(false)
   if (!normalized) return
   await run('send', async () => {
@@ -271,8 +285,30 @@ async function send() {
     void focusField('code')
   })
 }
+async function finishPhoneLogin(started: number) {
+  const scope = phoneLoginScope.value
+  if (scope === null || auth.context !== scope)
+    throw new ApiError('账号状态已变化，请重新登录', 409, 'SESSION_CHANGED')
+  const configured = await accountPasswordConfigured()
+  if (!active || started !== pageVersion || auth.context !== scope) return
+  if (configured) {
+    try {
+      preferPasswordLogin()
+    } catch {
+      sessionNotice.value = '已登录，设备暂时无法记住登录方式。'
+    }
+    done()
+  } else uni.redirectTo({ url: '/pages/account/password?mode=set&from=login' })
+}
 async function login() {
   if (busy.value || verifyRemaining.value || !showCredentials.value) return
+  if (phoneLoginScope.value !== null) {
+    if (auth.context === phoneLoginScope.value) {
+      await run('login', () => finishPhoneLogin(pageVersion))
+      return
+    }
+    phoneLoginScope.value = null
+  }
   const normalized = validate(true)
   if (!normalized) return
   const token = normalized.code
@@ -290,27 +326,29 @@ async function login() {
         isActive: () => active && started === pageVersion
       })
     const signedInScope = auth.context
-    try {
-      if (passwordMode.value && remember.value) {
-        const saved = await rememberedLogin.save(
-          { identifier: normalized.phone, password: normalized.password, owner: auth.userId },
-          () => active && started === pageVersion && auth.context === signedInScope
-        )
-        if (saved.saved && !saved.passwordSaved && rememberedLogin.canSavePassword())
-          sessionNotice.value = '已记住账号；密码可通过系统密码管理器保存和填充。'
-      } else if (passwordMode.value) await rememberedLogin.forget()
-      else await rememberedLogin.forgetOtherOwners(auth.userId)
-    } catch {
-      if (auth.context === signedInScope) sessionNotice.value = '本次已登录，设备未能记住登录信息。'
+    if (passwordMode.value) {
+      await saveLoginMemory(
+        { identifier: normalized.phone, password: normalized.password, owner: auth.userId },
+        remember.value,
+        () => active && started === pageVersion && auth.context === signedInScope
+      )
+    } else {
+      try {
+        await rememberedLogin.forgetOtherOwners(auth.userId)
+      } catch {
+        if (auth.context === signedInScope)
+          sessionNotice.value = '本次已登录，设备未能记住登录信息。'
+      }
     }
     password.value = ''
-    if (active && started === pageVersion && auth.context === signedInScope) done()
-  })
-}
-async function demo() {
-  await run('other', async () => {
-    auth.enterDemo()
-    done()
+    if (active && started === pageVersion && auth.context === signedInScope) {
+      if (passwordMode.value) done()
+      else {
+        phoneLoginScope.value = signedInScope
+        code.value = ''
+        await finishPhoneLogin(started)
+      }
+    }
   })
 }
 async function native() {
@@ -327,7 +365,7 @@ function switchLoginMethod(credentials: boolean) {
   consentError.value = ''
 }
 function switchPassword() {
-  if (busy.value || !canSendSms) return
+  if (busy.value || phoneLoginScope.value !== null || !canSendSms) return
   let identifier = phone.value
   // #ifdef H5
   identifier = nativeFieldOf(phoneControl.value)?.value ?? identifier
@@ -345,26 +383,14 @@ function switchPassword() {
 </script>
 <template>
   <view class="login-page">
-    <FishingShell title="" back narrow>
+    <FishingShell title="" back narrow without-location hide-session-notice>
       <view class="fishing-content login-content">
         <view class="login-brand">
           <FishMark :size="36" />
           <text class="login-brand-name">钓友集</text>
         </view>
 
-        <view v-if="isDemo" class="login-main">
-          <view class="login-heading-group">
-            <text class="login-title" role="heading" aria-level="1">本机体验</text>
-            <text class="login-description">体验记录与浏览，不注册线上账号。</text>
-          </view>
-          <view class="login-actions">
-            <MobileAction class="primary" :disabled="busy" @click="demo">进入本机体验</MobileAction>
-            <text class="caption">体验内容仅保存在这台设备，不发送短信。</text>
-          </view>
-          <text v-if="error" class="error" role="alert">{{ error }}</text>
-        </view>
-
-        <view v-else-if="!hasOnlineLogin" class="login-main login-unavailable">
+        <view v-if="!hasOnlineLogin" class="login-main login-unavailable">
           <view class="login-heading-group" role="status">
             <text class="login-title" role="heading" aria-level="1">登录暂未开放</text>
             <text class="login-description"
@@ -380,7 +406,7 @@ function switchPassword() {
               showCredentials ? (passwordMode ? '密码登录' : '手机号登录') : '使用本机号码登录'
             }}</text>
             <text class="login-description">{{
-              showCredentials
+              sessionNotice && !auth.signedIn ? sessionNotice : showCredentials
                 ? passwordMode
                   ? '使用钓友号或手机号和登录密码。'
                   : '首次验证自动注册，已有账号直接登录。'
@@ -400,7 +426,7 @@ function switchPassword() {
                 :autocomplete="passwordMode ? 'username' : 'tel'"
                 :maxlength="passwordMode ? 32 : 16"
                 :placeholder="passwordMode ? '钓友号或手机号' : '中国大陆手机号'"
-                :disabled="busy"
+                :disabled="busy || phoneLoginScope !== null"
                 :error="phoneError"
                 :focus="focusedField === 'phone'"
                 required
@@ -419,7 +445,7 @@ function switchPassword() {
                     autocomplete="one-time-code"
                     :maxlength="6"
                     placeholder="6 位验证码"
-                    :disabled="busy"
+                    :disabled="busy || phoneLoginScope !== null"
                     :error="codeError"
                     :focus="focusedField === 'code'"
                     @confirm="login"
@@ -427,7 +453,7 @@ function switchPassword() {
                   />
                   <MobileAction
                     class="secondary login-send"
-                    :disabled="busy || remaining > 0"
+                    :disabled="busy || phoneLoginScope !== null || remaining > 0"
                     @click="send"
                     >{{
                       activity === 'send'
@@ -437,8 +463,7 @@ function switchPassword() {
                           : sentTo
                             ? '重新获取'
                             : '获取验证码'
-                    }}</MobileAction
-                  >
+                    }}</MobileAction>
                 </view>
               </view>
               <view v-if="passwordMode" class="login-password-block">
@@ -462,22 +487,21 @@ function switchPassword() {
                 <view class="login-password-options">
                   <MobileCheckbox
                     class="login-remember"
-                    :aria-label="rememberLoginLabel()"
+                    :aria-label="rememberLabel"
                     :model-value="remember"
                     checked-color="var(--lake)"
                     unchecked-color="var(--reed)"
                     :disabled="busy"
                     @update:model-value="toggleRemember"
                   >
-                    <text class="caption login-choice-label">{{ rememberLoginLabel() }}</text>
+                    <text class="caption login-choice-label">{{ rememberLabel }}</text>
                   </MobileCheckbox>
                   <MobileAction
                     v-if="canSendSms"
                     class="text-action login-forgot"
                     :disabled="busy"
                     @click="uni.navigateTo({ url: '/pages/account/password?mode=reset' })"
-                    >忘记密码</MobileAction
-                  >
+                    >忘记密码</MobileAction>
                 </view>
                 <text v-if="restoringMemory" class="caption" role="status"
                   >正在读取已记住的登录信息…</text
@@ -513,14 +537,12 @@ function switchPassword() {
                     class="text-action"
                     :disabled="busy"
                     @click="uni.navigateTo({ url: '/pages/settings/legal?type=terms' })"
-                    >用户协议</MobileAction
-                  >
+                    >用户协议</MobileAction>
                   <MobileAction
                     class="text-action"
                     :disabled="busy"
                     @click="uni.navigateTo({ url: '/pages/settings/legal?type=privacy' })"
-                    >隐私说明</MobileAction
-                  >
+                    >隐私说明</MobileAction>
                 </view>
               </view>
               <text v-if="consentError" id="consent-error" class="error" role="alert">{{
@@ -535,69 +557,75 @@ function switchPassword() {
               v-if="showCredentials"
               class="primary"
               :disabled="busy || verifyRemaining > 0"
+              :loading="activity === 'login'"
+              :aria-busy="activity === 'login' || undefined"
               @click="login"
               >{{
                 activity === 'login'
                   ? '正在登录…'
                   : verifyRemaining
                     ? `${verifyRemaining} 秒后重试`
-                    : passwordMode
-                      ? '登录'
-                      : '登录 / 注册'
-              }}</MobileAction
-            >
+                    : phoneLoginScope !== null
+                      ? '继续登录'
+                      : passwordMode
+                        ? '登录'
+                        : '登录 / 注册'
+              }}</MobileAction>
             <text v-if="showCredentials" class="caption login-privacy-note">{{
               canSendSms ? '手机号仅用于登录，不公开展示' : '短信注册和找回密码暂不可用。'
             }}</text>
             <MobileAction
-              v-if="showCredentials && canSendSms"
+              v-if="showCredentials && canSendSms && phoneLoginScope === null"
               class="text-action login-switch"
               :disabled="busy"
               @click="switchPassword"
-              >{{ passwordMode ? '使用短信验证码登录' : '使用密码登录' }}</MobileAction
-            >
-            <MobileAction v-if="!showCredentials" class="primary" :disabled="busy" @click="native">{{
-              activity === 'other' ? '正在验证…' : '本机号码一键登录'
-            }}</MobileAction>
+              >{{ passwordMode ? '使用短信验证码登录' : '使用密码登录' }}</MobileAction>
+            <MobileAction
+              v-if="!showCredentials"
+              class="primary"
+              :disabled="busy"
+              @click="native"
+              >{{ activity === 'other' ? '正在验证…' : '本机号码一键登录' }}</MobileAction>
             <MobileAction
               v-if="operatorEntry && canPasswordLogin"
               class="text-action login-switch"
               :disabled="busy"
               @click="switchLoginMethod(!showCredentials)"
-              >{{ showCredentials ? '使用本机号码登录' : canSendSms ? '改用短信验证码' : '使用密码登录' }}</MobileAction
-            >
+              >{{
+                showCredentials
+                  ? '使用本机号码登录'
+                  : canSendSms
+                    ? '改用短信验证码'
+                    : '使用密码登录'
+              }}</MobileAction>
           </view>
         </view>
 
         <view class="login-support">
           <view class="login-support-actions">
             <MobileAction
-              v-if="isDemo || hasOnlineLogin"
+              v-if="hasOnlineLogin"
               class="text-action"
               :disabled="busy"
               @click="done"
-              >先逛逛</MobileAction
-            >
+              >先逛逛</MobileAction>
             <MobileAction
               class="text-action"
               @click="uni.navigateTo({ url: '/pages/contact/index' })"
-              >联系客服</MobileAction
-            >
+              >联系客服</MobileAction>
           </view>
           <view
-            v-if="isDemo || !hasOnlineLogin"
+            v-if="!hasOnlineLogin"
             class="login-legal-links login-legal-links--standalone"
           >
             <MobileAction
               class="text-action"
               @click="uni.navigateTo({ url: '/pages/settings/legal?type=terms' })"
-              >用户协议</MobileAction
-            >
+              >用户协议</MobileAction>
             <MobileAction
               class="text-action"
               @click="uni.navigateTo({ url: '/pages/settings/legal?type=privacy' })"
-              >隐私说明</MobileAction
-            >
+              >隐私说明</MobileAction>
           </view>
         </view>
       </view>
@@ -775,8 +803,6 @@ function switchPassword() {
   gap: 0 8px;
   min-width: 0;
 }
-.login-consent-label,
-.login-choice-label,
 .login-consent-copy :deep(.text-action) {
   display: inline-flex;
   align-items: center;

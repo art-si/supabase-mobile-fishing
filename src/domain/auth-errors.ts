@@ -47,12 +47,9 @@ export function retryAfterFromHeaders(headers: unknown, now = Date.now()) {
 }
 
 export function smsLoginUnavailable(options: {
-  isDemo: boolean
   phoneAuth: boolean
   captcha: boolean
 }) {
-  if (options.isDemo)
-    return { code: 'DEMO_AUTH_DISABLED', message: '当前为体验模式，请使用体验入口' }
   if (!options.phoneAuth)
     return { code: 'PHONE_AUTH_UNAVAILABLE', message: '短信登录暂时不可用，请稍后再试' }
   if (options.captcha)

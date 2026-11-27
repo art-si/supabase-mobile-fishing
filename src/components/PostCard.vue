@@ -1,28 +1,42 @@
 <script setup lang="ts">
-defineOptions({ options: { styleIsolation: 'apply-shared' } })
 import MobileAction from '@mobile-core/components/MobileAction.vue'
-import { activateActionKey, preventActionKey } from '@mobile-core/action-keyboard'
+defineOptions({ options: { styleIsolation: 'apply-shared' } })
+
+import { ref, watch } from 'vue'
+import { onHide } from '@dcloudio/uni-app'
+import { useLongPressAction } from '@mobile-core/long-press-action'
 import MobileAvatar from '@mobile-core/components/MobileAvatar.vue'
 import DiscussionActions from './DiscussionActions.vue'
 import FishFacts from './FishFacts.vue'
 import FishingPhotos from './FishingPhotos.vue'
 import FishingPlaceLink from './FishingPlaceLink.vue'
+import ContentDeleteAction from './ContentDeleteAction.vue'
+import { useAuthStore } from '@/stores/auth'
 import type { Post } from '@/domain/models'
 import { audienceLabels, relativeTime } from '@/domain/rules'
 import { postCaption } from '@/domain/composition'
 const props = defineProps<{ post: Post; busy?: boolean; full?: boolean }>()
-defineEmits<{ react: [kind: 'like' | 'bookmark']; open: [] }>()
+const emit = defineEmits<{ react: [kind: 'like' | 'bookmark']; open: []; deleted: [id: string] }>()
+const auth = useAuthStore(), card = ref<unknown>(), deletion = ref<InstanceType<typeof ContentDeleteAction>>()
+const longPress = useLongPressAction(() => deletion.value?.open(), () => Boolean(auth.userId) && props.post.author.id === auth.userId && !props.busy, card)
+watch(() => [props.post.id, auth.context], longPress.reset, { flush: 'sync' })
+onHide(longPress.reset)
 function person() {
+  if (!longPress.allowClick()) return
   uni.navigateTo({ url: `/pages/people/detail?id=${props.post.author.id}` })
 }
+function open() { if (longPress.allowClick()) emit('open') }
+function react(kind: 'like' | 'bookmark') { if (longPress.allowClick()) emit('react', kind) }
 </script>
 <template>
-  <view class="panel post-card">
-    <view class="row">
-      <MobileAction :aria-label="`查看${post.author.nickname}的主页`" @click="person"
+  <view ref="card" class="panel post-card" @longpress="longPress.hold" @touchend="longPress.release" @touchcancel="longPress.release">
+    <view class="row post-card__header">
+      <MobileAction class="post-card__author"
+        :aria-label="`查看${post.author.nickname}的主页`"
+        @click="person"
         ><MobileAvatar :src="post.author.avatar?.url" :name="post.author.nickname"
       /></MobileAction>
-      <view class="grow stack stack--tight"
+      <view class="grow stack post-card__identity"
         ><text class="name">{{ post.author.nickname }}</text
         ><text class="caption"
           >{{ relativeTime(post.created_at)
@@ -33,20 +47,15 @@ function person() {
     </view>
     <text v-if="full && post.title.trim()" class="heading">{{ post.title }}</text>
     <text v-if="full && post.body.trim()" class="body">{{ post.body }}</text>
-    <button
+    <MobileAction
       v-else-if="!full && (post.title.trim() || post.body.trim())"
-      class="mobile-action post-content"
-      role="button"
-      :tabindex="0"
-      hover-class="mobile-action--pressed"
+      class="post-content"
       :aria-label="`${post.body.trim() ? '阅读全文' : '阅读'}：${postCaption(post)}`"
-      @click="$emit('open')"
-      @keydown="preventActionKey"
-      @keyup="activateActionKey($event, () => $emit('open'))"
+      @click="open"
     >
       <text v-if="post.title.trim()" class="heading">{{ post.title }}</text>
       <text v-if="post.body.trim()" class="body post-card__summary">{{ post.body }}</text>
-    </button>
+    </MobileAction>
     <FishingPhotos
       v-if="post.media.length"
       :media="post.media"
@@ -77,11 +86,31 @@ function person() {
       <text v-if="post.status === 'hidden'" class="badge badge--warm">暂不可见</text>
     </view>
     <DiscussionActions :title="postCaption(post)" :likes="post.like_count" :comments="post.comment_count"
-      :liked="post.liked" :saved="post.saved" :busy="busy" @react="$emit('react',$event)" @comments="$emit('open')" />
+      :liked="post.liked" :saved="post.saved" :busy="busy" @react="react" @comments="open" />
     <slot name="management" />
+    <ContentDeleteAction ref="deletion" :id="post.id" type="post" :owner="post.author.id" :title="postCaption(post)" compact :show-button="false" :disabled="busy" @deleted="$emit('deleted',$event)" />
   </view>
 </template>
 <style scoped>
+.post-card__header {
+  align-items: flex-start;
+}
+.post-card__author.mobile-action {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex: none;
+  width: var(--fishing-target);
+  min-height: var(--fishing-target);
+  border-radius: 50%;
+}
+.post-card__identity {
+  gap: 4px;
+}
+.post-card__header > .badge {
+  flex: none;
+  white-space: nowrap;
+}
 .post-content.mobile-action {
   display: flex;
   flex-direction: column;

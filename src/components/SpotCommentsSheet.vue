@@ -3,9 +3,10 @@ let commentSheetSequence = 0
 </script>
 
 <script setup lang="ts">
+import MobileAction from '@mobile-core/components/MobileAction.vue'
+
 import { computed, nextTick, onScopeDispose, ref, watch } from 'vue'
 import { onHide, onUnload } from '@dcloudio/uni-app'
-import MobileAction from '@mobile-core/components/MobileAction.vue'
 import MobileBottomSheet from '@mobile-core/components/MobileBottomSheet.vue'
 import MobileField from '@mobile-core/components/MobileField.vue'
 import MobileCommentComposer from '@mobile-core/components/MobileCommentComposer.vue'
@@ -15,10 +16,11 @@ import MobileLoadError from '@mobile-core/components/MobileLoadError.vue'
 import MobileListFooter from '@mobile-core/components/MobileListFooter.vue'
 import MobileMediaUploader from '@mobile-core/components/MobileMediaUploader.vue'
 import type { MediaUploadEntry } from '@mobile-core/media-upload'
-import FishingLoadingStatus from './FishingLoadingStatus.vue'
+import MobileSkeleton from '@mobile-core/components/MobileSkeleton.vue'
 import DiscussionComment from './DiscussionComment.vue'
 import DiscussionLikes from './DiscussionLikes.vue'
 import { useAuthStore } from '@/stores/auth'
+import { useAppearanceStore } from '@/stores/appearance'
 import { useLoginAction } from '@/composables/useLoginAction'
 import { useListEnd } from '@/composables/useListEnd'
 import { errorText, createId } from '@/domain/rules'
@@ -33,6 +35,7 @@ const open = defineModel<boolean>({ required: true })
 const props = defineProps<{ target: string; title: string }>()
 const emit = defineEmits<{ summary: [value: SpotCommunitySummary] }>()
 const auth = useAuthStore()
+const theme = useAppearanceStore()
 const field = `spot-comment-${++commentSheetSequence}`
 const emojiTrigger = `${field}-emoji`
 const items = ref<SpotDiscussion[]>([])
@@ -53,6 +56,7 @@ const emojiOpen = ref(false)
 const confirmOpen = ref(false)
 const deleting = ref('')
 const loading = ref(false)
+const refreshing = ref(false)
 const busy = ref(false)
 const error = ref('')
 const pageError = ref('')
@@ -108,6 +112,16 @@ async function load(more = false) {
   }
 }
 
+async function refreshComments() {
+  if (refreshing.value || loading.value || busy.value || uploader.value?.choosing) return
+  const target = props.target, scope = auth.context
+  refreshing.value = true
+  try { await load() }
+  finally {
+    if (props.target === target && auth.context === scope) refreshing.value = false
+  }
+}
+
 const end = useListEnd('.spot-discussion__end',
   () => open.value && !!next.value && !loading.value && !busy.value && !pageError.value, () => void load(true))
 onScopeDispose(() => { version++; clearDraft() })
@@ -123,6 +137,7 @@ function analyse(target: string, afterSubmission = false) {
 }
 watch([open, () => props.target], ([visible, target], previous) => {
   version++
+  refreshing.value = false
   busy.value = false
   focus.value = false
   emojiOpen.value = confirmOpen.value = false
@@ -140,6 +155,7 @@ watch([open, () => props.target], ([visible, target], previous) => {
 })
 watch(() => auth.context, () => {
   version++
+  refreshing.value = false
   busy.value = false
   confirmOpen.value = emojiOpen.value = false
   items.value = []
@@ -273,7 +289,9 @@ async function remove() {
 
 <template>
   <MobileBottomSheet v-model="open" title="钓位评论" close-label="关闭钓位评论" root-portal :z-index="140"
-    :busy="busy" tall :keyboard-height="keyboardHeight" initial-focus=".mobile-sheet__close">
+    :busy="busy" tall :keyboard-height="keyboardHeight" initial-focus=".mobile-sheet__close"
+    :refreshable="open && !busy && (!loading || refreshing) && !uploader?.choosing" :refreshing="refreshing"
+    :refresh-style="theme.dark ? 'white' : 'black'" @refresh="refreshComments">
     <view class="spot-discussion">
       <view class="spot-discussion__context">
         <text class="name spot-discussion__title" role="heading" aria-level="3">{{ title }}</text>
@@ -281,7 +299,7 @@ async function remove() {
       </view>
       <DiscussionLikes v-if="open && likes" :target="target" :count="likes" />
       <MobileLoadError v-if="error" inline :message="error" title="评论暂时无法更新" @retry="load()" />
-      <FishingLoadingStatus v-if="loading && !items.length" label="正在读取评论…" bare />
+      <MobileSkeleton v-if="loading && !items.length" label="正在读取评论…" bare />
       <text v-else-if="!items.length && !error" class="muted">还没有评论，聊聊你的经验。</text>
       <DiscussionComment v-for="item in items" :key="item.id" :item="item" can-reply :disabled="busy"
         :reply-label="`回复${item.author?.nickname || '钓友'}的评论`" media-label="评论图片" @reply="selectReply(item)">
@@ -296,14 +314,15 @@ async function remove() {
       <!-- #ifdef MP-WEIXIN -->
       <view v-if="next" class="spot-discussion__end" aria-hidden="true" />
       <!-- #endif -->
-      <MobileListFooter :loading="loading && (!!items.length || !!next)" :error="pageError"
-        :can-load-more="!!next && !busy && !error" :finished="!next && !loading && !error"
+      <MobileListFooter :loading="loading && !refreshing && (!!items.length || !!next)" :error="pageError"
+        :can-load-more="!!next && !refreshing && !busy && !error" :finished="!next && !loading && !error"
         :count="items.length" :total="total" loading-label="正在加载更多评论…"
         error-title="更多评论暂未加载" @more="load(true)" />
     </view>
     <template #footer>
       <view class="spot-discussion__composer">
         <MobileCommentComposer :busy="busy && !confirmOpen" :disabled="busy" :send-disabled="!canSend"
+          :show-reply="!!reply" :show-meta="!!(draft.length || media.length)"
           :media-disabled="uploader?.choosing || media.length >= 6" :show-camera="showCamera" attachment-label="添加图片"
           :send-label="reply ? '发表回复' : '发表评论'" :emoji-open="emojiOpen" :emoji-trigger-id="emojiTrigger"
           @camera="chooseMedia('camera')" @media="chooseMedia('album')" @emoji="showEmoji" @send="submit">
@@ -314,6 +333,7 @@ async function remove() {
             </view>
           </template>
           <MobileField v-model="draft" :field="field" :label="reply ? '回复 ' + (reply.author?.nickname || '钓友') : '写一条评论'" multiline :focus="focus"
+            plain :adjust-position="false" @keyboard="keyboardHeight = $event"
             :maxlength="500" :disabled="busy" :placeholder="reply ? '写回复…' : '分享有用的经验，友善交流'" />
           <template v-if="auth.signedIn" #attachments>
             <MobileMediaUploader ref="uploader" v-model="media" :scope="`${auth.context}:${target}`" :active="open"
@@ -323,7 +343,7 @@ async function remove() {
           </template>
           <template v-if="draft.length || media.length" #meta><text v-if="media.length">图片 {{ media.length }}/6</text><text v-if="draft.length">{{ draft.length }}/500</text></template>
         </MobileCommentComposer>
-        <text v-if="notice" class="caption" role="status">{{ notice }}</text>
+        <text v-if="notice" class="caption" :class="{ 'spot-comments__announcement': notice !== '评论已删除' }" role="status">{{ notice }}</text>
         <text v-if="actionError && !confirmOpen" class="error" role="alert">{{ actionError }}</text>
       </view>
     </template>
@@ -338,6 +358,15 @@ async function remove() {
 </template>
 
 <style scoped>
+.spot-comments__announcement {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
 .spot-discussion, .spot-discussion__composer {
   display: grid;
   min-width: 0;
@@ -345,8 +374,8 @@ async function remove() {
   overflow-wrap: anywhere;
 }
 .spot-discussion { padding: 12px 16px 16px; gap: 4px; }
-.spot-discussion__context { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; }
-.spot-discussion__context .caption { flex-shrink: 0; }
+.spot-discussion__context { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: 4px 12px; }
+.spot-discussion__context .caption { max-width: 100%; }
 .spot-discussion__title { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow: hidden; }
 .spot-discussion__reply {
   min-width: 0;
@@ -354,18 +383,19 @@ async function remove() {
   border-inline-start: 2px solid var(--line);
   color: var(--reed);
 }
-.spot-discussion__excerpt { min-width: 0; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; font-size: .875rem; }
-.spot-discussion__reply { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
-.spot-discussion__reply .text-action { flex: none; }
+.spot-discussion__excerpt { min-width: 0; flex: 1 1 8rem; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; font-size: var(--fishing-label-size); }
+.spot-discussion__reply { display: flex; flex-wrap: wrap; align-items: flex-start; justify-content: space-between; gap: 8px; }
+.spot-discussion__reply .text-action { flex: none; margin-inline-start: auto; }
 .spot-discussion__composer {
   --mobile-comment-input-height: clamp(46px, calc(var(--mobile-sheet-viewport-height, 100vh) * .11), 84px);
+  box-sizing: border-box;
+  padding: 2px;
   max-height: 46vh;
   max-height: min(46vh, calc(var(--mobile-sheet-viewport-height, 100dvh) * .50));
   overflow-y: auto;
   overscroll-behavior: contain;
   scrollbar-width: none;
 }
-.spot-discussion__composer :deep(.mobile-comment-composer__attachments) { max-height: min(14vh, 104px); overflow-y: auto; overscroll-behavior: contain; scrollbar-width: none; }
 .spot-discussion__composer::-webkit-scrollbar { display: none; }
 .spot-discussion__end { display: block; height: 1px; }
 </style>

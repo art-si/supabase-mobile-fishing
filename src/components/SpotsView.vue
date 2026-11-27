@@ -1,15 +1,15 @@
 <script setup lang="ts">
 defineOptions({ options: { styleIsolation: 'apply-shared' } })
 import { computed, onScopeDispose, ref, shallowRef, watch } from 'vue'
+import { onHide, onShow } from '@dcloudio/uni-app'
 import MobileAction from '@mobile-core/components/MobileAction.vue'
-import MobileIcon from '@mobile-core/components/MobileIcon.vue'
 import MobileSearch from '@mobile-core/components/MobileSearch.vue'
 import MobileSegmented from '@mobile-core/components/MobileSegmented.vue'
 import MobileLoadError from '@mobile-core/components/MobileLoadError.vue'
 import MobileListFooter from '@mobile-core/components/MobileListFooter.vue'
 import MobileEmptyState from '@mobile-core/components/MobileEmptyState.vue'
 import FishingEmptyState from '@/components/FishingEmptyState.vue'
-import MobileLoadingStatus from '@/components/FishingLoadingStatus.vue'
+import MobileSkeleton from '@mobile-core/components/MobileSkeleton.vue'
 import { distanceMeters } from '@mobile-core/coordinates'
 import SpotCard from './SpotCard.vue'
 import SpotCommentsSheet from './SpotCommentsSheet.vue'
@@ -27,9 +27,8 @@ import { fishingDistanceOrigin, fishingMapPoint } from '@/domain/place-distance'
 import { describeSpotLocation } from '@/platforms/spot-location'
 // #endif
 import { cityOption } from '@/domain/cities'
-import { isDemo } from '@/config'
+import { onContentDeleted } from '@/services/content-deletion'
 import { classifyVisibleSpots, loadPublicSpotLeads, loadSpotLeadPlace } from '@/services/discovery'
-import { publicSpotLeads } from '@/domain/public-spot-leads'
 import type { LeadSource, SpotLabels, SpotLead } from '../../supabase/functions/_shared/discovery-contract'
 import { evidenceSpotLabels, mentionsFishingRestriction, verifiedSpotLabels } from '../../supabase/functions/_shared/spot-labels'
 const auth = useAuthStore()
@@ -42,7 +41,7 @@ const origin = computed(() => {
   const coords = fishingDistanceOrigin(point)
   return coords ? { longitude: coords[0], latitude: coords[1], crs: point.crs } : null
 })
-const canSearch = computed(() => isDemo || Boolean(origin.value))
+const canSearch = computed(() => Boolean(origin.value))
 const outsideCoverage = computed(() => {
   const point = entryPosition.value
   return Boolean(point && !fishingMapPoint(point.longitude, point.latitude))
@@ -71,11 +70,10 @@ function rememberCity() {
   currentCity.value = cityOption(String(uni.getStorageSync('dyj.feed.city') || ''))?.name || ''
 }
 rememberCity()
-function refresh() {
+async function refresh() {
   rememberCity()
-  void refreshLeads()
-  void refreshCommunity()
-  return load()
+  more.error.value = ''
+  await Promise.all([refreshLeads(), refreshCommunity(), load()])
 }
 const query = ref(''),
   submitted = ref(''),
@@ -84,7 +82,6 @@ const hasFilters = computed(() => Boolean(submitted.value.trim() || type.value))
 function spotPage(cursor: string | null) {
   const point = origin.value
   const filters = { query: submitted.value, type: type.value, cursor }
-  if (isDemo) return read<Page<Spot>>('spots', filters)
   if (!point) return Promise.resolve({ items: [], next: null } as Page<Spot>)
   const approximate = auth.signedIn ? point : {
     ...point,
@@ -108,6 +105,16 @@ const { data, loading, error, load, invalidate } = useResource(() => spotPage(nu
   items: [], next: null
 })
 const more = useMutation()
+let active = true
+onHide(() => { active = false })
+onShow(() => { active = true })
+onContentDeleted(value => {
+  if (value.type !== 'spot') return
+  const reload = loading.value
+  invalidate()
+  data.value = { ...data.value, items: data.value.items.filter(spot => spot.id !== value.id) }
+  if (reload && active) void load()
+})
 const searchScope = computed(() => JSON.stringify([auth.context, query.value, submitted.value, type.value, origin.value]))
 watch(searchScope, () => { more.error.value = '' }, { flush: 'sync' })
 async function loadMore() {
@@ -148,13 +155,13 @@ function recommendable(spot: Spot) {
     !mentionsFishingRestriction(spot.description || '')
 }
 watch([() => data.value.items, () => auth.context], ([items]) => {
-  if (!submitted.value && !type.value && !isDemo) {
+  if (!submitted.value && !type.value) {
     const cities = new Set(items.filter(spot => spot.audience === 'public')
       .map(spot => cityOption(spot.city || '')?.name).filter(Boolean))
     listCity.value = cities.size === 1 ? [...cities][0] || '' : ''
   }
   const version = ++labelsVersion
-  if (isDemo || !auth.signedIn) {
+  if (!auth.signedIn) {
     aiLabels.value = {}
     return
   }
@@ -170,17 +177,17 @@ async function refreshLeads(reset = false) {
   const city = recommendCity.value
   const version = ++leadsVersion
   if (reset) catalogLeads.value = []
-  catalogLoading.value = Boolean(city && !isDemo)
+  catalogLoading.value = Boolean(city)
   if (!catalogLoading.value) return
   const leads = await loadPublicSpotLeads(city)
   if (version !== leadsVersion) return
-  catalogLeads.value = leads ?? (catalogLeads.value.length ? catalogLeads.value : publicSpotLeads)
+  catalogLeads.value = leads ?? catalogLeads.value
   catalogLoading.value = false
 }
 watch([recommendCity, () => auth.context], () => void refreshLeads(true), { immediate: true })
 const normalizedName = (value: string) => value.replace(/[\s·（）()]/g, '')
 const leadKey = (lead: SpotLead) => lead.source.url + '#' + lead.name
-const cityLeads = computed(() => isDemo || !recommendCity.value ? [] :
+const cityLeads = computed(() => !recommendCity.value ? [] :
   catalogLeads.value.filter(lead => lead.city === recommendCity.value))
 const leadPlaces = shallowRef(new Map<string, MapPlace | null>())
 watch(cityLeads, (leads) => {
@@ -213,6 +220,9 @@ const candidateCards = computed(() => {
     lead?: LeadSource
     relatedSources?: LeadSource[]
     leadEvidence?: string
+    leadVerifiedAt?: string
+    catchFrame?: SpotLead['catchFrame']
+    locationScope?: SpotLead['locationScope']
     place?: MapPlace
     sourceAddress?: string
     target: string
@@ -239,8 +249,9 @@ const candidateCards = computed(() => {
   if (!from) return rows
   for (const lead of cityLeads.value) {
     if ((type.value && lead.waterType !== type.value) ||
-        (query.value && !(lead.name + lead.city).includes(query.value.trim()))) continue
-    const name = normalizedName(lead.name)
+        (query.value && ![lead.name, lead.displayName, lead.poiQuery, lead.city, lead.district, lead.sourceAddress]
+          .some(value => value?.includes(query.value.trim())))) continue
+    const name = normalizedName(lead.displayName || lead.name)
     const key = leadKey(lead)
     const place = leadPlaces.value.get(key)
     if (!place) continue
@@ -259,12 +270,13 @@ const candidateCards = computed(() => {
     }
     rows.push({
       spot: {
-        id: key, city: lead.city, name: lead.name,
+        id: key, city: lead.city, name: lead.displayName || lead.name,
         water_type: lead.waterType, observed_on: lead.sourceDate,
         distance_m: distance, distance_approximate: true
       },
       labels: lead.labels, lead: lead.source, target: leadCommunityKey(lead),
-      relatedSources: lead.relatedSources, leadEvidence: lead.evidence,
+      relatedSources: lead.relatedSources, leadEvidence: lead.evidence, leadVerifiedAt: lead.verifiedAt,
+      catchFrame: lead.catchFrame, locationScope: lead.locationScope,
       place,
       sourceAddress: lead.sourceAddress,
       score: 6 + Object.keys(lead.labels).length
@@ -317,23 +329,16 @@ defineExpose({ refresh, reachBottom })
       </view>
     </MobileEmptyState>
     <template v-else>
-      <view class="spots-tools">
-        <view class="spots-tools__search">
-          <MobileSearch
-            :key="auth.context"
-            v-model="query"
-            name="spot-search"
-            label="搜索钓位"
-            placeholder="搜水域、城市或鱼种"
-            action-label=""
-            live
-            @search="search"
-          />
-        </view>
-        <MobileAction class="secondary spots-tools__map" @click="uni.navigateTo({ url: '/pages/map/index' })">
-          <MobileIcon name="location" :size="18" />水域地图
-        </MobileAction>
-      </view>
+      <MobileSearch
+        :key="auth.context"
+        v-model="query"
+        name="spot-search"
+        label="搜索钓位"
+        placeholder="搜水域、城市或鱼种"
+        action-label=""
+        live
+        @search="search"
+      />
       <MobileSegmented
         v-model="type"
         label="水域类型"
@@ -345,11 +350,12 @@ defineExpose({ refresh, reachBottom })
         ]"
       />
       <MobileLoadError v-if="error" title="钓位暂未加载" :message="error" @retry="refresh" />
-      <MobileLoadingStatus v-if="readingSpots && !cards.length" label="正在读取钓位…" />
+      <MobileSkeleton v-if="readingSpots && !cards.length" label="正在读取钓位…" />
       <SpotCard v-for="card in cards" :key="card.spot.id" :spot="card.spot"
         :labels="card.labels" :lead="card.lead" :place="card.place" :source-address="card.sourceAddress"
-        :related-sources="card.relatedSources" :lead-evidence="card.leadEvidence"
-        :interactive="!isDemo && (Boolean(card.lead) || ('audience' in card.spot && card.spot.audience === 'public' && card.spot.status === 'published'))"
+        :related-sources="card.relatedSources" :lead-evidence="card.leadEvidence" :lead-verified-at="card.leadVerifiedAt"
+        :catch-frame="card.catchFrame" :location-scope="card.locationScope"
+        :interactive="Boolean(card.lead) || ('audience' in card.spot && card.spot.audience === 'public' && card.spot.status === 'published')"
         :community="card.community" :rank="card.rank" :busy="communityBusy.has(card.target)"
         @react="kind => react(card.target, kind)" @comments="openComments(card.target, card.spot.name)" />
       <MobileListFooter
@@ -367,28 +373,13 @@ defineExpose({ refresh, reachBottom })
       <FishingEmptyState
         v-if="!readingSpots && !more.busy.value && !error && !cards.length && !data.next"
         icon="location"
-        :title="hasFilters ? '没有匹配的钓位' : isDemo ? '暂无示例钓位' : '附近暂无钓位'"
+        :title="hasFilters ? '没有匹配的钓位' : '附近暂无钓位'"
         :description="hasFilters ? '试试其他关键词，或切换水域类型。' : undefined"
       />
     </template>
   </view>
 </template>
 <style scoped>
-.spots-tools {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: stretch;
-  gap: var(--fishing-gap-small);
-  --mobile-workspace-action-height: calc(var(--tms-control-height) - 2px);
-}
-.spots-tools__search {
-  flex: 1 0 min(100%, 13rem);
-  min-width: 0;
-}
-.spots-tools__map {
-  flex: none;
-  margin-inline-start: auto;
-}
 .spots-location-actions {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(min(100%, 8rem), 1fr));

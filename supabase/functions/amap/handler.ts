@@ -11,7 +11,7 @@ type Input =
   | { action: 'water-places'; point: Point; radius: number }
   | { action: 'shoreline'; point: Point }
   | { action: 'weather'; adcode: string }
-  | { action: 'preview'; spotId?: string; point?: Point; zoom: number; radiusM?: number; hideMarker: boolean }
+  | { action: 'preview'; spotId?: string; point?: Point; zoom: number; radiusM?: number; hideMarker: boolean; viewport?: { width: number; height: number }; density?: 1 | 2 }
 export interface Dependencies {
   authenticate: (request: Request) => Promise<Caller | null>
   reserve: (caller: Caller) => Promise<void>
@@ -122,7 +122,7 @@ async function input(request: Request): Promise<Input> {
     body.action !== 'preview' ||
     ('hideMarker' in body && typeof body.hideMarker !== 'boolean') ||
     Object.keys(body).some(
-      (k) => !['action', 'spotId', 'longitude', 'latitude', 'zoom', 'radiusM', 'hideMarker'].includes(k)
+      (k) => !['action', 'spotId', 'longitude', 'latitude', 'zoom', 'radiusM', 'hideMarker', 'viewport', 'density'].includes(k)
     )
   )
     throw new MapError('INVALID_INPUT')
@@ -133,12 +133,23 @@ async function input(request: Request): Promise<Input> {
     typeof body.spotId === 'string' &&
     /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(body.spotId)
   ) {
-    if ('longitude' in body || 'latitude' in body || 'radiusM' in body)
+    if ('longitude' in body || 'latitude' in body || 'radiusM' in body || 'viewport' in body || 'density' in body)
       throw new MapError('INVALID_INPUT')
     return { action: 'preview', spotId: body.spotId, zoom: Number(zoom), hideMarker: body.hideMarker === true }
   }
   if ('spotId' in body || !coordinates(body.longitude, body.latitude))
     throw new MapError('INVALID_INPUT')
+  let viewport: { width: number; height: number } | undefined
+  if ('density' in body && (body.density !== 1 && body.density !== 2 || !('viewport' in body)))
+    throw new MapError('INVALID_INPUT')
+  if ('viewport' in body) {
+    const value = body.viewport as Record<string, unknown> | null
+    if (!value || typeof value !== 'object' || Array.isArray(value) ||
+        Object.keys(value).some(key => key !== 'width' && key !== 'height') ||
+        !['width', 'height'].every(key => Number.isInteger(value[key]) && Number(value[key]) >= 256 && Number(value[key]) <= 1024) ||
+        body.hideMarker !== true || 'radiusM' in body) throw new MapError('INVALID_INPUT')
+    viewport = { width: Number(value.width), height: Number(value.height) }
+  }
   if (
     'radiusM' in body &&
     (!Number.isInteger(body.radiusM) ||
@@ -153,6 +164,8 @@ async function input(request: Request): Promise<Input> {
     hideMarker: body.hideMarker === true,
     point: { longitude: body.longitude, latitude: body.latitude as number },
     zoom: Number(zoom),
+    ...(viewport ? { viewport } : {}),
+    ...(viewport ? { density: body.density === 2 && Number(zoom) < 17 ? 2 as const : 1 as const } : {}),
     ...(body.radiusM !== undefined ? { radiusM: Number(body.radiusM) } : {})
   }
 }
@@ -255,7 +268,7 @@ export function createMapHandler(deps: Dependencies) {
           const cosine = Math.cos((point!.latitude * Math.PI) / 180)
           zoom = Math.max(
             8,
-            Math.min(zoom, Math.floor(Math.log2((156543.03392 * cosine * 140) / data.radiusM)))
+            Math.min(zoom, Math.floor(Math.log2((78271.51696 * cosine * 140) / data.radiusM)))
           )
           const ring = Array.from({ length: 33 }, (_, i) => {
             const angle = (2 * Math.PI * (i % 32)) / 32
@@ -264,8 +277,8 @@ export function createMapHandler(deps: Dependencies) {
           url.searchParams.set('paths', `2,0x9C512F,1,0x9C512F,0.12:${ring.join(';')}`)
         }
         url.searchParams.set('zoom', String(zoom))
-        url.searchParams.set('size', '640*360')
-        url.searchParams.set('scale', '1')
+        url.searchParams.set('size', data.viewport ? `${data.viewport.width}*${data.viewport.height}` : '640*360')
+        url.searchParams.set('scale', String(data.density ?? 1))
         // An area preview is not an exact fishing-point pin.
         if (precision === 'exact' && !data.hideMarker) url.searchParams.set('markers', `mid,0x0f766e,A:${location}`)
       }
@@ -357,11 +370,12 @@ export function createMapHandler(deps: Dependencies) {
       // No URL/key or user coordinates in a GET query; no persistent image storage or cropping.
       return json({
         image: `data:${mime};base64,${base64(bytes)}`,
-        width: 640,
-        height: 360,
+        width: data.action === 'preview' ? data.viewport?.width ?? 640 : 640,
+        height: data.action === 'preview' ? data.viewport?.height ?? 360 : 360,
         precision,
         zoom,
-        source: 'amap'
+        source: 'amap',
+        ...(data.action === 'preview' && data.viewport ? { density: data.density ?? 1 } : {})
       })
     } catch (error) {
       if (error instanceof MapError) return json({ error: error.code }, error.status)

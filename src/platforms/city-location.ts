@@ -1,4 +1,3 @@
-import { isDemo } from '@/config'
 import { cityOption } from '@/domain/cities'
 // #ifdef H5
 import { locate, loadAmap, timed } from './amap'
@@ -7,7 +6,7 @@ let supported = false
 // #ifdef H5
 supported = true
 // #endif
-export const canLocateCity = supported && !isDemo
+export const canLocateCity = supported
 /** Resolve only the administrative city; coordinates are never saved to the profile. */
 export async function locateCity() {
   // #ifdef H5

@@ -1,12 +1,10 @@
 import { describeReportLocation } from './report-location'
-import { isDemo } from '@/config'
 import { locateWaterPlace, waterAt } from './water-location'
 import { districtOptions } from '@/domain/regions'
 import { cityOptions } from '@/domain/cities'
 import type { SelectedPlace } from '@/domain/map'
 import { validCoordinates } from '@/domain/rules'
 
-export const canLocateSpot = !isDemo
 export interface SpotLocation {
   longitude: number
   latitude: number
@@ -39,7 +37,6 @@ export async function describeSpotLocation(place: SelectedPlace): Promise<SpotLo
     }
   }
   // A pin placed on the interactive map has no provider POI metadata.
-  // #ifdef H5
   const result = await describeReportLocation([place.longitude, place.latitude])
   return {
     longitude: place.longitude,
@@ -47,8 +44,4 @@ export async function describeSpotLocation(place: SelectedPlace): Promise<SpotLo
     city: result.city,
     label: result.location_label || place.address || place.name
   }
-  // #endif
-  // #ifndef H5
-  throw new Error('未能识别这个地点的城市，请在高德中重新搜索并选择地点。')
-  // #endif
 }

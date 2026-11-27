@@ -49,7 +49,7 @@ function httpHarness(response: unknown, key = 'public-fixture') {
 
 function authHarness(
   request: (...args: any[]) => Promise<unknown>,
-  flags = { isDemo: false, phoneAuth: true, captcha: false }
+  flags = { phoneAuth: true, captcha: false }
 ) {
   const { ApiError } = httpHarness({})
   const scope = { value: 0 }
@@ -64,18 +64,16 @@ function authHarness(
       })
     },
     pinia: { defineStore: (_name: string, setup: () => unknown) => setup },
-    '@/config': { isDemo: flags.isDemo, config: flags },
+    '@/config': { config: flags },
     '@/services/http': { request, ApiError },
     '@/domain/rules': { normalizePhone: () => 'normalized-phone-fixture' },
     '@/domain/auth-errors': authContract,
     '@/services/session': {
-      demoUser: { value: false },
       session: { value: null },
       sessionScope: scope,
       sessionNotice: notice,
       hydrateSession() {},
       signOut() {},
-      enterDemoSession() {},
       saveSession(value: unknown) {
         saved.push(value)
       },
@@ -168,11 +166,21 @@ test('HTTP network failure is actionable and retains a non-success code', async 
   })
 })
 
+test('HTTP distinguishes a timed-out request without exposing transport diagnostics', async () => {
+  const service = loadService('services/http.ts', {
+    '@/config': { config: { supabaseUrl: 'https://test.invalid', supabaseKey: 'fixture' } },
+    '@/domain/auth-errors': authContract,
+    '@/domain/user-errors': userErrors
+  }, { uni: { request: (options: any) => options.fail({ errMsg: 'request:fail timeout private-host' }) } })
+  await assert.rejects(service.request('/rest/v1/rpc/fishing_read'), {
+    status: 0, code: 'REQUEST_TIMEOUT', message: '请求超时，请稍后重试'
+  })
+})
+
 test('Both SMS methods refuse disallowed environments before making any request', async () => {
   for (const flags of [
-    { isDemo: true, phoneAuth: true, captcha: false },
-    { isDemo: false, phoneAuth: false, captcha: false },
-    { isDemo: false, phoneAuth: true, captcha: true }
+    { phoneAuth: false, captcha: false },
+    { phoneAuth: true, captcha: true }
   ]) {
     let calls = 0
     const { auth, saved } = authHarness(async () => {

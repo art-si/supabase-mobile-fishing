@@ -36,6 +36,31 @@ Deno.test('AMap rejects anonymous before quota or external calls', async () => {
   const response = await f.call({ action: 'search', query: '河' })
   check(response.status === 401 && !f.urls.length && !f.reservations(), 'anonymous is denied')
 })
+
+Deno.test('water picker requests bounded AMap images without changing private spot preview precision', async () => {
+  const f = fixture()
+  const point = { action: 'preview', longitude: 120.12, latitude: 31.2, zoom: 16, hideMarker: true, viewport: { width: 640, height: 800 } }
+  const response = await f.call(point), result = await response.json()
+  check(response.status === 200 && result.width === 640 && result.height === 800 && result.source === 'amap', 'real provider dimensions')
+  check(f.urls[0].searchParams.get('size') === '640*800' && f.urls[0].searchParams.get('scale') === '1' && !f.urls[0].searchParams.has('markers'), 'whole uncropped map with exact pixel scale')
+  for (const viewport of [{ width: 2048, height: 800 }, { width: 640, height: 255 }, { width: 640.5, height: 800 }, { width: 640, height: 800, url: 'https://invalid' }])
+    check((await f.call({ ...point, viewport })).status === 400, 'reject malformed dimensions')
+  check((await f.call({ ...point, hideMarker: false })).status === 400, 'picker viewport needs explicit marker-free point')
+  check((await f.call({ ...point, radiusM: 1000 })).status === 400, 'do not mix radius preview and picker projection')
+  check((await f.call({ action: 'preview', spotId: user.id, viewport: point.viewport })).status === 400, 'private previews keep existing contract')
+  check(f.reservations() === 1, 'invalid frames do not spend quota')
+})
+Deno.test('retina picker keeps logical viewport and caps AMap density at the provider maximum zoom', async () => {
+  const f = fixture(), point = { action: 'preview', longitude: 120.12, latitude: 31.2, zoom: 16, hideMarker: true, density: 2, viewport: { width: 390, height: 480 } }
+  const result = await (await f.call(point)).json()
+  check(result.width === 390 && result.height === 480 && result.density === 2 && result.zoom === 16, 'logical camera stays stable')
+  check(f.urls[0].searchParams.get('scale') === '2' && f.urls[0].searchParams.get('size') === '390*480', 'retina raster is provider-owned')
+  const max = await (await f.call({ ...point, zoom: 17 })).json()
+  check(max.density === 1 && f.urls[1].searchParams.get('scale') === '1', 'max layer never silently expands field of view')
+  for (const density of [0, 3, '2', null]) check((await f.call({ ...point, density })).status === 400, 'bounded density')
+  check((await f.call({ action: 'preview', longitude: 120, latitude: 31, density: 2 })).status === 400, 'density cannot alter legacy previews')
+  check((await f.call({ action: 'preview', spotId: user.id, density: 2 })).status === 400, 'private preview contract stays fixed')
+})
 Deno.test('static water lookup returns natural water features and keeps only their name and location', async () => {
   let url: URL | undefined
   const f = fixture({ fetch: async input => {
@@ -421,7 +446,9 @@ Deno.test(
     check(response.status === 200, 'circle preview accepted')
     const path = f.urls[0].searchParams.get('paths')!.split(':')[1].split(';')
     check(path.length === 33 && path[0] === path.at(-1), 'closed bounded ring')
-    check(Number(f.urls[0].searchParams.get('zoom')) <= 12, 'circle fits without clipping')
+    const zoom = Number(f.urls[0].searchParams.get('zoom'))
+    const radiusPixels = 5000 * 512 * 2 ** zoom / (40075016.6856 * Math.cos(31.5 * Math.PI / 180))
+    check(radiusPixels <= 140, 'AMap 512-pixel convention keeps circle inside the 360px preview')
     for (const body of [
       { action: 'preview', longitude: 120, latitude: 31, radiusM: 5001 },
       { action: 'preview', longitude: 120, latitude: 31, radiusM: -1 },

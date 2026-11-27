@@ -7,7 +7,6 @@ export interface PhoneLoginCapability {
 }
 
 interface PhoneLoginEnvironment {
-  isDemo: boolean
   backendReady: boolean
   enabled: boolean
   platform: PhoneLoginPlatform
@@ -20,7 +19,6 @@ const unavailable = (code: string, message = '本机号码登录暂时不可用�
 })
 
 function commonCapability(environment: PhoneLoginEnvironment) {
-  if (environment.isDemo) return unavailable('DEMO_AUTH_DISABLED', '当前为体验模式，请使用体验入口')
   if (!environment.enabled || !environment.backendReady)
     return unavailable('PHONE_AUTH_UNAVAILABLE')
   return null

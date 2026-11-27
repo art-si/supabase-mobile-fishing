@@ -1,0 +1,4 @@
+interface:
+  display_name: "专业移动端 UI 质量"
+  short_description: "以 H5 为基准审查钓友集视觉层级、交互状态、响应式和各端实际截图"
+  default_prompt: "Use $professional-ui-quality to refine and verify the fishing app against its H5 baseline."

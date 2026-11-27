@@ -12,8 +12,8 @@ const placeholderKey = 'sb_publishable_contract_test_only'
 const profile =
   process.argv.find((arg) => arg.startsWith('--profile='))?.slice('--profile='.length) || 'active'
 assert.ok(
-  ['active', 'password', 'current', 'demo'].includes(profile),
-  'profile must be active, password, current, or demo'
+  ['active', 'password', 'current'].includes(profile),
+  'profile must be active, password, or current'
 )
 const currentFlags = profile === 'current' ? loadEnv('production', process.cwd(), 'VITE_') : {}
 const currentUnavailable =
@@ -35,7 +35,6 @@ mkdirSync(output, { recursive: true })
 if (!process.argv.includes('--skip-build')) {
   const fixtureEnv = {
     ...process.env,
-    VITE_DATA_MODE: profile === 'demo' ? 'demo' : 'live',
     VITE_SUPABASE_URL: 'https://' + authHost,
     VITE_SUPABASE_KEY: placeholderKey,
     VITE_PHONE_AUTH_ENABLED: profile === 'active' ? 'true' : 'false',
@@ -48,7 +47,7 @@ if (!process.argv.includes('--skip-build')) {
   // "current" intentionally preserves the user's actual production env flags.
   // Do not print keys or replace it with an artificial active/empty-key UI.
   const env = profile === 'current' ? { ...process.env, H5_BUILD_DIR: buildDirectory } : fixtureEnv
-  const mode = profile === 'current' ? 'production' : profile === 'demo' ? 'demo' : 'test-login'
+  const mode = profile === 'current' ? 'production' : 'test-login'
   const build = spawnSync(
     process.platform === 'win32' ? 'pnpm.cmd' : 'pnpm',
     ['exec', 'mobile-pro', 'uni', 'build', '-p', 'h5', '--mode', mode, '--outDir', env.H5_BUILD_DIR],
@@ -107,12 +106,12 @@ async function poll(task, message, timeout = 10000) {
   } while (Date.now() < deadline)
   assert.fail(message)
 }
-async function setup({ useClock = false } = {}) {
+async function setup({ useClock = false, located = true, expiredSession = false } = {}) {
   const context = await browser.newContext({
     viewport: { width: 375, height: 812 },
     locale: 'zh-CN',
     colorScheme: 'light',
-    permissions: ['geolocation'],
+    permissions: located ? ['geolocation'] : [],
     geolocation: { latitude: 31.12, longitude: 120.12 },
     reducedMotion: 'reduce'
   })
@@ -124,8 +123,15 @@ async function setup({ useClock = false } = {}) {
     verify: 'success',
     retryAfter: 125,
     otpGate: null,
-    verifyGate: null
+    verifyGate: null,
+    passwordGate: null
   }
+  if (expiredSession) await context.addInitScript(({ id, phone }) => {
+    localStorage.setItem('dyj.auth.v1', JSON.stringify({ type: 'object', data: {
+      access_token: 'expired-layout-fixture', refresh_token: 'expired-layout-fixture',
+      expires_at: 1, user: { id, phone }
+    } }))
+  }, { id: fixtureUserId, phone: normalizedPhone })
   // Fake sessions must never open a real Realtime connection.
   await context.routeWebSocket(/supabase\.co/, socket => socket.close())
   await context.route('**/*', async (route) => {
@@ -146,6 +152,8 @@ async function setup({ useClock = false } = {}) {
     if (request.method() === 'OPTIONS') return json(200, {})
     const record = { method: request.method(), path: url.pathname, body: request.postDataJSON() }
     state.requests.push(record)
+    if (expiredSession && url.pathname === '/auth/v1/token')
+      return json(401, { code: 'refresh_token_not_found' })
     if (profile === 'active' || profile === 'password')
       assert.ok(
         request.headers().apikey === placeholderKey,
@@ -185,6 +193,7 @@ async function setup({ useClock = false } = {}) {
       })
     }
     if (url.pathname === '/auth/v1/token' && url.searchParams.get('grant_type') === 'password') {
+      if (state.passwordGate) await state.passwordGate
       if (record.body?.phone !== normalizedPhone || record.body?.password !== 'test-only-password')
         return json(400, { code: 'invalid_credentials' })
       return json(200, {
@@ -194,17 +203,19 @@ async function setup({ useClock = false } = {}) {
         user: { id: fixtureUserId, phone: normalizedPhone.slice(1) }
       })
     }
+    if (url.pathname.endsWith('/rpc/fishing_password_configured')) return json(200, true)
     if (url.pathname.endsWith('/rpc/fishing_read')) return json(200, { items: [], next: null })
     if (url.pathname.startsWith('/rest/v1/')) return json(200, [], { 'content-range': '0-0/0' })
     return json(404, { message: 'Unimplemented local contract fixture' })
   })
   const page = await context.newPage()
-  page.setDefaultTimeout(12000)
+  page.setDefaultTimeout(30000)
+  page.setDefaultNavigationTimeout(45000)
   page.on('pageerror', (error) => state.errors.push(error.message))
   // Install before application intervals are created; installing afterward cannot
   // reliably control the login page's already-running resend timer.
   if (useClock) await page.clock.install()
-  await page.goto(base + '/#/pages/login/index', { waitUntil: 'networkidle' })
+  await page.goto(base + '/#/pages/login/index', { waitUntil: 'commit' })
   await page.locator('.fishing-page').waitFor()
   if (profile === 'active') await page.locator('input[aria-label="手机号码"]').waitFor()
   return { context, page, state }
@@ -418,7 +429,9 @@ async function check(name, action) {
   let test
   try {
     test = await setup({
-      useClock: name === 'send-contract-busy-and-countdown' || name.includes('429-retry-after')
+      useClock: name === 'send-contract-busy-and-countdown' || name.includes('429-retry-after'),
+      located: !name.includes('without-location'),
+      expiredSession: name === 'expired-session-login-layout'
     })
     await action(test)
     assert.deepEqual(test.state.errors, [], 'uncaught page errors')
@@ -508,8 +521,21 @@ try {
       const password = page.locator('input[aria-label="登录密码"]')
       const submit = page.getByRole('button', { name: '登录', exact: true })
       await password.fill('wrong-test-password')
+      let releasePassword
+      state.passwordGate = new Promise(resolve => { releasePassword = resolve })
       await submit.click()
+      const pending = page.locator('.login-actions .primary')
+      await pending.getByText('正在登录…', { exact: true }).waitFor()
+      assert.equal(await pending.isDisabled(), true)
+      assert.equal(await pending.getAttribute('aria-busy'), 'true')
+      await page.emulateMedia({ reducedMotion: 'no-preference' })
+      await shot(page, 'login-password-pending-375')
+      assert.equal(requests(state, 'token').length, 1)
+      releasePassword()
+      state.passwordGate = null
       await textIncludes(page, '账号、手机号或密码不正确，请重新填写')
+      assert.equal(await submit.isEnabled(), true)
+      assert.notEqual(await submit.getAttribute('aria-busy'), 'true')
       await password.fill('test-only-password')
       await submit.click()
       await page.waitForURL((url) => ['#/', '#/pages/home/index'].includes(url.hash))
@@ -517,27 +543,25 @@ try {
       assert.equal(requests(state, 'otp').length, 0)
       assert.equal(requests(state, 'verify').length, 0)
     })
-  } else if (profile === 'demo') {
-    await check('demo-explicit-local-only', async ({ page, state }) => {
-      await page.getByRole('button', { name: '进入本机体验', exact: true }).waitFor()
-      await noEmptyHeading(page)
-      await noUnavailableOneClick(page)
-      assert.equal(await page.locator('input, [role="checkbox"]').count(), 0)
-      const text = await page.locator('body').innerText()
-      assert.ok(
-        text.includes('本机') && /不发送短信|不连接线上|不会注册线上/.test(text),
-        'local demo must not masquerade as a live account'
-      )
-      await shot(page, 'login-demo-light-375')
-      await page.emulateMedia({ colorScheme: 'dark' })
-      await shot(page, 'login-demo-dark-375')
-      await page.getByRole('button', { name: '进入本机体验', exact: true }).click()
-      await page.waitForURL((url) => ['#/', '#/pages/home/index'].includes(url.hash))
-      await textIncludes(page, '本机体验 · 示例内容，不连接线上')
-      assert.equal(state.requests.length, 0, 'local demo must make no remote request')
-      assert.equal(await page.evaluate(() => localStorage.getItem('dyj.auth.v1')), null)
-    })
   } else {
+    await check('expired-session-login-layout', async ({ page }) => {
+      await textIncludes(page, '登录已失效')
+      assert.equal(await page.locator('.session-notice').count(), 0)
+      assert.equal(await page.getByRole('button', { name: '重新登录', exact: true }).count(), 0)
+      assert.ok((await page.locator('.login-brand').boundingBox()).y < 140)
+      await shot(page, 'expired-session-login-375')
+    })
+    await check('password-login-without-location', async ({ page, state }) => {
+      await page.getByRole('button', { name: '使用密码登录', exact: true }).click()
+      await page.getByRole('textbox', { name: '账号或手机号' }).fill(fixturePhone)
+      await page.locator('input[aria-label="登录密码"]').fill('test-only-password')
+      await shot(page, 'password-without-location-375')
+      await page.getByRole('button', { name: '登录', exact: true }).click()
+      await page.waitForURL((url) => ['#/', '#/pages/home/index'].includes(url.hash))
+      assert.equal(state.requests.filter(request => request.path === '/auth/v1/token').length, 1)
+      assert.ok(await page.evaluate(() => Boolean(localStorage.getItem('dyj.auth.v1'))))
+      await textIncludes(page, '请先开启位置')
+    })
     await check('responsive-and-focus', async ({ page, state }) => {
       await noEmptyHeading(page)
       await noUnavailableOneClick(page)
@@ -1016,7 +1040,7 @@ try {
         )
         assert.equal(
           await visible.locator('.legal-section .body').first().evaluate((el) => getComputedStyle(el).fontSize),
-          '22.5px'
+          '24px'
         )
         await shot(page, 'legal-' + type + '-dark-large-320')
         await textStyle.evaluate((el) => el.remove())

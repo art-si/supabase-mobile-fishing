@@ -1,0 +1,124 @@
+create or replace function public.fishing_finish_spot_source(job_id uuid,lease_token uuid,result jsonb) returns boolean
+language plpgsql security invoker set search_path='' as $$
+declare job fishing_private.spot_source_jobs; entry jsonb; previous public.fishing_spot_leads;
+  state_name text:=result->>'state'; canonical_name text; merged jsonb;
+begin
+  select * into job from fishing_private.spot_source_jobs where id=job_id and lease=lease_token and lease_until>now() for update;
+  if not found then return false; end if;
+  if state_name not in ('published','review','blocked','failed') or state_name is null or
+    length(coalesce(result->>'reason',''))>100 then raise exception 'INVALID_RESULT' using errcode='22023'; end if;
+  if state_name='published' then
+    if jsonb_typeof(result->'cards') is distinct from 'array' or jsonb_array_length(result->'cards') not between 1 and 6 then
+      raise exception 'INVALID_CARDS' using errcode='22023';
+    end if;
+    for entry in select value from jsonb_array_elements(result->'cards') loop
+      if entry->>'city' is distinct from job.city or entry->'source'->>'url' is distinct from job.url or
+        length(coalesce(entry->>'name','')) not between 2 and 40 or
+        length(coalesce(entry->>'evidence','')) not between 4 and 90 or
+        coalesce(entry->>'waterType','') not in ('钓场','自然水域','水库') or
+        jsonb_typeof(entry->'sourcePosition'->'longitude') is distinct from 'number' or
+        jsonb_typeof(entry->'sourcePosition'->'latitude') is distinct from 'number' or
+        entry->'sourcePosition'->>'crs' is distinct from 'GCJ-02' or
+        not ((entry->'sourcePosition'->>'longitude')::numeric between 73 and 136) or
+        not ((entry->'sourcePosition'->>'latitude')::numeric between 3 and 54) then
+        raise exception 'UNVERIFIED_CARD' using errcode='22023';
+      end if;
+      if entry->>'positionSource'='source' then
+        if entry->>'poiId' is not null or
+          entry->'positionEvidence'->>'url' is distinct from job.url or
+          entry->'positionEvidence'->>'name' is distinct from entry->>'name' or
+          coalesce(entry->'positionEvidence'->>'kind','') not in ('structured_geo','text_coordinates') or
+          length(coalesce(entry->'positionEvidence'->>'value','')) not between 1 and 700 or
+          coalesce(entry->'positionEvidence'->'original'->>'crs','') not in ('GCJ-02','WGS84') or
+          jsonb_typeof(entry->'positionEvidence'->'original'->'longitude') is distinct from 'number' or
+          jsonb_typeof(entry->'positionEvidence'->'original'->'latitude') is distinct from 'number' or
+          not ((entry->'positionEvidence'->'original'->>'longitude')::numeric between 73 and 136) or
+          not ((entry->'positionEvidence'->'original'->>'latitude')::numeric between 3 and 54) then
+          raise exception 'UNVERIFIED_CARD' using errcode='22023';
+        end if;
+      elsif entry->>'locationScope' in ('entrance','shoreline') then
+        -- Named access landmarks are navigation references for the bank.
+        if entry->>'waterType' not in ('自然水域','水库') or entry->>'positionSource' is distinct from 'amap' or
+          coalesce(entry->>'poiId','') !~ '^[A-Za-z0-9]{5,40}$' or
+          entry->'accessPoint'->>'poiId' is distinct from entry->>'poiId' or
+          entry->'accessPoint'->>'name' is distinct from entry->>'poiQuery' or
+          char_length(coalesce(entry->>'poiQuery','')) not between 3 and 60 or
+          (entry->>'locationScope'='entrance' and coalesce(entry->>'poiQuery','') !~ '(门|入口)[）)]?$') or
+          (entry->>'locationScope'='shoreline' and coalesce(entry->>'poiQuery','') !~ '(码头|台阶|亲水平台|观景台|栈桥|栈道|步道)[）)]?$') or
+          entry->'accessPoint'->>'crs' is distinct from 'GCJ-02' or
+          (entry->'accessPoint'->'longitude') is distinct from (entry->'sourcePosition'->'longitude') or
+          (entry->'accessPoint'->'latitude') is distinct from (entry->'sourcePosition'->'latitude') or
+          strpos(coalesce(entry->>'sourceAddress',''),case when entry->>'locationScope'='entrance' then '导航入口' else '岸段参考点' end)=0 or
+          entry->'source'->>'kind' is distinct from '视频' or
+          (entry->'videoEvidence'->'shoreline'->>'url') is distinct from job.url or
+          jsonb_typeof(entry->'videoEvidence'->'shoreline'->'seconds') is distinct from 'number' or
+          (entry->'videoEvidence'->'shoreline'->>'seconds') !~ '^[0-9]{1,5}$' or
+          (entry->'videoEvidence'->'shoreline'->>'subtitle') is distinct from entry->>'evidence' or
+          strpos(regexp_replace(entry->>'evidence','[[:space:]（）()]','','g'),
+                 regexp_replace(entry->>'poiQuery','[[:space:]（）()]','','g'))=0 then
+          raise exception 'UNVERIFIED_CARD' using errcode='22023';
+        end if;
+      elsif entry->>'waterType' is distinct from '钓场' or coalesce(entry->>'poiId','') !~ '^[A-Za-z0-9]{5,40}$' then
+        raise exception 'UNVERIFIED_CARD' using errcode='22023';
+      end if;
+    end loop;
+    if exists (
+      select 1 from jsonb_array_elements(result->'cards') as incoming(c)
+      join public.fishing_spot_leads l on l.city=job.city and l.name=c->>'name'
+      where fishing_private.spot_lead_place_key(l.card) is not null and
+        fishing_private.spot_lead_place_key(l.card) is distinct from fishing_private.spot_lead_place_key(c)
+    ) or exists (
+      select 1 from jsonb_array_elements(result->'cards') as a(c)
+      join jsonb_array_elements(result->'cards') as b(c) on a.c->>'name'=b.c->>'name'
+      where fishing_private.spot_lead_place_key(a.c) is distinct from fishing_private.spot_lead_place_key(b.c)
+    ) then
+      update fishing_private.spot_source_jobs set state='review',reason='same_name_different_place',
+        lease=null,lease_until=null,checked_at=now(),next_check=now()+interval '30 days',result_count=0 where id=job_id;
+      update public.fishing_spot_leads set catalog_status='review' where city=job.city and card->'source'->>'url'=job.url;
+      return false;
+    end if;
+    for entry in select value from jsonb_array_elements(result->'cards') loop
+      -- Keep canonical names/community keys, while merging only the same verified place.
+      select * into previous from public.fishing_spot_leads l where l.city=job.city and
+        (l.name=entry->>'name' or fishing_private.spot_lead_place_key(l.card)=fishing_private.spot_lead_place_key(entry) or
+          (coalesce(l.card->>'poiQuery',l.name) in (entry->>'poiQuery',entry->>'name') and
+            fishing_private.spot_lead_place_key(l.card) is null))
+        order by (l.name=entry->>'name') desc,l.name limit 1;
+      canonical_name:=coalesce(previous.name,entry->>'name');
+      select coalesce(jsonb_agg(link),'[]'::jsonb) into merged from (
+        select distinct on (rtrim(link->>'url','/')) link from jsonb_array_elements(coalesce(previous.card->'relatedSources','[]') ||
+          case when previous.card is null then '[]'::jsonb else jsonb_build_array(previous.card->'source') end ||
+          coalesce(entry->'relatedSources','[]')) as links(link)
+        where link->>'url' is not null and rtrim(link->>'url','/')<>rtrim(job.url,'/') order by rtrim(link->>'url','/') limit 12
+      ) links;
+      entry:=entry || jsonb_build_object('name',canonical_name,'verifiedAt',now(),'relatedSources',merged);
+      if not (entry ? 'catchFrame') and previous.card ? 'catchFrame'
+        and previous.card->'catchFrame'->>'sourceUrl'=entry->'source'->>'url' then
+        entry:=entry || jsonb_build_object('catchFrame',previous.card->'catchFrame');
+      end if;
+      insert into public.fishing_spot_leads(city,name,card,catalog_status,verified_at,valid_until)
+        values(job.city,canonical_name,entry,'published',now(),now()+interval '14 days')
+      on conflict(city,name) do update set card=excluded.card,catalog_status='published',verified_at=now(),valid_until=excluded.valid_until;
+      perform public.fishing_store_spot_lead_point(job.city,canonical_name,
+        (entry->'sourcePosition'->>'longitude')::double precision,(entry->'sourcePosition'->>'latitude')::double precision);
+    end loop;
+    update public.fishing_spot_leads l set catalog_status='review'
+      where l.city=job.city and l.card->'source'->>'url'=job.url and l.catalog_status='published' and not exists(
+        select 1 from jsonb_array_elements(result->'cards') as cards(c)
+        where fishing_private.spot_lead_place_key(c)=fishing_private.spot_lead_place_key(l.card));
+  elsif state_name in ('review','blocked') then
+    update public.fishing_spot_leads set catalog_status=case when result->>'reason' in ('fishing_restriction','source_http_404','source_http_410','venue_closed','prohibited_location') then 'withdrawn' else 'review' end
+    where city=job.city and card->'source'->>'url'=job.url
+      -- A JS-only original can require another human viewing. The original expiry still applies.
+      and not (state_name='blocked' and coalesce(result->>'reason','') in ('unreadable_article','content_identity_unconfirmed')
+        and coalesce(card->>'reviewMethod','')='original_video' and catalog_status='published' and valid_until>now());
+  end if;
+  update fishing_private.spot_source_jobs set state=state_name,lease=null,lease_until=null,checked_at=now(),
+    reason=coalesce(result->>'reason',''),http_status=coalesce((result->>'httpStatus')::integer,0),
+    content_hash=coalesce(result->>'hash',''),result_count=coalesce(jsonb_array_length(result->'cards'),0),
+    next_check=now()+case when state_name='failed' then least(interval '7 days',interval '10 minutes'*power(2,least(attempts,10)))
+      when state_name='published' then interval '7 days' else interval '30 days' end where id=job_id;
+  return true;
+end $$;
+revoke all on function public.fishing_finish_spot_source(uuid,uuid,jsonb) from public,anon,authenticated;
+grant execute on function public.fishing_finish_spot_source(uuid,uuid,jsonb) to service_role;

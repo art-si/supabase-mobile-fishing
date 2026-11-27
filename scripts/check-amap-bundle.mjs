@@ -23,7 +23,7 @@ function scan(dir) {
     }
   }
 }
-for (const path of ['dist/build/h5', 'dist/build/mp-weixin', 'dist/demo/h5']) {
+for (const path of ['dist/build/h5', 'dist/build/mp-weixin']) {
   assert.ok(existsSync(path), `Missing build: ${path}`)
   scan(path)
 }

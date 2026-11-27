@@ -1,16 +1,16 @@
 # AI 找钓位与水域围栏
 
-「找钓位」在取得位置后直接加载社区钓位和同城的 `fishing_spot_leads`。公开库保存已核对的地点、地址、原文链接、发布日期和推荐证据。通过服务器更新公开库即可补充数据。Art 负责提取证据，发布时逐条核对。鱼情好、人少、环境好、停车方便和适合亲子作为有原文支持的卡片标签。只有垂钓活动证据的地点也可以展示，多个来源可以链接到同一张卡片。
+「找钓位」在取得位置后直接加载社区钓位和同城的 `fishing_spot_leads`。公开库保存已核对的地点、地址、原文链接、发布日期、核验日期和推荐证据。后台读取免费公开源并逐条核对原文与地点，Art 可辅助提取证据。鱼情好、人少、环境好、停车方便和适合亲子作为有原文支持的卡片标签。经营场所需有实际垂钓服务依据；野钓视频和图文有明确原文坐标及垂钓证据，经城市与当前禁钓范围核验后也可发布。单独的赛事记录、缺少准确位置或命中禁钓范围的资料不发布；多个已核验来源可以链接到同一张卡片。2026-11-25 的部署及实际来源获取结果见[本轮验收](spot-video-sources-20261125.md)。
 
-城市依次取搜索的市名、入口定位识别的城市、已选同城或社区列表中唯一的城市。作者公开了坐标时，按原坐标落点并以 GCJ-02 展示。只有地点名称时，由高德按区县或城市核对 POI，唯一匹配后在列表中按距离展示。点击钓位名称可查看来源和原文，点击地址可查看定位来源和经纬度。小程序提供复制原文链接。
+城市依次取搜索的市名、入口定位识别的城市、已选同城或社区列表中唯一的城市。作者公开了坐标时，按原坐标落点并以 GCJ-02 展示；原坐标和证据保留供核对。经营场所只有地点名称时，由高德按区县或城市核对 POI，唯一匹配后在列表中按距离展示；野钓缺少原文定位则保留待核验，不能使用整片河流或湖库的中心点。点击钓位名称可查看来源和原文，点击地址可查看定位来源和经纬度。小程序提供复制原文链接。
 
-武汉首批公开库包含 21 条，其中有抖音的张之洞遛鱼城市钓场、今日头条的江城鲢鳙基地和带 B 站赛事原文的凤凰镇路亚小镇。服务端目录读取异常时，客户端可读取此前收录的 14 条武汉资料。
+公开库已接入[全国来源核验流程](spot-source-pipeline.md)。此前的 24 条资料重新进入原文与地点核验，未通过的内容保留待核验。客户端不再回退到旧内置目录。定时任务读取官方 RSS、核对媒体与地方官方原文；前台仅读取已发布的同城结果。
 
 ## 导入平台分享
 
 创作者可在「新增钓位 → 补充钓位信息」把自己的观察和有权分享的抖音、今日头条或 B 站作品链接一起保存。列表显示分享平台和有依据的鱼情标签，详情可打开原文并查看作者选定的水域。普通发布沿用钓位的分享范围。
 
-项目服务端可以把抖音短视频、今日头条微头条和 B 站视频或动态的公开分享材料交给 `POST /functions/v1/spot-source-import`。请求使用钓友集的服务端凭证。每批传入一个完整城市名和最多 6 条分享，每条包含原文链接和短摘录。可带原标题、发布日、已核对的地址和 `poiName` 钓点名称。作品单独挂载的地点可以填入 `poiName`。作者公开了经纬度和坐标系时，可填写 `sourcePosition`（`longitude`、`latitude`、`crs`，支持 `GCJ-02` 和 `WGS84`）。Art 从原文提取垂钓经历和标签。自然水域和水库须有垂钓证据及可辨认的地点。`preview: true` 可供核对原文和点位，默认写入公开钓位库。
+项目服务端可以把抖音短视频、今日头条微头条和 B 站视频或动态的公开分享材料交给 `POST /functions/v1/spot-source-import`。请求使用钓友集的服务端凭证。每批传入一个完整城市名和最多 6 条分享，每条包含原文链接和短摘录。可带原标题、发布日、已核对的地址和 `poiName` 钓点名称。作品单独挂载的地点可以填入 `poiName`。作者公开了经纬度和坐标系时，可填写 `sourcePosition`（`longitude`、`latitude`、`crs`，支持 `GCJ-02` 和 `WGS84`）供预览核对。Art 从原文提取垂钓经历和标签。`preview: true` 只返回预览；默认把原文提交后台核验队列，不能直接写成已发布钓位。
 
 一条分享列出多个钓位时，按地点提供对应的摘录和定位信息。作者使用简称时，可用 `poiQuery` 提供已核对的高德地点名供查询。公开库接收经核对的作者供稿和许可留存的材料。需要定期检索并导入平台作品时，应取得平台对检索和留存用途的许可。打开找钓位时读取已发布的同城钓位。
 
@@ -29,7 +29,7 @@
 }
 ```
 
-Art 提取地点和可核对的标签证据。禁钓信息和证据不足的条目会被跳过。同一地点重复导入会合并原文链接。客户端用高德核对地点，匹配后随同城钓位自动出现。服务端凭证只在钓友集的后台使用。
+Art 提取地点和可核对的标签证据。禁钓信息和证据不足的条目会被跳过。导入接口返回 `queued` 待核验数量，`published` 为 0；后台读取原文、核对日期和高德地点后才公开，同地点合并原文链接。尚无读取与留存许可的平台作品不会因为已绑定账号就自动入库。服务端凭证只在钓友集的后台使用。
 
 抖音视频搜索的 OpenAPI 和 MCP 都需要获批的移动或网站应用权限。搜索规范限定用户发起搜索，限制结果留存。个人小程序的搜索能力用于发现小程序。 [抖音搜索规范](https://developer.open-douyin.com/docs/resource/zh-CN/dop/ability/search-management/item-search) · [抖音 MCP 接入](https://developer.open-douyin.com/docs/resource/zh-CN/dop/ability/mcp-service/mcp-service-desc) · [个人小程序能力](https://developer.open-douyin.com/forum/bulletin/post/6a54a7c57517f6158f590c87)
 
@@ -73,7 +73,7 @@ python scripts/build-water-index.py artifacts/china-latest.osm.pbf artifacts/tai
 钓友集的 `spot-discovery` 和 `water-fence-draft` 先校验登录和业务限制，再调用 Art 的 `ai-service`。所有模型任务跟随 Art 平台租户「业务助手」的供应商、模型、备用模型和生成配置。钓友集负责原文依据、可见性和围栏范围校验。
 
 - 钓友集项目 `jupuypvmgjpnpntfetqv` 的 Vault 保存 `art-ai/fishing-client-token`，由服务端读取。Art 项目 `ckbftoopuyophiebamwy` 的 Vault 在 `art-ai-caller/fishing` 中登记该凭证的 SHA-256 指纹。
-- 公开钓位库、社区钓位标注和已有公告分析使用现有服务。旧接口在城市没有已发布公开钓位时可选用 `SPOT_WEB_SEARCH_API_KEY` 查询公开索引。 [Brave Search API](https://api-dashboard.search.brave.com/api-reference/web/search/get)
+- 公开钓位采集由 `spot-source-sync` 定时读取免费官方 RSS 与地方栏目。`spot-discovery` 的公开目录读取不会触发媒体搜索或模型调用。保留的 Brave 适配器仅供以后取得服务端搜索凭证与留存权限后启用，本轮保持关闭。 [Brave Search API](https://api-dashboard.search.brave.com/api-reference/web/search/get)
 - 在各平台审核通过的网站应用中登记同一个正式 HTTPS 回调 `<H5部署地址>/static/social-callback.html`，并将它写入 Edge Secret `SOCIAL_H5_CALLBACK`。平台密钥分别使用 `SOCIAL_DOUYIN_CLIENT_ID`、`SOCIAL_TOUTIAO_CLIENT_ID`、`SOCIAL_BILIBILI_CLIENT_ID` 及相应的 `_CLIENT_SECRET`。应用需开通基本账号信息的权限。当前从 H5 发起绑定。
 - 抖音检索需要单独的内容搜索能力，其使用规则限制爬取、存储和下载。相关公开文档见 [抖音 OAuth](https://developer.open-douyin.com/docs/resource/zh-CN/dop/develop/sdk/web-app/web/permission/)、[今日头条 OAuth](https://open.douyin.com/platform/resource/docs/develop/permission/toutiao-or-xigua/OAuth2.0/)、[B 站开放平台](https://openhome.bilibili.com/doc) 和 [抖音搜索能力](https://developer.open-douyin.com/docs/resource/zh-CN/dop/ability/search-management/item-search)。
 

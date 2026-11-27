@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { preventActionKey, activateButtonKey } from '@mobile-core/action-keyboard'
 import { getCurrentInstance, nextTick, ref } from 'vue'
 import MobileAction from '@mobile-core/components/MobileAction.vue'
 import MobileField from '@mobile-core/components/MobileField.vue'
@@ -66,14 +67,13 @@ function undo() {
     <view v-for="(row, index) in rows" :key="row.id" class="trip-catches__row stack">
       <view class="row row--between">
         <text class="name">渔获 {{ index + 1 }}</text>
-        <MobileAction
+        <button
           :id="`catch-remove-${row.id}`"
-          class="text-action"
+          class="mobile-action text-action"
           :aria-label="`移除渔获 ${index + 1}`"
           :disabled="disabled"
           @click="remove(index)"
-          >移除</MobileAction
-        >
+           role="button" :tabindex="(disabled) ? -1 : 0" :aria-disabled="(disabled) || undefined" hover-class="mobile-action--pressed" @keydown="preventActionKey" @keyup="activateButtonKey">移除</button>
       </view>
       <MobileMultiChoice
         v-model="row.species"
@@ -118,13 +118,12 @@ function undo() {
     </view>
     <view v-if="removed" class="row row--between" role="status">
       <text class="caption">已移除一条渔获</text>
-      <MobileAction
+      <button
         id="trip-catches-undo"
-        class="text-action"
+        class="mobile-action text-action"
         :disabled="disabled || rows.length >= MAX_TRIP_CATCHES"
         @click="undo"
-        >撤销移除</MobileAction
-      >
+         role="button" :tabindex="(disabled || rows.length >= MAX_TRIP_CATCHES) ? -1 : 0" :aria-disabled="(disabled || rows.length >= MAX_TRIP_CATCHES) || undefined" hover-class="mobile-action--pressed" @keydown="preventActionKey" @keyup="activateButtonKey">撤销移除</button>
     </view>
     <text v-if="errors.catches || localErrors.catches" class="error" role="alert">{{
       localErrors.catches || errors.catches

@@ -10,16 +10,18 @@ import MobileField from '@mobile-core/components/MobileField.vue'
 import FishingCityPicker from '@/components/FishingCityPicker.vue'
 import MobileAction from '@mobile-core/components/MobileAction.vue'
 import MobileSearch from '@mobile-core/components/MobileSearch.vue'
-import MobileLoadingStatus from '@/components/FishingLoadingStatus.vue'
+import MobileSkeleton from '@mobile-core/components/MobileSkeleton.vue'
 import MobileLoadError from '@mobile-core/components/MobileLoadError.vue'
 import MobileListFooter from '@mobile-core/components/MobileListFooter.vue'
 import { useAuthStore } from '@/stores/auth'
 import { appForeground } from '@/services/app-activity'
 import { usePageActivity } from '@mobile-core/page-activity'
+import { useListRefresh } from '@/composables/useListRefresh'
 import { searchMapPlaces, searchMapWaterPlaces } from '@/services/amap'
 import { resolveNearbyWater, type NearbyWater } from '@/services/nearby-water'
 import { errorText } from '@/domain/rules'
-import { formatMapCoordinates, validSelection, waterSelection, type MapPlace, type SelectedPlace } from '@/domain/map'
+import { formatMapCoordinates, placeSelection, waterSelection, type MapPlace, type SelectedPlace } from '@/domain/map'
+import { returnMapSelection } from '@/platforms/map-navigation'
 const auth = useAuthStore(),
   pick = ref(false),
   waterPick = ref(false),
@@ -37,6 +39,11 @@ const error = ref(''),
 onReachBottom(() => {
   if (!selected.value && !error.value && hasMore.value) void search(true)
 })
+useListRefresh(async () => {
+  if (!query.value.trim() || selected.value || !auth.signedIn) return
+  version++; loading.value = false
+  await search()
+})
 const suggestions = computed(() =>
   selected.value
     ? []
@@ -48,6 +55,7 @@ const waterTarget = ref<SelectedPlace>()
 const waterSource = ref<NearbyWater['source']>()
 const waterLoading = ref(false)
 const waterHint = ref('')
+const selectionHint = ref('')
 const previewTarget = computed(() => waterTarget.value ?? (waterPick.value ? null : selected.value))
 let waterVersion = 0
 usePageActivity(
@@ -85,6 +93,7 @@ onUnload(() => {
   waterVersion++
 })
 function reset() {
+  selectionHint.value = ''
   version++
   items.value = []
   selected.value = null
@@ -153,6 +162,7 @@ function liveSearch() {
   if (auth.signedIn) void search()
 }
 function choose(id: string) {
+  selectionHint.value = ''
   selected.value = items.value.find((p) => p.id === id) || null
   if (waterPick.value) void findNearbyWater()
 }
@@ -188,22 +198,9 @@ async function findNearbyWater() {
 function confirm() {
   const target = waterPick.value ? waterTarget.value : selected.value
   if (!target || !requestId.value || !auth.signedIn) return
-  const place: SelectedPlace = {
-    longitude: target.longitude,
-    latitude: target.latitude,
-    name: target.name,
-    address: target.address?.slice(0, 240),
-    adcode: target.adcode,
-    ...(waterPick.value ? { kind: 'water' as const } : {}),
-    crs: 'GCJ-02',
-    created_at: Date.now()
-  }
-  if (!validSelection(place)) {
-    error.value = '地点信息不完整，请重新搜索'
-    return
-  }
-  uni.setStorageSync(`dyj.map.selection.${requestId.value}`, place)
-  uni.navigateBack()
+  const place = placeSelection([target.longitude, target.latitude], target)
+  if (waterPick.value) place.kind = 'water'
+  returnMapSelection(requestId.value, place, message => { selectionHint.value = message })
 }
 </script>
 <template>
@@ -247,7 +244,7 @@ function confirm() {
         :message="error"
         @retry="search(retryMore)"
       />
-      <MobileLoadingStatus v-if="loading && !items.length" label="正在查找地点…" />
+      <MobileSkeleton v-if="loading && !items.length" label="正在查找地点…" />
       <view v-if="selected" class="panel stack">
         <text v-if="waterPick" class="caption">搜索地点：{{ selected.name }}</text>
         <view v-else class="stack stack--tight"
@@ -281,6 +278,7 @@ function confirm() {
             >{{ waterPick ? '确认这处水域' : '确认这个位置' }}</MobileAction
           >
           <text v-if="!requestId" class="error">请返回表单，重新进入地图选点。</text>
+          <text v-else-if="selectionHint" class="caption" role="status">{{ selectionHint }}</text>
         </template>
         <template v-else>
           <MobileAction class="secondary" @click="zonePanel?.openList()">查看附近禁钓区域</MobileAction>
