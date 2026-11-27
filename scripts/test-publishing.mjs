@@ -569,9 +569,9 @@ try {
   await button('关注').click()
   await button('记录鱼情').click()
   await page.waitForFunction(() =>
-    document.querySelector('#post-location')?.textContent.includes('苏州市')
+    document.querySelector('#post-location')?.textContent.includes('附近测试水域')
   )
-  assert.match(await button('选择所在位置').innerText(), /工业园区/)
+  assert.match(await button('选择所在位置').innerText(), /附近测试水域/)
   assert.doesNotMatch(await button('选择所在位置').innerText(), /私密门牌/)
   await button('分享心得').click()
   await field('分享你的心得').fill('今天试了两种饵料，记录一下水边的观察。')
@@ -579,6 +579,9 @@ try {
   await checkPublishedInFeed()
   assert.equal(writes.length, 2)
   assert.equal(writes[1].payload.kind, 'experience')
+  assert.equal(writes[1].payload.location_label, '附近测试水域')
+  assert.equal(writes[1].payload.location_longitude, 120.62)
+  assert.equal(writes[1].payload.location_latitude, 31.32)
   await shot('published-experience-feed-375')
   pass(
     'new catches and experiences open the refreshed recommended feed from direct and in-app entry'
@@ -596,7 +599,7 @@ try {
   assert.match(await button('选择所在位置').innerText(), /手动选择的水域/)
   await shot('location-automatic-and-manual-375')
   pass(
-    'default area location excludes street address; late automatic results cannot replace a manual choice'
+    'automatic water location excludes street address; late automatic results cannot replace a manual choice'
   )
   assert.deepEqual(errors, [])
   await writeFile(
